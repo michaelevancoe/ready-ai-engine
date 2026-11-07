@@ -1,0 +1,49 @@
+export class InputError extends Error {
+  constructor() {
+    super('invalid input');
+    this.name = 'InputError';
+  }
+}
+
+export class ConfigError extends Error {
+  constructor() {
+    super('gateway configuration is incomplete');
+    this.name = 'ConfigError';
+  }
+}
+
+export class SchemaRejected extends Error {
+  constructor() {
+    super('schema rejected');
+    this.name = 'SchemaRejected';
+  }
+}
+
+export class GatewayRejected extends Error {
+  constructor() {
+    super('gateway rejected');
+    this.name = 'GatewayRejected';
+  }
+}
+
+export type GenerateFailure = 'schema' | 'gateway';
+
+export class GenerateError extends Error {
+  readonly reason: GenerateFailure;
+
+  constructor(reason: GenerateFailure) {
+    super('generation failed');
+    this.name = 'GenerateError';
+    this.reason = reason;
+  }
+}
+
+export class StoreError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super('store request failed');
+    this.name = 'StoreError';
+    this.status = status;
+  }
+}

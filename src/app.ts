@@ -1,0 +1,171 @@
+import type { WorkerBindings } from './bindings.ts';
+import { ConfigError, GenerateError, InputError, StoreError } from './errors.ts';
+import { generate } from './generate.ts';
+import { json, readJson } from './http.ts';
+import { isUuid } from './ids.ts';
+import { intakeMessages, parseIntake } from './intake.ts';
+import { verifyHs256 } from './jwt.ts';
+import type { SafeLog } from './log.ts';
+import { authorize } from './policy.ts';
+import { childProfileSchema, childProfileSchemaName, parseChildProfile } from './profile.ts';
+import type { ProfileRecord, ProfileStore } from './store.ts';
+
+export interface AppDeps {
+  env: WorkerBindings;
+  fetch: typeof fetch;
+  storeFactory: (accessToken: string) => ProfileStore;
+  log: (event: SafeLog) => void;
+  now?: () => number;
+}
+
+interface Authenticated {
+  userId: string;
+  accessToken: string;
+}
+
+function requireSupabase(env: WorkerBindings): void {
+  if (
+    env.SUPABASE_URL.trim() === '' ||
+    env.SUPABASE_ANON_KEY.trim() === '' ||
+    env.SUPABASE_JWT_SECRET.trim() === ''
+  ) {
+    throw new ConfigError();
+  }
+}
+
+function present(record: ProfileRecord): {
+  id: string;
+  organizationId: string;
+  childId: string;
+  status: ProfileRecord['status'];
+  profile: ProfileRecord['profile'];
+  approvedBy: string | null;
+} {
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    childId: record.childId,
+    status: record.status,
+    profile: record.profile,
+    approvedBy: record.approvedBy,
+  };
+}
+
+async function authenticate(request: Request, deps: AppDeps): Promise<Authenticated | Response> {
+  const header = request.headers.get('authorization');
+  const match = header === null ? null : /^Bearer (\S+)$/.exec(header);
+  const token = match?.[1];
+  if (token === undefined) return json({ error: 'unauthorized' }, 401);
+  const claims = await verifyHs256(token, deps.env.SUPABASE_JWT_SECRET, deps.now?.() ?? Date.now());
+  if (claims === null) return json({ error: 'unauthorized' }, 401);
+  return { userId: claims.sub, accessToken: token };
+}
+
+async function handleIntake(request: Request, deps: AppDeps): Promise<Response> {
+  requireSupabase(deps.env);
+  const auth = await authenticate(request, deps);
+  if (auth instanceof Response) return auth;
+  const intake = parseIntake(await readJson(request));
+  if (intake === null) return json({ error: 'invalid_input' }, 400);
+
+  const store = deps.storeFactory(auth.accessToken);
+  const child = await store.getChild(intake.childId);
+  if (child === null || child.organizationId !== intake.organizationId) {
+    return json({ error: 'not_found' }, 404);
+  }
+  const membership = await store.getMembership(auth.userId, intake.organizationId);
+  if (membership === null) return json({ error: 'not_found' }, 404);
+  const allowed = authorize({
+    action: 'intake.create',
+    role: membership.role,
+    sameOrganization: true,
+    isChildParent: child.parentUserId === auth.userId,
+  });
+  if (!allowed) return json({ error: 'forbidden' }, 403);
+
+  const profile = await generate({
+    endpoint: 'intake.profile',
+    messages: intakeMessages(intake.answers),
+    schemaName: childProfileSchemaName,
+    schema: childProfileSchema,
+    parse: parseChildProfile,
+    env: deps.env,
+    fetch: deps.fetch,
+    log: deps.log,
+  });
+  const saved = await store.insertDraft({
+    organizationId: intake.organizationId,
+    childId: intake.childId,
+    profile,
+    createdBy: auth.userId,
+  });
+  return json(present(saved), 201);
+}
+
+async function handleApprove(request: Request, deps: AppDeps, profileId: string): Promise<Response> {
+  if (!isUuid(profileId)) return json({ error: 'not_found' }, 404);
+  requireSupabase(deps.env);
+  const auth = await authenticate(request, deps);
+  if (auth instanceof Response) return auth;
+
+  const store = deps.storeFactory(auth.accessToken);
+  const profile = await store.getProfile(profileId);
+  if (profile === null) return json({ error: 'not_found' }, 404);
+  const membership = await store.getMembership(auth.userId, profile.organizationId);
+  if (membership === null) return json({ error: 'not_found' }, 404);
+  const child = await store.getChild(profile.childId);
+  const isChildParent =
+    child !== null &&
+    child.parentUserId === auth.userId &&
+    child.organizationId === profile.organizationId;
+
+  if (profile.status === 'approved') {
+    const parentOfChild = authorize({
+      action: 'profile.approve',
+      role: membership.role,
+      sameOrganization: true,
+      isChildParent,
+      profileStatus: 'draft',
+    });
+    if (parentOfChild) return json({ error: 'already_approved' }, 409);
+    return json({ error: 'forbidden' }, 403);
+  }
+
+  const allowed = authorize({
+    action: 'profile.approve',
+    role: membership.role,
+    sameOrganization: true,
+    isChildParent,
+    profileStatus: profile.status,
+  });
+  if (!allowed) return json({ error: 'forbidden' }, 403);
+  const updated = await store.approveProfile({ profileId, approvedBy: auth.userId });
+  if (updated === null) return json({ error: 'already_approved' }, 409);
+  return json(present(updated), 200);
+}
+
+async function route(request: Request, deps: AppDeps): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
+  const url = new URL(request.url);
+  if (url.pathname === '/v1/intake/profile') return handleIntake(request, deps);
+  const approve = /^\/v1\/profiles\/([^/]+)\/approve$/.exec(url.pathname);
+  const profileId = approve?.[1];
+  if (profileId !== undefined) return handleApprove(request, deps, profileId);
+  return json({ error: 'not_found' }, 404);
+}
+
+export async function handleRequest(request: Request, deps: AppDeps): Promise<Response> {
+  try {
+    return await route(request, deps);
+  } catch (error) {
+    if (error instanceof InputError) return json({ error: 'invalid_input' }, 400);
+    if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+    if (error instanceof GenerateError) return json({ error: 'generation_failed' }, 502);
+    if (error instanceof StoreError) {
+      if (error.status === 401 || error.status === 403) return json({ error: 'forbidden' }, 403);
+      return json({ error: 'request_failed' }, 500);
+    }
+    console.error(JSON.stringify({ outcome: 'error', message: 'request failed' }));
+    return json({ error: 'request_failed' }, 500);
+  }
+}

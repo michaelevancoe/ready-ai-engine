@@ -1,0 +1,38 @@
+name = "ready-ai-engine"
+main = "src/index.ts"
+compatibility_date = "2026-11-07"
+compatibility_flags = [ "nodejs_compat" ]
+upload_source_maps = true
+
+# Account ids, gateway URLs, and Supabase credentials are secrets.
+# Declare the names here. Values live in .dev.vars locally and in Worker
+# secrets when a team account exists. This stage does not deploy.
+
+[secrets]
+required = [
+  "AI_GATEWAY_BASE_URL",
+  "AI_GATEWAY_ACCOUNT_ID",
+  "AI_GATEWAY_ID",
+  "AI_GATEWAY_TOKEN",
+  "SUPABASE_URL",
+  "SUPABASE_ANON_KEY",
+  "SUPABASE_JWT_SECRET",
+]
+
+# Provider and model per endpoint. Not account-specific.
+[vars]
+INTAKE_PROFILE_PROVIDER = "openai"
+INTAKE_PROFILE_MODEL = "gpt-4.1-mini"
+INTAKE_PROFILE_FALLBACK_PROVIDER = "workers-ai"
+INTAKE_PROFILE_FALLBACK_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
