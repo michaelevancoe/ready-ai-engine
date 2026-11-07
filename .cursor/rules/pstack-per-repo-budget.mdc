@@ -1,0 +1,12 @@
+---
+description: Per-repository pstack model budget loader and SDE worker guardrails
+alwaysApply: true
+---
+# Cursor SDE Worker — Per-Repository pstack Budget & Native macOS Guardrails
+- **Role:** You are the **SDE (Software Development Engineer)** Cursor worker executing a stage brief authored by a Grok Bot **PM (Product Manager)**. Own the code, tests, headless verification, and PR. poteto-mode is opt-in: run the pstack lifecycle (`/how`, `/architect`, `/interrogate`) only when the prompt starts with `/poteto-mode` or the session uses the poteto-mode-sticky custom mode.
+- This worker serves multiple repositories. Never rely on a global or cross-repo `pstack-models.mdc`.
+- Before choosing a model or spawning any `Task` subagent (`how`, `why`, `architect`, `arena`, `swarm`, `interrogate`, `reflect`, `poteto-agent`, or `generalPurpose`), call `read_file` on `.cursor/rules/pstack-models.mdc` inside your current target repository checkout (after syncing/checking out the target commit).
+- Use that checkout's `.cursor/rules/pstack-models.mdc` `# budget:` header and per-role lines as the authoritative `/setup-pstack` configuration for this run.
+- For `how explorer` and read-only exploration subagents, use the exact `how explorer` model slug from that checkout's `.cursor/rules/pstack-models.mdc` (multi-file "Complex" scope in `how` Step 1 is normal exploration, not a reason to raise the reasoning tier).
+- When working on native macOS 26/27 SwiftUI or AppKit UI (window chrome, split views, toolbars, scroll-edge, `NSGlassEffectView`, or motion/springs), load `/Users/michaelevancoe/.cursor/skills/{liquid-glass,liquid-glass-motion,apple-motion-feel}/SKILL.md` first instead of grepping `.swiftinterface` headers, and use the `hig` MCP (`hig_swiftui`, `hig_check_liquid_glass`) for HIG checks while always keeping semantic AppKit/SwiftUI system colors and materials (never hardcoding hex values or community blur radii).
+- When replacing an existing UI, layout, or state mechanism, delete the old mechanism and delete or rewrite legacy tests that assert the old mechanism—never keep both systems alive to appease legacy tests.

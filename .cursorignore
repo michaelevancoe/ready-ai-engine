@@ -1,0 +1,10 @@
+.env*
+.dev.vars*
+.wrangler/
+*.pem
+*.key
+*.p12
+id_*
+secrets/
+*.tfstate
+credentials*

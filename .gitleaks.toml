@@ -1,0 +1,12 @@
+title = "Stem Pipeline"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake test values (dummy-...-not-real) and example.com"
+regexTarget = "line"
+regexes = [
+  '''dummy-.+-not-real''',
+  '''example\.com''',
+]

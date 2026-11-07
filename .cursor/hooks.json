@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeReadFile": [
+      {
+        "command": ".cursor/hooks/scan.sh",
+        "failClosed": true
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": ".cursor/hooks/scan.sh",
+        "failClosed": true
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/git-gate.sh",
+        "matcher": "git (commit|push)",
+        "failClosed": true
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": ".cursor/hooks/warn.sh",
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": ".cursor/hooks/scan.sh",
+        "matcher": "MCP:.*",
+        "failClosed": true
+      },
+      {
+        "command": ".cursor/hooks/no-fast.sh",
+        "matcher": "Task",
+        "failClosed": true
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": ".cursor/hooks/no-fast.sh",
+        "failClosed": true
+      }
+    ]
+  }
+}
