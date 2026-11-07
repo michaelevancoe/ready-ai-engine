@@ -1,0 +1,8 @@
+# Copy to .dev.vars. That file is gitignored. Values below are placeholders.
+AI_GATEWAY_BASE_URL=https://gateway.example.com/v1
+AI_GATEWAY_ACCOUNT_ID=dummy-account-not-real
+AI_GATEWAY_ID=dummy-gateway-not-real
+AI_GATEWAY_TOKEN=dummy-gateway-token-not-real
+SUPABASE_URL=https://dummy-project-not-real.example.com
+SUPABASE_ANON_KEY=dummy-anon-key-not-real
+SUPABASE_JWT_SECRET=dummy-jwt-secret-not-real
