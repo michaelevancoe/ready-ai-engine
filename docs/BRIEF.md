@@ -22,7 +22,7 @@ Ready is Michael's AI for Church 2026 hackathon entry (church-hackathon brief). 
 - **Portability:** a later move to team-owned accounts is config and docs only (Michael t79u–t80u).
 
 ## 3. Non-Goals & Hard Limits
-- **Out of scope:** real child or family data, real payments or charges, deploys, creating cloud resources or accounts, provisioning secrets, the frontend app, and church or ministry connectors.
+- **Out of scope:** real child or family data, real payments or charges, deploys, creating cloud resources or accounts, provisioning secrets, and church or ministry connectors. The frontend is limited to a minimal local demo in `web/` (Stage 3). Design polish, auth UI, and deployment of the frontend come in later stages, each needing its own approval. Connecting Michael's real AI Gateway or Supabase accounts needs his separate approval, routed through `FO, CTO`.
 - **Data:** made-up seed data only (build plan, Decision 7). No PII in model calls beyond need, and none in logs.
 - **Secrets:** never committed.
 - **Public-Surface Privacy Rule:** the factory policy is unchanged ([PROCEDURE.md §2](../../PROCEDURE.md#2-roles--approvals)). Any public surface shows only `Michael Evancoe`, `github.com/michaelevancoe`, and `evancoe.com`.
@@ -31,4 +31,5 @@ Ready is Michael's AI for Church 2026 hackathon entry (church-hackathon brief). 
 | Stage | Card | Summary & Exit Criteria |
 | --- | --- | --- |
 | Stage 1 | [`stages/stage-1.md`](stages/stage-1.md) | **Onboarding prerequisite** (not a product stage): factory bootstrap and `docs/BRIEF.md` on `main` through one onboarding-only Cursor SDE pull request. CI gitleaks green. No application code. |
-| Stage 2 | `stages/stage-2.md` (the PM writes this after Stage 1 is on `main` and the readiness check passes) | Thin slice: model helper with fallback, intake to profile, Supabase migrations and row-level security, fake seed, mocked tests, portability README. Pull request only. No deploy. |
+| Stage 2 | [`stages/stage-2.md`](stages/stage-2.md) | Thin slice: model helper with fallback, intake to profile, Supabase migrations and row-level security, fake seed, mocked tests, portability README. Pull request only. No deploy. |
+| Stage 3 | [`stages/stage-3.md`](stages/stage-3.md) | Minimal local demo frontend in `web/` (Next.js App Router, React, Radix): enter intake for a fictional child, see the draft profile, approve it. Mock model and fictional seed only. Local only. No deploy, auth UI, or design polish. Approved by `FO, CTO` 2026-11-13. |
