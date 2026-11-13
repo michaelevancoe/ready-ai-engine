@@ -36,9 +36,11 @@ Tests mock the network. They do not need Cloudflare or Supabase credentials.
 
 ## Local demo
 
-Run one page on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The page has six fields. Submitting shows a Draft view of the five sections. Approving that draft shows Approved.
+Run one page on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The page has six fields. Submit the form to see a Draft view of the five sections. Approve that draft to see Approved.
 
-The demo process keeps the fictional church in memory and signs the Avery session on each request. The page posts to its own address. It forwards `/v1` to that process only when `READY_LOCAL_DEMO` is `1`. The model is a function in the demo process. That function writes the draft from the six answers. `npm run demo` does not set the variable.
+The demo process keeps the fictional church in memory and signs the Avery session on each request. The page posts to its own address. It forwards `/v1` to that process only when `READY_LOCAL_DEMO` is `1`. `npm run demo` does not set that variable.
+
+The demo uses the mock unless you set `READY_DEMO_MODEL` to `live`. Any other value, including an unset value, keeps the mock. The mock writes the draft from the six answers and does not call a model.
 
 From the repo root, install, check, and test. Then start the demo process.
 
@@ -60,6 +62,26 @@ READY_LOCAL_DEMO=1 npm run dev
 Open http://127.0.0.1:3000.
 
 Inside `web`, run `npm run typecheck`. Run `npm run build`. Run `npm run test:e2e`. The build does not need `READY_LOCAL_DEMO`.
+
+To turn live mode on, copy `.dev.vars.example` to `.dev.vars`. `.dev.vars` is gitignored. Set `READY_DEMO_MODEL=live` in the shell or in `.dev.vars`.
+
+Set `AI_GATEWAY_BASE_URL` to `https://gateway.ai.cloudflare.com/v1` with no account id in that value. Set `AI_GATEWAY_ID` to `ready-demo`. Set `AI_GATEWAY_ACCOUNT_ID` and `AI_GATEWAY_TOKEN` from the Cloudflare account. Set both `INTAKE_PROFILE_PROVIDER` and `INTAKE_PROFILE_FALLBACK_PROVIDER` to `workers-ai`.
+
+The token needs the `AI Gateway: Run` permission and the `Workers AI: Read` permission on that one account. Prefer a token with an expiry.
+
+The gateway allows 20 requests per 60 seconds on a sliding window. One submit can send up to three calls. The calls are the primary model, one retry, and then the fallback model.
+
+When the model fails or the rate limit is hit, the page shows the alert `The draft could not be written. Submit the form again.`
+
+Start the live demo with this command.
+
+```bash
+READY_LOCAL_DEMO=1 READY_DEMO_MODEL=live npm run demo
+```
+
+The page process stays `READY_LOCAL_DEMO=1 npm run dev`.
+
+The demo still sends only the six fictional answer fields. The request does not include a real Supabase token. The process does not log the gateway token.
 
 ## Access
 

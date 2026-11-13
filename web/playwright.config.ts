@@ -11,6 +11,7 @@ function demoEnv(): Record<string, string> {
     if (value !== undefined) env[key] = value;
   }
   env.READY_LOCAL_DEMO = '1';
+  env.READY_DEMO_MODEL = 'mock';
   return env;
 }
 

@@ -28,8 +28,10 @@ const productFiles = [
   'worker-configuration.d.ts',
 ];
 
+const gatewayHost = ['gateway.ai', 'cloudflare.com'].join('.');
+const allowedReadmeGatewayBase = ['https://', gatewayHost, '/v1'].join('');
 const banned = [
-  ['gateway.ai', 'cloudflare.com'].join('.'),
+  gatewayHost,
   ['api', 'cloudflare.com'].join('.'),
   ['supabase', 'co'].join('.'),
   ['api.openai', 'com'].join('.'),
@@ -58,8 +60,16 @@ test('tracked product files do not hardcode account hosts, ids, or keys', () => 
     ...productFiles.map((file) => join(root, file)),
   ];
   for (const path of scanned) {
-    const text = readFileSync(path, 'utf8');
+    let text = readFileSync(path, 'utf8');
     const rel = relative(root, path);
+    if (rel === 'README.md') {
+      assert.equal(
+        text.includes(`${allowedReadmeGatewayBase}/`),
+        false,
+        `${rel} extends the public gateway base`,
+      );
+      text = text.replaceAll(allowedReadmeGatewayBase, '');
+    }
     for (const needle of banned) {
       assert.equal(text.includes(needle), false, `${rel} contains ${needle}`);
     }
