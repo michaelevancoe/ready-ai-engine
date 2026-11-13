@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { handleRequest, type AppDeps } from '../src/app.ts';
+import type { WorkerBindings } from '../src/bindings.ts';
 import { json } from '../src/http.ts';
 import { parseIntake, type IntakeAnswers } from '../src/intake.ts';
 import { signHs256 } from '../src/jwt.ts';
@@ -7,7 +8,17 @@ import { emitSafe } from '../src/log.ts';
 import type { ChildProfile } from '../src/profile.ts';
 import { isRecord } from '../src/schema.ts';
 import { chatEnvelope, churchStore, ids, testEnv, type MemoryStore } from '../test/fixtures.ts';
-import { demoEngineOrigin, localDemoEnabled } from '../web/lib/local-demo.ts';
+import { demoEngineOrigin, demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
+import { liveDemoBindings, loadDevVarsFile, mergeDemoEnv, parseDevVars } from './live-env.ts';
+
+export interface DemoOpenOptions {
+  fromEnvironment?: boolean;
+  model?: string;
+  shell?: Readonly<Record<string, string | undefined>>;
+  devVarsText?: string;
+  readDevVarsFile?: boolean;
+  fetchImpl?: typeof fetch;
+}
 
 const ANSWER_KEYS = [
   'preferredName',
@@ -22,20 +33,32 @@ export class DemoContext {
   private readonly store: MemoryStore;
   private readonly deps: AppDeps;
 
-  private constructor() {
+  private constructor(env: WorkerBindings, fetchImpl: typeof fetch) {
     this.store = churchStore();
     this.deps = {
-      env: testEnv,
-      fetch: mockGateway,
+      env,
+      fetch: fetchImpl,
       storeFactory: () => this.store,
       log: emitSafe,
       now: () => Date.now(),
     };
   }
 
-  static async open(envValue: string | undefined): Promise<DemoContext> {
+  static async open(envValue: string | undefined, options?: DemoOpenOptions): Promise<DemoContext> {
     if (!localDemoEnabled(envValue)) throw new Error('READY_LOCAL_DEMO is off');
-    return new DemoContext();
+    if (options?.fromEnvironment !== true) return new DemoContext(testEnv, mockGateway);
+    const merged = mergeDemoEnv(devVarsLayer(options), options.shell ?? process.env);
+    const mode = demoModelMode(options.model !== undefined ? options.model : merged.READY_DEMO_MODEL);
+    switch (mode) {
+      case 'mock':
+        return new DemoContext(testEnv, mockGateway);
+      case 'live':
+        return new DemoContext(liveDemoBindings(merged), options.fetchImpl ?? globalThis.fetch);
+      default: {
+        const unexpected: never = mode;
+        return unexpected;
+      }
+    }
   }
 
   async handle(request: Request): Promise<Response> {
@@ -138,6 +161,13 @@ function exactAnswers(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value);
   return keys.length === ANSWER_KEYS.length && ANSWER_KEYS.every((key) => Object.hasOwn(value, key));
+}
+
+function devVarsLayer(options: DemoOpenOptions): Record<string, string> {
+  if (options.devVarsText !== undefined) return parseDevVars(options.devVarsText);
+  if (options.readDevVarsFile === false) return {};
+  if (options.model !== undefined && options.readDevVarsFile !== true) return {};
+  return loadDevVarsFile();
 }
 
 const mockGateway: typeof fetch = async (input, init) => {
