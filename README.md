@@ -34,6 +34,33 @@ npm test
 
 Tests mock the network. They do not need Cloudflare or Supabase credentials.
 
+## Local demo
+
+Run one page on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The page has six fields. Submitting shows a Draft view of the five sections. Approving that draft shows Approved.
+
+The demo process keeps the fictional church in memory and signs the Avery session on each request. The page posts to its own address. It forwards `/v1` to that process only when `READY_LOCAL_DEMO` is `1`. The model is a function in the demo process. That function writes the draft from the six answers. `npm run demo` does not set the variable.
+
+From the repo root, install, check, and test. Then start the demo process.
+
+```bash
+npm ci
+npm run typecheck
+npm test
+READY_LOCAL_DEMO=1 npm run demo
+```
+
+In a second terminal, install and start the page.
+
+```bash
+cd web
+npm ci
+READY_LOCAL_DEMO=1 npm run dev
+```
+
+Open http://127.0.0.1:3000.
+
+Inside `web`, run `npm run typecheck`. Run `npm run build`. Run `npm run test:e2e`. The build does not need `READY_LOCAL_DEMO`.
+
 ## Access
 
 Membership roles are `admin`, `parent`, and `volunteer`. `children.parent_user_id` is the parent of that child.

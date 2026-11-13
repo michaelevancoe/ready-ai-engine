@@ -6,8 +6,17 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const skipDirectories = new Set(['.git', 'node_modules', '.wrangler', 'dist', 'coverage']);
-const productRoots = ['src', 'test', 'supabase'];
+const skipDirectories = new Set([
+  '.git',
+  'node_modules',
+  '.wrangler',
+  'dist',
+  'coverage',
+  '.next',
+  'playwright-report',
+  'test-results',
+]);
+const productRoots = ['src', 'test', 'supabase', 'web', 'scripts'];
 const productFiles = [
   'README.md',
   'wrangler.toml',
@@ -35,7 +44,10 @@ function files(directory: string): string[] {
     if (skipDirectories.has(entry)) continue;
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) found.push(...files(path));
-    else found.push(path);
+    // Next rewrites a documentation URL into next-env.d.ts during build.
+    else if (entry !== 'package-lock.json' && entry !== 'next-env.d.ts' && !entry.endsWith('.tsbuildinfo')) {
+      found.push(path);
+    }
   }
   return found;
 }
@@ -56,7 +68,10 @@ test('tracked product files do not hardcode account hosts, ids, or keys', () => 
     assert.deepEqual(accountIds, [], rel);
     for (const match of text.matchAll(/https?:\/\/([^/\s"'`]+)/g)) {
       const host = match[1]?.split(':')[0] ?? '';
-      assert.ok(host === 'example.com' || host.endsWith('.example.com'), `${rel} has ${host}`);
+      assert.ok(
+        host === 'example.com' || host.endsWith('.example.com') || host === '127.0.0.1',
+        `${rel} has ${host}`,
+      );
     }
   }
 });
