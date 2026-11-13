@@ -1,0 +1,27 @@
+html {
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  max-width: 40rem;
+  margin: 1.5rem auto;
+}
+
+label,
+button,
+section {
+  display: block;
+  margin-top: 1rem;
+}
+
+input,
+textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+button {
+  font: inherit;
+}

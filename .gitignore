@@ -8,3 +8,7 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+.next/
+playwright-report/
+test-results/
+web/AGENTS.md
