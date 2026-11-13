@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { DemoContext } from '../scripts/demo-server.ts';
+import { openDemo as openNodeDemo } from '../scripts/demo-server.ts';
+import { DemoContext } from '../scripts/demo-engine.ts';
 import { ConfigError } from '../src/errors.ts';
 import { gatewayChatCompletionsUrl } from '../src/gateway.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
@@ -151,12 +152,20 @@ test('live mode rejects an empty gateway token before fetch', async () => {
   await assertLiveRejected(liveShell({ AI_GATEWAY_TOKEN: '' }));
 });
 
+test('worker bindings reject an empty gateway token before fetch', () => {
+  assert.throws(() => DemoContext.fromBindings(liveShell({ AI_GATEWAY_TOKEN: '' })), (error: unknown) => {
+    assert.ok(error instanceof ConfigError);
+    assert.equal(error.message.includes(testEnv.AI_GATEWAY_TOKEN), false);
+    return true;
+  });
+});
+
 test('live mode rejects a fallback provider other than workers-ai before fetch', async () => {
   await assertLiveRejected(liveShell({ INTAKE_PROFILE_FALLBACK_PROVIDER: 'openai' }));
 });
 
 test('a missing or present .dev.vars still opens the mock when the shell says mock', async () => {
-  const demo = await DemoContext.open('1', {
+  const demo = await openNodeDemo('1', {
     fromEnvironment: true,
     shell: { READY_DEMO_MODEL: 'mock' },
     fetchImpl: async () => {
