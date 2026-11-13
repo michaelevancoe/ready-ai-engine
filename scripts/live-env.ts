@@ -1,12 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { WorkerBindings } from '../src/bindings.ts';
 import { ConfigError } from '../src/errors.ts';
 import { assertTargets, gatewayChatCompletionsUrl, modelTargets } from '../src/gateway.ts';
 import { testEnv } from '../test/fixtures.ts';
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function parseDevVars(text: string): Record<string, string> {
   const values: Record<string, string> = {};
@@ -24,12 +19,6 @@ export function parseDevVars(text: string): Record<string, string> {
     values[key] = value;
   }
   return values;
-}
-
-export function loadDevVarsFile(): Record<string, string> {
-  const path = join(repoRoot, '.dev.vars');
-  if (!existsSync(path)) return {};
-  return parseDevVars(readFileSync(path, 'utf8'));
 }
 
 export function mergeDemoEnv(

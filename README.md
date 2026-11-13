@@ -1,6 +1,6 @@
 # Ready AI Engine
 
-Backend for Ready. A parent's intake answers become a **draft** child profile through one model call. A parent of that child approves the draft before a volunteer can see it. Nothing in this repository is deployed.
+Backend for Ready. A parent's intake answers become a **draft** child profile through one model call. A parent of that child approves the draft before a volunteer can see it. CI does not deploy this repository. The shareable demo section tells you how to publish the local demo by hand.
 
 The Worker is the only model caller. Every call goes through Cloudflare AI Gateway. Supabase stores organizations, memberships, children, and child profiles, and enforces row-level security.
 
@@ -82,6 +82,58 @@ READY_LOCAL_DEMO=1 READY_DEMO_MODEL=live npm run demo
 The page process stays `READY_LOCAL_DEMO=1 npm run dev`.
 
 The demo still sends only the six fictional answer fields. The request does not include a real Supabase token. The process does not log the gateway token.
+
+## Shareable demo
+
+Publish the page and the in-memory engine as one Worker named `ready-demo`. It is an unlisted `workers.dev` hostname with no sign-in. `web/cloudflare.config.ts` sets `workersDev` to true and `previewUrls` to false. Those fields are `workers_dev` and `preview_urls`. The file sets no route, custom domain, or DNS record. The church stays in memory and can reset at any time.
+
+Live answers use the same Workers AI path as the local demo. Local runs and tests stay on the mock unless you opt in.
+
+The deploy reads `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_ACCOUNT_ID`, and `AI_GATEWAY_ID` from the shell. When one is unset or blank, `web/cloudflare.config.ts` keeps the dummy value, so a credential-free build still works. Do not edit that file, and do not commit the account id.
+
+From `web`, set the account id and deploy. This command publishes the Worker. It is not part of CI.
+
+```bash
+cd web
+export AI_GATEWAY_ACCOUNT_ID='paste-account-id-here'
+AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1 \
+AI_GATEWAY_ID=ready-demo \
+npm run deploy:vinext
+```
+
+The deploy command prints a `workers.dev` URL. Call that URL `DEMO_URL`. Confirm the command output has no preview URL.
+
+The gateway token is a Worker secret. Set it after the Worker exists. Do not pass `--text`. That flag stores the token in shell history. In a terminal, this command asks `Enter value for --text` and masks the input.
+
+```bash
+npx cf workers secrets update AI_GATEWAY_TOKEN --worker ready-demo --type secret_text
+```
+
+When stdin is not a terminal, the same command reads the token from stdin. `read -s` keeps it out of shell history.
+
+```bash
+read -s AI_GATEWAY_TOKEN
+printf '%s' "$AI_GATEWAY_TOKEN" | npx cf workers secrets update AI_GATEWAY_TOKEN --worker ready-demo --type secret_text
+unset AI_GATEWAY_TOKEN
+```
+
+```bash
+curl -sI "$DEMO_URL/"
+curl -sI "$DEMO_URL/robots.txt"
+curl -sI "$DEMO_URL/v1/intake/profile"
+curl -s "$DEMO_URL/robots.txt"
+```
+
+Each response includes `x-robots-tag: noindex`. The robots body is `User-agent: *` and `Disallow: /`. The page shows `Demo: fictional data only. Please don't enter real child information.`
+
+On 2026-11-25, delete the Worker. Deleting the Worker deletes its secret.
+
+```bash
+cd web
+npx cf workers delete ready-demo
+```
+
+Then revoke the gateway token in the Cloudflare dashboard.
 
 ## Access
 

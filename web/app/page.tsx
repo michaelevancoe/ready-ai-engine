@@ -12,6 +12,7 @@ import {
   type AnswerDraft,
   type AnswerField,
 } from '../lib/desk';
+import { FICTIONAL_DATA_LABEL } from '../lib/fictional-label';
 
 export default function Page() {
   const [phase, dispatch] = useReducer(reducePage, initialPhase());
@@ -39,6 +40,7 @@ export default function Page() {
 
   return (
     <main>
+      <p>{FICTIONAL_DATA_LABEL}</p>
       <h1>Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship</h1>
       <form onSubmit={(event) => void onSubmit(event)}>
         {view.fields.map((field) => (
