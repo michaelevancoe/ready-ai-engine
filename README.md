@@ -89,21 +89,33 @@ Publish the page and the in-memory engine as one Worker named `ready-demo`. It i
 
 Live answers use the same Workers AI path as the local demo. Local runs and tests stay on the mock unless you opt in.
 
-Before you deploy, edit `web/cloudflare.config.ts` on the machine you deploy from. Set `AI_GATEWAY_BASE_URL` to `https://gateway.ai.cloudflare.com/v1` with no account id in that value. Set `AI_GATEWAY_ACCOUNT_ID` to the Cloudflare account id. Set `AI_GATEWAY_ID` to `ready-demo`. Leave both provider values as `workers-ai`. Do not commit the account id.
+The deploy reads `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_ACCOUNT_ID`, and `AI_GATEWAY_ID` from the shell. When one is unset or blank, `web/cloudflare.config.ts` keeps the dummy value, so a credential-free build still works. Do not edit that file, and do not commit the account id.
 
-The gateway token is a Worker secret. From `web`, run this command. Pass the value with `--text` only in your shell. Do not commit the token.
-
-```bash
-npx cf workers secrets update AI_GATEWAY_TOKEN --worker ready-demo
-```
-
-Deploy from `web`. This command publishes the Worker. It is not part of CI.
+From `web`, set the account id and deploy. This command publishes the Worker. It is not part of CI.
 
 ```bash
+cd web
+export AI_GATEWAY_ACCOUNT_ID='paste-account-id-here'
+AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1 \
+AI_GATEWAY_ID=ready-demo \
 npm run deploy:vinext
 ```
 
-The command prints a `workers.dev` URL. Call that URL `DEMO_URL`. Confirm the command output has no preview URL.
+The deploy command prints a `workers.dev` URL. Call that URL `DEMO_URL`. Confirm the command output has no preview URL.
+
+The gateway token is a Worker secret. Set it after the Worker exists. Do not pass `--text`. That flag stores the token in shell history. In a terminal, this command asks `Enter value for --text` and masks the input.
+
+```bash
+npx cf workers secrets update AI_GATEWAY_TOKEN --worker ready-demo --type secret_text
+```
+
+When stdin is not a terminal, the same command reads the token from stdin. `read -s` keeps it out of shell history.
+
+```bash
+read -s AI_GATEWAY_TOKEN
+printf '%s' "$AI_GATEWAY_TOKEN" | npx cf workers secrets update AI_GATEWAY_TOKEN --worker ready-demo --type secret_text
+unset AI_GATEWAY_TOKEN
+```
 
 ```bash
 curl -sI "$DEMO_URL/"

@@ -15,6 +15,8 @@ test('the demo worker config is one workers.dev hostname with preview URLs off',
   assert.equal(text.includes('domains'), false);
   assert.equal(text.includes('triggers'), false);
   assert.equal(text.includes('AI_GATEWAY_TOKEN: bindings.secret()'), true);
-  assert.equal(text.includes('dummy-account-not-real'), true);
-  assert.equal(text.includes('dummy-gateway-not-real'), true);
+  assert.equal(text.includes("deployValue('AI_GATEWAY_ACCOUNT_ID', 'dummy-account-not-real')"), true);
+  assert.equal(text.includes("deployValue('AI_GATEWAY_ID', 'dummy-gateway-not-real')"), true);
+  assert.equal(text.includes("deployValue('AI_GATEWAY_BASE_URL', 'https://gateway.example.com/v1')"), true);
+  assert.equal(text.includes('process.env[name]'), true);
 });
