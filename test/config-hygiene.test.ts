@@ -13,6 +13,8 @@ const skipDirectories = new Set([
   'dist',
   'coverage',
   '.next',
+  '.cloudflare',
+  '.vinext',
   'playwright-report',
   'test-results',
 ]);
