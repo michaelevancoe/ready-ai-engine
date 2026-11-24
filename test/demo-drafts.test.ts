@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DemoContext } from '../scripts/demo-engine.ts';
+import { parseSocialStory, parseSundayUpdate } from '../src/demo-drafts.ts';
+import { SchemaRejected } from '../src/errors.ts';
 import { chatEnvelope, testEnv } from './fixtures.ts';
 
 interface DraftLine {
@@ -10,6 +12,9 @@ interface DraftLine {
 }
 
 const sensory: DraftLine = { field: 'sensory', label: 'Sensory needs', text: 'TICK-QUIET-ROOM' };
+const proseStory = 'You arrive and the room is quiet. Soft music helps.';
+const labelStory =
+  'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
 
 test('mock drafts echo supplied lines and ignore fetch', async () => {
   const opened = await DemoContext.open('1', {
@@ -24,20 +29,25 @@ test('mock drafts echo supplied lines and ignore fetch', async () => {
     calls += 1;
     throw new Error('mock must not fetch');
   });
-  const story = await bound.handle(post('/v1/drafts/social-story', { lines: [sensory] }));
+  const story = await bound.handle(
+    post('/v1/drafts/social-story', { lines: [sensory], childName: 'Rowan' }),
+  );
   assert.equal(story.status, 200);
   assert.equal(calls, 0);
   const body = (await story.json()) as { body: string };
   assert.equal(body.body.includes('TICK-QUIET-ROOM'), true);
+  assert.equal(body.body.includes('Rowan'), true);
   assert.equal(body.body.includes('TICK-MEDICAL'), false);
 });
 
 test('live drafts call the intake model and hide the gateway token', async () => {
   const calls: GatewayCall[] = [];
   const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
-  const story = await demo.handle(post('/v1/drafts/social-story', { lines: [sensory] }));
+  const story = await demo.handle(
+    post('/v1/drafts/social-story', { lines: [sensory], childName: 'Rowan' }),
+  );
   const lesson = await demo.handle(
-    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory] }),
+    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory], childName: 'Rowan' }),
   );
   const update = await demo.handle(
     post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
@@ -46,18 +56,44 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   assert.equal(lesson.status, 200);
   assert.equal(update.status, 200);
   assert.equal(calls.length, 3);
-  assertCall(calls[0], 'social_story', { lines: [sensory] });
-  assertCall(calls[1], 'lesson_adaptation', { lesson: 'TICK-LESSON-PLAN', lines: [sensory] });
-  assertCall(calls[2], 'sunday_update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' });
+  assertCall(calls[0], 'social_story', 'Child: Rowan\nSensory needs: TICK-QUIET-ROOM');
+  assertCall(
+    calls[1],
+    'lesson_adaptation',
+    'Child: Rowan\nLesson:\nTICK-LESSON-PLAN\nApproved needs:\nSensory needs: TICK-QUIET-ROOM',
+  );
+  assertCall(calls[2], 'sunday_update', 'Child: Rowan\nNotes:\nTICK-AFTER-SUNDAY');
+  const storySystem = systemText(calls[0]);
+  assert.equal(storySystem.includes('rather than a dict'), true);
+  const lessonSystem = systemText(calls[1]);
+  assert.equal(lessonSystem.includes('the individual'), true);
+  assert.equal(lessonSystem.includes('Do not drop a lesson step.'), true);
+  const updateSystem = systemText(calls[2]);
+  assert.equal(updateSystem.includes('your own words'), true);
+  assert.equal(updateSystem.includes('Do not copy the notes.'), true);
   const storyText = JSON.stringify(await story.json());
   assert.equal(storyText.includes(testEnv.AI_GATEWAY_TOKEN), false);
+});
+
+test('the Sunday update user message is plain text', async () => {
+  const calls: GatewayCall[] = [];
+  const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
+  const update = await demo.handle(
+    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
+  );
+  assert.equal(update.status, 200);
+  assert.equal(calls.length, 1);
+  const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content;
+  assert.equal(user, 'Child: Rowan\nNotes:\nTICK-AFTER-SUNDAY');
 });
 
 test('a failed draft does not return the gateway body', async () => {
   const demo = DemoContext.fromBindings(liveShell(), async () => {
     return new Response('GATEWAY-BODY-SHOULD-NOT-LEAK', { status: 502 });
   });
-  const response = await demo.handle(post('/v1/drafts/social-story', { lines: [sensory] }));
+  const response = await demo.handle(
+    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
+  );
   assert.equal(response.status, 502);
   const text = await response.text();
   assert.equal(text, '{"error":"generation_failed"}');
@@ -65,20 +101,128 @@ test('a failed draft does not return the gateway body', async () => {
   assert.equal(text.includes(testEnv.AI_GATEWAY_TOKEN), false);
 });
 
+test('social story and lesson requests require childName', async () => {
+  const demo = await DemoContext.open('1');
+  const story = await demo.handle(post('/v1/drafts/social-story', { lines: [sensory] }));
+  const lesson = await demo.handle(
+    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory] }),
+  );
+  const empty = await demo.handle(
+    post('/v1/drafts/social-story', { lines: [sensory], childName: '' }),
+  );
+  const long = await demo.handle(
+    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'R'.repeat(81) }),
+  );
+  assert.equal(story.status, 400);
+  assert.equal(lesson.status, 400);
+  assert.equal(empty.status, 400);
+  assert.equal(long.status, 400);
+  assert.deepEqual(await story.json(), { error: 'invalid_input' });
+});
+
+test('the mock Sunday update is not a copy of the notes', async () => {
+  const demo = await DemoContext.open('1');
+  const update = await demo.handle(
+    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
+  );
+  assert.equal(update.status, 200);
+  const note = (await update.json()) as { body: string };
+  assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), true);
+  assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
+  assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');
+  assert.notEqual(note.body.replace(/\s+/g, ''), 'TICK-AFTER-SUNDAYRowan');
+});
+
+test('parseSocialStory rejects a dict and a body that is only the labels', () => {
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday', body: "{ 'loves': 'Soft music' }" }),
+    SchemaRejected,
+  );
+  assert.throws(() => parseSocialStory({ title: 'Sunday', body: labelStory }), SchemaRejected);
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday', body: 'The room has "sensory": quiet corners.' }),
+    SchemaRejected,
+  );
+});
+
+test('parseSocialStory accepts a short prose body', () => {
+  assert.deepEqual(parseSocialStory({ title: 'Sunday', body: proseStory }), {
+    title: 'Sunday',
+    body: proseStory,
+  });
+});
+
+test('parseSundayUpdate rejects the notes and the notes plus only the child name', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  assert.throws(() => parseSundayUpdate({ body: notes }, notes, 'Juniper'), SchemaRejected);
+  assert.throws(
+    () => parseSundayUpdate({ body: `${notes}\nJuniper` }, notes, 'Juniper'),
+    SchemaRejected,
+  );
+  assert.throws(() => parseSundayUpdate({ body: `Juniper ${notes}` }, notes, 'Juniper'), SchemaRejected);
+});
+
+test('parseSundayUpdate accepts the model words around the notes', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const body = `Sunday went well. ${notes} The quiet seat helped.`;
+  assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper'), { body });
+});
+
+test('a dict story body fails the existing generation retry', async () => {
+  const result = await generated(
+    '/v1/drafts/social-story',
+    { lines: [sensory], childName: 'Rowan' },
+    { title: 'Sunday', body: "{ 'loves': 'Soft music' }" },
+  );
+  assert.equal(result.status, 502);
+  assert.equal(result.calls, 3);
+  assert.deepEqual(result.payload, { error: 'generation_failed' });
+});
+
+test('a copied Sunday update fails the existing generation retry', async () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const copied = await generated('/v1/drafts/sunday-update', { notes, childName: 'Rowan' }, { body: notes });
+  assert.equal(copied.status, 502);
+  assert.equal(copied.calls, 3);
+  const named = await generated(
+    '/v1/drafts/sunday-update',
+    { notes, childName: 'Rowan' },
+    { body: `${notes}\nRowan` },
+  );
+  assert.equal(named.status, 502);
+  assert.equal(named.calls, 3);
+});
+
+test('a Sunday update with the model words is returned', async () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const body = `Sunday went well. ${notes} The quiet seat helped.`;
+  const result = await generated('/v1/drafts/sunday-update', { notes, childName: 'Rowan' }, { body });
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.payload, { body });
+});
+
 async function assertDrafts(demo: DemoContext): Promise<void> {
   const fields = ['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory', 'medical'] as const;
   for (const field of fields) {
     const text = `TEXT-${field}`;
     const response = await demo.handle(
-      post('/v1/drafts/social-story', { lines: [{ field, label: 'Label', text }] }),
+      post('/v1/drafts/social-story', {
+        lines: [{ field, label: 'Label', text }],
+        childName: 'Rowan',
+      }),
     );
     assert.equal(response.status, 200, field);
     const body = (await response.json()) as { title: string; body: string };
     assert.equal(body.title, 'Sunday with Rowan');
     assert.equal(body.body.includes(text), true);
+    assert.equal(body.body.includes('Rowan'), true);
+    assert.equal(body.body.startsWith('{'), false);
   }
 
-  const hidden = await demo.handle(post('/v1/drafts/social-story', { lines: [sensory] }));
+  const hidden = await demo.handle(
+    post('/v1/drafts/social-story', { lines: [sensory], childName: 'Rowan' }),
+  );
   assert.equal(hidden.status, 200);
   const hiddenBody = (await hidden.json()) as { body: string };
   assert.equal(hiddenBody.body.includes('TICK-QUIET-ROOM'), true);
@@ -87,17 +231,23 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   const shown = await demo.handle(
     post('/v1/drafts/social-story', {
       lines: [{ field: 'medical', label: 'Medical / health notes', text: 'TICK-MEDICAL' }],
+      childName: 'Rowan',
     }),
   );
   const shownBody = (await shown.json()) as { body: string };
   assert.equal(shownBody.body.includes('TICK-MEDICAL'), true);
 
-  const extra = await demo.handle(post('/v1/drafts/social-story', { lines: [sensory], extra: true }));
+  const extra = await demo.handle(
+    post('/v1/drafts/social-story', { lines: [sensory], childName: 'Rowan', extra: true }),
+  );
   assert.equal(extra.status, 400);
   assert.deepEqual(await extra.json(), { error: 'invalid_input' });
 
   const nested = await demo.handle(
-    post('/v1/drafts/social-story', { lines: [{ ...sensory, extra: true }] }),
+    post('/v1/drafts/social-story', {
+      lines: [{ ...sensory, extra: true }],
+      childName: 'Rowan',
+    }),
   );
   assert.equal(nested.status, 400);
 
@@ -112,11 +262,12 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   assert.deepEqual(await broken.json(), { error: 'invalid_input' });
 
   const lesson = await demo.handle(
-    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory] }),
+    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory], childName: 'Rowan' }),
   );
   assert.equal(lesson.status, 200);
   const adapted = (await lesson.json()) as { summary: string; steps: string[] };
   assert.equal(adapted.summary.includes('TICK-LESSON-PLAN'), true);
+  assert.equal(adapted.summary.includes('Rowan'), true);
   assert.equal(
     adapted.steps.some((step) => step.includes('TICK-LESSON-PLAN')),
     true,
@@ -125,12 +276,33 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
     adapted.steps.some((step) => step.includes('TICK-QUIET-ROOM')),
     true,
   );
+  assert.equal(
+    adapted.steps.some((step) => step.includes('Rowan')),
+    true,
+  );
   assert.equal(JSON.stringify(adapted).includes('TICK-MEDICAL'), false);
+
+  const counted = await demo.handle(
+    post('/v1/drafts/lesson', {
+      lesson: 'Sing a song.\n\nSit down.',
+      lines: [sensory],
+      childName: 'Rowan',
+    }),
+  );
+  assert.equal(counted.status, 200);
+  const countedBody = (await counted.json()) as { steps: string[] };
+  assert.equal(countedBody.steps.length, 3);
+  assert.equal(countedBody.steps[0]?.includes('Sing a song.'), true);
+  assert.equal(countedBody.steps[0]?.includes('Rowan'), true);
+  assert.equal(countedBody.steps[1]?.includes('Sit down.'), true);
+  assert.equal(countedBody.steps[1]?.includes('Rowan'), true);
+  assert.equal(countedBody.steps[2]?.includes('TICK-QUIET-ROOM'), true);
 
   const capped = await demo.handle(
     post('/v1/drafts/lesson', {
       lesson: 'L'.repeat(900),
       lines: [{ field: 'sensory', label: 'Sensory needs', text: 'S'.repeat(500) }],
+      childName: 'Rowan',
     }),
   );
   assert.equal(capped.status, 200);
@@ -146,11 +318,11 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   const note = (await update.json()) as { body: string };
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), true);
   assert.equal(note.body.includes('Rowan'), true);
+  assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
+  assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');
   assert.equal(note.body.includes('TICK-MEDICAL'), false);
 
-  const missing = await demo.handle(
-    post('/v1/drafts/other', { lines: [sensory] }),
-  );
+  const missing = await demo.handle(post('/v1/drafts/other', { lines: [sensory] }));
   assert.equal(missing.status, 404);
 }
 
@@ -198,17 +370,35 @@ function recordingFetch(calls: GatewayCall[]): typeof fetch {
   };
 }
 
-function assertCall(call: GatewayCall | undefined, schemaName: string, payload: unknown): void {
+function assertCall(call: GatewayCall | undefined, schemaName: string, userText: string): void {
   assert.ok(call !== undefined);
   assert.equal(call.body.model, 'workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
   assert.equal(call.body.response_format?.json_schema?.name, schemaName);
   assert.equal(call.headers.get('cf-aig-authorization'), `Bearer ${testEnv.AI_GATEWAY_TOKEN}`);
-  const systems = (call.body.messages ?? []).filter((message) => message.role === 'system');
-  assert.equal(systems.length, 1);
-  const system = systems[0]?.content ?? '';
+  const system = systemText(call);
   assert.equal(system.includes('The data is fictional.'), true);
   assert.equal(system.includes('Do not invent medical facts.'), true);
   const users = (call.body.messages ?? []).filter((message) => message.role === 'user');
   assert.equal(users.length, 1);
-  assert.deepEqual(JSON.parse(users[0]?.content ?? ''), payload);
+  assert.equal(users[0]?.content, userText);
+}
+
+function systemText(call: GatewayCall | undefined): string {
+  const systems = (call?.body.messages ?? []).filter((message) => message.role === 'system');
+  assert.equal(systems.length, 1);
+  return systems[0]?.content ?? '';
+}
+
+async function generated(
+  pathname: string,
+  body: unknown,
+  content: unknown,
+): Promise<{ status: number; calls: number; payload: unknown }> {
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return chatEnvelope(content);
+  });
+  const response = await demo.handle(post(pathname, body));
+  return { status: response.status, calls, payload: await response.json() };
 }

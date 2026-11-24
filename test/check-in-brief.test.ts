@@ -17,8 +17,12 @@ function shown(status: 'draft' | 'approved'): ShownProfile {
   };
 }
 
-function approveIntake(visit: Visit, sensoryNotes: string): Visit {
-  const answers = { ...visit.intake.answers, sensoryNotes };
+function approveIntake(
+  visit: Visit,
+  sensoryNotes: string,
+  patch: Partial<Visit['intake']['answers']> = {},
+): Visit {
+  const answers = { ...visit.intake.answers, ...patch, sensoryNotes };
   const profile = shown('draft');
   let next = reduceVisit(visit, { type: 'intake', event: { type: 'submit', answers } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile } });
@@ -63,10 +67,10 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
 
   const fresh = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
   assert.equal(fresh.cardTouched, false);
-  assert.equal(fresh.card.loves, 'Soft music and helping with snack cups.');
+  assert.equal(fresh.card.loves, '');
   assert.equal(fresh.card.overwhelms, 'Surprise loud songs.');
   assert.equal(fresh.card.whatHelps, 'A warning before music.');
-  assert.equal(fresh.card.communication, 'A short warning before a change.');
+  assert.equal(fresh.card.communication, 'A quiet seat near the door.');
   assert.equal(fresh.card.sensory, 'TICK-QUIET-ROOM');
   assert.equal(fresh.card.medical, '');
   assert.equal(checkInBrief(fresh).status, 'withheld');
@@ -93,7 +97,7 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   assert.equal(sensory?.label, 'Sensory needs');
   assert.equal(sensory?.text, 'TICK-QUIET-ROOM');
   assert.equal(
-    hiddenMedical.lines.some((line) => line.text === 'Soft music and helping with snack cups.'),
+    hiddenMedical.lines.some((line) => line.text === 'A warning before music.'),
     true,
   );
 
@@ -158,4 +162,27 @@ test('lesson and Sunday update stop when the draft is ready', () => {
   assert.equal(reduceVisit(idle, { type: 'storyFailed', message: 'nope' }), idle);
   assert.equal(reduceVisit(idle, { type: 'lessonFailed', message: 'nope' }), idle);
   assert.equal(reduceVisit(idle, { type: 'updateFailed', message: 'nope' }), idle);
+});
+
+test('seeded intake lines gain a space between glued sentences', () => {
+  const visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM', {
+    whatToAvoid: 'Sudden loud noises.Surprise loud songs.',
+    whatHelps: 'corner.A warning',
+  });
+  assert.equal(visit.card.overwhelms, 'Sudden loud noises. Surprise loud songs.');
+  assert.equal(visit.card.whatHelps, 'corner. A warning');
+});
+
+test('saveCard replaces seeded overwhelms and the brief keeps the new line', () => {
+  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  visit = reduceVisit(visit, {
+    type: 'saveCard',
+    card: { ...visit.card, overwhelms: 'Sudden loud noises.' },
+  });
+  assert.equal(visit.card.overwhelms, 'Sudden loud noises.');
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  const brief = checkInBrief(visit);
+  assert.equal(brief.status, 'approved');
+  if (brief.status !== 'approved') return;
+  assert.equal(brief.lines.find((line) => line.field === 'overwhelms')?.text, 'Sudden loud noises.');
 });
