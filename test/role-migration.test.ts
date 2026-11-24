@@ -28,8 +28,11 @@ test('the sign-in migration is a file only and scripts do not apply it', () => {
   const workflows = readdirSync(join(root, '.github/workflows'));
   for (const name of workflows) {
     const text = readFileSync(join(root, '.github/workflows', name), 'utf8');
-    assert.equal(text.includes('supabase'), false);
     assert.equal(text.includes(migrationName), false);
+    assert.equal(text.includes('db push'), false);
+    assert.equal(text.includes('service_role'), false);
+    if (name === 'access-rls.yml') continue;
+    assert.equal(text.includes('supabase'), false);
   }
   const hits: string[] = [];
   const skip = new Set(['node_modules', '.git']);

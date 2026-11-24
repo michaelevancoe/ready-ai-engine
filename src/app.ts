@@ -1,7 +1,7 @@
-import { handleAccess } from './access-http.ts';
-import { signInEnabled, type AccessWorld } from './access.ts';
+import { handleAccessSource } from './access-http.ts';
+import { signInEnabled } from './access.ts';
 import type { WorkerBindings } from './bindings.ts';
-import { ConfigError, GenerateError, InputError, StoreError } from './errors.ts';
+import { ConfigError, GenerateError, InputError, StoreError, UpstreamError } from './errors.ts';
 import { generate } from './generate.ts';
 import { json, readJson } from './http.ts';
 import { isUuid } from './ids.ts';
@@ -11,6 +11,7 @@ import type { SafeLog } from './log.ts';
 import { authorize } from './policy.ts';
 import { childProfileSchema, childProfileSchemaName, parseChildProfile } from './profile.ts';
 import type { ProfileRecord, ProfileStore } from './store.ts';
+import type { AccessSource } from './supabase-access.ts';
 import type { AuthVerifier } from './supabase-auth.ts';
 
 export interface AppDeps {
@@ -19,7 +20,7 @@ export interface AppDeps {
   storeFactory: (accessToken: string) => ProfileStore;
   log: (event: SafeLog) => void;
   now?: () => number;
-  accessWorld?: AccessWorld;
+  accessSource?: AccessSource;
   auth?: AuthVerifier;
 }
 
@@ -153,8 +154,8 @@ async function route(request: Request, deps: AppDeps): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname.startsWith('/v1/access/')) {
     if (!signInEnabled(deps.env.READY_SIGN_IN)) return json({ error: 'not_found' }, 404);
-    if (deps.accessWorld === undefined) throw new ConfigError();
-    return handleAccess(request, deps.accessWorld, deps.auth);
+    if (deps.accessSource === undefined || deps.auth === undefined) throw new ConfigError();
+    return handleAccessSource(request, deps.accessSource, deps.auth);
   }
   if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
   if (url.pathname === '/v1/intake/profile') return handleIntake(request, deps);
@@ -170,6 +171,9 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
   } catch (error) {
     if (error instanceof InputError) return json({ error: 'invalid_input' }, 400);
     if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+    if (error instanceof UpstreamError) {
+      return json({ error: error.status === 504 ? 'timeout' : 'unavailable' }, error.status);
+    }
     if (error instanceof GenerateError) return json({ error: 'generation_failed' }, 502);
     if (error instanceof StoreError) {
       if (error.status === 401 || error.status === 403) return json({ error: 'forbidden' }, 403);
