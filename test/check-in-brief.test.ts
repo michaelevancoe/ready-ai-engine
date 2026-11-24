@@ -36,8 +36,8 @@ function approveIntake(visit: Visit, lines: TreeLines = {}): Visit {
     next = say(next, lines.medical);
   }
   const profile = shown('draft');
-  next = reduceVisit(next, { type: 'intake', event: { type: 'submit' } });
-  next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile } });
+  next = reduceVisit(next, { type: 'intake', event: { type: 'submit', nonce: 1 } });
+  next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile, nonce: 1 } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'approve' } });
   return reduceVisit(next, {
     type: 'intake',
@@ -320,8 +320,8 @@ test('a new answer drops a stale draft', () => {
   visit = say(visit, 'TICK-QUIET-ROOM');
   visit = reduceVisit(visit, { type: 'conversation', event: { type: 'declineMedical' } });
   const profile = shown('draft');
-  visit = reduceVisit(visit, { type: 'intake', event: { type: 'submit' } });
-  visit = reduceVisit(visit, { type: 'intake', event: { type: 'draft', profile } });
+  visit = reduceVisit(visit, { type: 'intake', event: { type: 'submit', nonce: 1 } });
+  visit = reduceVisit(visit, { type: 'intake', event: { type: 'draft', profile, nonce: 1 } });
   assert.equal(visit.intake.status, 'draft');
   visit = reduceVisit(visit, {
     type: 'conversation',
@@ -332,6 +332,29 @@ test('a new answer drops a stale draft', () => {
   assert.equal(visit.intake.status, 'idle');
   assert.equal(reduceVisit(visit, { type: 'intake', event: { type: 'approve' } }), visit);
   assert.equal(visit.conversation.answers.loves?.kind, 'answered');
+});
+
+test('going back while a draft is in flight drops that attempt', () => {
+  let visit = say(initialVisit(), 'He likes a quiet hello.');
+  visit = say(visit, 'Quiet blocks.');
+  visit = say(visit, 'Surprise loud songs.');
+  visit = say(visit, 'A warning before music.');
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'skip' } });
+  visit = say(visit, 'Picture cards.');
+  visit = say(visit, 'Bright lights.');
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'declineMedical' } });
+  const profile = shown('draft');
+  visit = reduceVisit(visit, { type: 'intake', event: { type: 'submit', nonce: 1 } });
+  assert.equal(visit.intake.status, 'submitting');
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'reopen' } });
+  assert.equal(visit.intake.status, 'idle');
+  visit = say(visit, 'TICK-SOFTER-SEAT');
+  assert.equal(visit.conversation.talk.mode, 'reviewWait');
+  const late = reduceVisit(visit, { type: 'intake', event: { type: 'draft', profile, nonce: 1 } });
+  assert.equal(late.intake.status, 'idle');
+  assert.equal(late.conversation.answers.sensory?.kind, 'answered');
+  if (late.conversation.answers.sensory?.kind !== 'answered') return;
+  assert.equal(late.conversation.answers.sensory.text, 'TICK-SOFTER-SEAT');
 });
 
 test('seeded intake lines gain a space between glued sentences', () => {

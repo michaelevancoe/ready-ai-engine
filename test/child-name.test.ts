@@ -30,8 +30,8 @@ function approveIntake(visit: Visit, medical?: string): Visit {
     next = say(next, medical);
   }
   const profile = shown('draft');
-  next = reduceVisit(next, { type: 'intake', event: { type: 'submit' } });
-  next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile } });
+  next = reduceVisit(next, { type: 'intake', event: { type: 'submit', nonce: 1 } });
+  next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile, nonce: 1 } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'approve' } });
   return reduceVisit(next, {
     type: 'intake',

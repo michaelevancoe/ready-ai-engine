@@ -59,6 +59,31 @@ test('a longer replacement drops the earlier follow-up', () => {
   assert.equal(project(intakeTree, skipped).post.whatHelps, '');
 });
 
+test('a blank answer stays on the question', () => {
+  const ready = atHelps();
+  const blank = say(ready, '   ');
+  assert.equal(blank, ready);
+  const followed = say(say(ready, 'Headphones.'), 'A quiet corner');
+  const fixing = reduceConversation(intakeTree, followed, {
+    type: 'fix',
+    sectionId: 'helps',
+    reason: 'More detail.',
+  });
+  const wiped = say(fixing, ' ');
+  assert.equal(wiped, fixing);
+  assert.equal(project(intakeTree, wiped).post.whatHelps, 'Headphones. A quiet corner');
+});
+
+test('going back does not ask medical again after it was decided', () => {
+  const asking = reduceConversation(intakeTree, atOffer(), { type: 'acceptMedical' });
+  const shared = say(asking, 'Carries an inhaler.');
+  const back = reduceConversation(intakeTree, shared, { type: 'reopen' });
+  const resent = say(back, 'Softer seat.');
+  assert.equal(resent.talk.mode, 'reviewWait');
+  assert.equal(project(intakeTree, resent).card.medical, 'Carries an inhaler.');
+  assert.equal(project(intakeTree, resent).card.sensory, 'Softer seat.');
+});
+
 test('skip does not open the follow-up', () => {
   const skipped = reduceConversation(intakeTree, atHelps(), { type: 'skip' });
   assert.equal(readyText(skipped), 'How does Rowan communicate when words are hard?');

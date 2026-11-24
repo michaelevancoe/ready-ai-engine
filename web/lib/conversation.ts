@@ -216,6 +216,7 @@ function reopen(tree: IntakeTree, conversation: Conversation): Conversation {
 }
 
 function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer): Conversation {
+  if (answer.kind === 'answered' && answer.text.trim() === '') return conversation;
   const located = locate(tree, conversation);
   if (located === null || (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing')) return conversation;
   const { node, section } = located;
@@ -240,7 +241,7 @@ function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer
   }
   if (section.kind === 'medical') return { talk: { mode: 'reviewWait' }, answers, medical };
   if (followId !== null) return { talk: { mode: 'ask', nodeId: followId }, answers, medical };
-  return { talk: afterSection(tree, section.id), answers, medical };
+  return { talk: afterSection(tree, section.id, conversation.medical), answers, medical };
 }
 
 function introView(tree: IntakeTree): AskView {
@@ -362,12 +363,13 @@ function locate(tree: IntakeTree, conversation: Conversation): { node: IntakeNod
   return { node, section };
 }
 
-function afterSection(tree: IntakeTree, sectionId: string): Talk {
+function afterSection(tree: IntakeTree, sectionId: string, medical: Conversation['medical']): Talk {
   const counted = countedSections(tree);
   const index = counted.findIndex((section) => section.id === sectionId);
   const next = counted[index + 1];
-  if (next === undefined) return { mode: 'medicalOffer' };
-  return { mode: 'ask', nodeId: next.nodeId };
+  if (next !== undefined) return { mode: 'ask', nodeId: next.nodeId };
+  if (medical !== 'unasked') return { mode: 'reviewWait' };
+  return { mode: 'medicalOffer' };
 }
 
 function dropClosedFollow(

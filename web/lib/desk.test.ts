@@ -24,8 +24,8 @@ test('approve from idle stays idle', () => {
 
 test('a second approved event stays approved', () => {
   const profile = shown('draft');
-  const submitting = reduceGate(initialGate(), { type: 'submit' });
-  const draft = reduceGate(submitting, { type: 'draft', profile });
+  const submitting = reduceGate(initialGate(), { type: 'submit', nonce: 1 });
+  const draft = reduceGate(submitting, { type: 'draft', profile, nonce: 1 });
   const approving = reduceGate(draft, { type: 'approve' });
   const approvedProfile = { ...profile, status: 'approved' as const };
   const approved = reduceGate(approving, { type: 'approved', profile: approvedProfile });
@@ -40,13 +40,13 @@ test('a second approved event stays approved', () => {
   if (again.status !== 'approved') return;
   assert.equal(again.profile.status, 'approved');
   assert.deepEqual(again.profile.sections, profile.sections);
-  assert.equal(reduceGate(draft, { type: 'submit' }), draft);
+  assert.equal(reduceGate(draft, { type: 'submit', nonce: 1 }), draft);
   assert.equal(reduceGate(approved, { type: 'approve' }), approved);
 });
 
 test('a failed submit keeps no profile and dismiss returns to idle', () => {
-  const submitting = reduceGate(initialGate(), { type: 'submit' });
-  const failed = reduceGate(submitting, { type: 'fail', message: 'Check the answers and try again.' });
+  const submitting = reduceGate(initialGate(), { type: 'submit', nonce: 1 });
+  const failed = reduceGate(submitting, { type: 'fail', message: 'Check the answers and try again.', nonce: 1 });
   assert.equal(failed.status, 'error');
   if (failed.status !== 'error') return;
   assert.equal(failed.retry, 'submit');
@@ -54,13 +54,30 @@ test('a failed submit keeps no profile and dismiss returns to idle', () => {
   assert.equal(failed.message, 'Check the answers and try again.');
   const idle = reduceGate(failed, { type: 'dismiss' });
   assert.equal(idle.status, 'idle');
-  const retry = reduceGate(failed, { type: 'submit' });
+  const retry = reduceGate(failed, { type: 'submit', nonce: 1 });
   assert.equal(retry.status, 'submitting');
+});
+
+test('a late draft from an older submit does not replace the one in flight', () => {
+  const older = shown('draft');
+  const newer = {
+    ...older,
+    sections: older.sections.map((section) =>
+      section.heading === 'Sensory considerations' ? { ...section, lines: ['TICK-SOFTER-SEAT'] } : section,
+    ),
+  };
+  const inFlight = reduceGate(initialGate(), { type: 'submit', nonce: 2 });
+  const ignored = reduceGate(inFlight, { type: 'draft', profile: older, nonce: 1 });
+  assert.equal(ignored, inFlight);
+  const applied = reduceGate(inFlight, { type: 'draft', profile: newer, nonce: 2 });
+  assert.equal(applied.status, 'draft');
+  if (applied.status !== 'draft') return;
+  assert.equal(applied.profile.sections[1]?.lines[0], 'TICK-SOFTER-SEAT');
 });
 
 test('a failed approve keeps the draft profile', () => {
   const profile = shown('draft');
-  const draft = reduceGate(reduceGate(initialGate(), { type: 'submit' }), { type: 'draft', profile });
+  const draft = reduceGate(reduceGate(initialGate(), { type: 'submit', nonce: 1 }), { type: 'draft', profile, nonce: 1 });
   const approving = reduceGate(draft, { type: 'approve' });
   const failed = reduceGate(approving, { type: 'fail', message: 'The request failed.' });
   assert.equal(failed.status, 'error');

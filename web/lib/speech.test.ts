@@ -26,6 +26,19 @@ test('a fake recognition delivers the transcript and the module writes no audio'
   session.stop();
   assert.equal(fake.stopped, true);
   assert.equal(fake.started, true);
+  let stopped = 0;
+  const failing = fakeRecognition();
+  listen(
+    () => {
+      throw new Error('no transcript');
+    },
+    failing.recognition,
+    () => {
+      stopped += 1;
+    },
+  );
+  failing.recognition.onerror?.();
+  assert.equal(stopped, 1);
   const source = readFileSync(new URL('./speech.ts', import.meta.url), 'utf8');
   assert.equal(source.includes('MediaRecorder'), false);
   assert.equal(source.includes('mediaDevices'), false);

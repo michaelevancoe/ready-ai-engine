@@ -341,11 +341,11 @@ function resetsGate(event: ConversationEvent): boolean {
     case 'skip':
     case 'declineMedical':
     case 'acceptMedical':
+    case 'reopen':
       return true;
     case 'start':
     case 'fix':
     case 'finishFix':
-    case 'reopen':
       return false;
     default: {
       const leftover: never = event;
@@ -359,9 +359,9 @@ function staleGate(gate: IntakeGate): boolean {
     case 'draft':
     case 'approving':
     case 'error':
+    case 'submitting':
       return true;
     case 'idle':
-    case 'submitting':
     case 'approved':
       return false;
     default: {

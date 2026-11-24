@@ -46,6 +46,7 @@ export default function Page() {
   const [fixOpen, setFixOpen] = useState(false);
   const posted = useRef<Conversation['answers'] | null>(null);
   const openOnDraft = useRef(false);
+  const nonce = useRef(0);
   const reviewing = showProfile && profile !== null && (gate.status === 'draft' || gate.status === 'approving' || (gate.status === 'error' && gate.retry === 'approve'));
   const drafting = conversation.talk.mode === 'reviewWait' && !reviewing && gate.status !== 'approved';
   const heading = childHeading(childPreferredName(visit));
@@ -73,9 +74,23 @@ export default function Page() {
   }, [gate.status]);
 
   async function sendIntake(current: Conversation): Promise<void> {
+    const id = nonce.current + 1;
+    nonce.current = id;
     const post = project(intakeTree, current).post;
-    dispatch({ type: 'intake', event: { type: 'submit' } });
-    dispatch({ type: 'intake', event: await submitIntake(post) });
+    dispatch({ type: 'intake', event: { type: 'submit', nonce: id } });
+    const result = await submitIntake(post);
+    switch (result.type) {
+      case 'draft':
+        dispatch({ type: 'intake', event: { type: 'draft', profile: result.profile, nonce: id } });
+        return;
+      case 'fail':
+        dispatch({ type: 'intake', event: { type: 'fail', message: result.message, nonce: id } });
+        return;
+      default: {
+        const leftover: never = result;
+        return leftover;
+      }
+    }
   }
 
   async function onApprove(): Promise<void> {
@@ -241,8 +256,17 @@ function QuestionScreen({
 
   function onMic(): void {
     session.current?.stop();
-    session.current = listen((text) => setDraft(text));
-    setListening(true);
+    try {
+      session.current = listen(
+        (text) => setDraft(text),
+        undefined,
+        () => setListening(false),
+      );
+      setListening(true);
+    } catch {
+      session.current = null;
+      setListening(false);
+    }
   }
 
   const leave = ask.leave;
@@ -312,7 +336,21 @@ function QuestionScreen({
             </div>
           ) : null}
           {ask.closeChip === null ? null : (
-            <button type="button" className="inline" onClick={() => commit(draft)}>
+            <button
+              type="button"
+              className="inline"
+              onClick={() => {
+                if (draft.trim() === '') {
+                  session.current?.stop();
+                  session.current = null;
+                  setListening(false);
+                  dispatch({ type: 'conversation', event: { type: 'skip' } });
+                  setDraft('');
+                  return;
+                }
+                commit(draft);
+              }}
+            >
               {ask.closeChip}
             </button>
           )}
@@ -339,7 +377,14 @@ function QuestionScreen({
               Tap to finish
             </button>
           ) : (
-            <button type="button" className="primary" onClick={() => commit(draft)}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                if (draft.trim() === '') return;
+                commit(draft);
+              }}
+            >
               Send
             </button>
           )}

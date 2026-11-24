@@ -24,7 +24,7 @@ export interface ShownProfile {
 
 export type IntakeGate =
   | { readonly status: 'idle' }
-  | { readonly status: 'submitting' }
+  | { readonly status: 'submitting'; readonly nonce: number }
   | { readonly status: 'draft'; readonly profile: ShownProfile }
   | { readonly status: 'approving'; readonly profile: ShownProfile }
   | { readonly status: 'approved'; readonly profile: ShownProfile }
@@ -42,11 +42,11 @@ export type IntakeGate =
     };
 
 export type GateEvent =
-  | { readonly type: 'submit' }
-  | { readonly type: 'draft'; readonly profile: ShownProfile }
+  | { readonly type: 'submit'; readonly nonce: number }
+  | { readonly type: 'draft'; readonly profile: ShownProfile; readonly nonce: number }
   | { readonly type: 'approve' }
   | { readonly type: 'approved'; readonly profile: ShownProfile }
-  | { readonly type: 'fail'; readonly message: string }
+  | { readonly type: 'fail'; readonly message: string; readonly nonce?: number }
   | { readonly type: 'dismiss' };
 
 const LOCAL_DEMO_DOWN = 'The local demo is not running.';
@@ -90,11 +90,13 @@ export function reduceGate(gate: IntakeGate, event: GateEvent): IntakeGate {
   switch (event.type) {
     case 'submit':
       if (gate.status === 'idle' || (gate.status === 'error' && gate.retry === 'submit')) {
-        return { status: 'submitting' };
+        return { status: 'submitting', nonce: event.nonce };
       }
       return gate;
     case 'draft':
-      if (gate.status === 'submitting') return { status: 'draft', profile: event.profile };
+      if (gate.status === 'submitting' && gate.nonce === event.nonce) {
+        return { status: 'draft', profile: event.profile };
+      }
       return gate;
     case 'approve':
       if (gate.status === 'draft') return { status: 'approving', profile: gate.profile };
@@ -105,7 +107,7 @@ export function reduceGate(gate: IntakeGate, event: GateEvent): IntakeGate {
       }
       return gate;
     case 'fail':
-      if (gate.status === 'submitting') {
+      if (gate.status === 'submitting' && gate.nonce === event.nonce) {
         return { status: 'error', message: event.message, retry: 'submit', profile: null };
       }
       if (gate.status === 'approving') {
@@ -123,9 +125,11 @@ export function reduceGate(gate: IntakeGate, event: GateEvent): IntakeGate {
   }
 }
 
-export async function submitIntake(
-  answers: IntakeAnswers,
-): Promise<Extract<GateEvent, { type: 'draft' | 'fail' }>> {
+export type IntakeResult =
+  | { readonly type: 'draft'; readonly profile: ShownProfile }
+  | { readonly type: 'fail'; readonly message: string };
+
+export async function submitIntake(answers: IntakeAnswers): Promise<IntakeResult> {
   try {
     const response = await fetch('/v1/intake/profile', {
       method: 'POST',

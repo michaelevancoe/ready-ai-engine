@@ -33,7 +33,11 @@ export function speechSupport(): 'ready' | 'missing' {
   return recognitionCtor() === null ? 'missing' : 'ready';
 }
 
-export function listen(onText: (text: string) => void, recognition?: Recognition): { stop(): void } {
+export function listen(
+  onText: (text: string) => void,
+  recognition?: Recognition,
+  onStop?: () => void,
+): { stop(): void } {
   const session = recognition ?? startRecognition();
   if (session === null) return { stop() {} };
   session.continuous = true;
@@ -42,11 +46,13 @@ export function listen(onText: (text: string) => void, recognition?: Recognition
   session.onresult = (event: RecognitionEvent) => {
     onText(transcriptOf(event));
   };
-  session.onerror = null;
-  session.onend = null;
+  session.onerror = () => onStop?.();
+  session.onend = () => onStop?.();
   session.start();
   return {
     stop() {
+      session.onerror = null;
+      session.onend = null;
       session.stop();
     },
   };
