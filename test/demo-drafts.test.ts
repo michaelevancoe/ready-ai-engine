@@ -155,7 +155,7 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
 }
 
 function post(pathname: string, body: unknown): Request {
-  return new Request(`http://example.com${pathname}`, {
+  return new Request(new URL(pathname, 'http://example.com'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
