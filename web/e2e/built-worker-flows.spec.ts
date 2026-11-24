@@ -4,6 +4,15 @@ import { expect, test, type Page } from '@playwright/test';
 const artifacts = '/opt/cursor/artifacts';
 const fictional = "Demo: fictional data only. Please don't enter real child information.";
 
+async function tailGap(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const last = document.querySelector('main')?.lastElementChild ?? null;
+    if (last === null) return window.innerHeight;
+    const bottom = last.getBoundingClientRect().bottom + window.scrollY;
+    return document.documentElement.scrollHeight - bottom;
+  });
+}
+
 async function save(page: Page, name: string): Promise<void> {
   if (!existsSync(artifacts)) return;
   await page.screenshot({ path: `${artifacts}/${name}`, fullPage: true });
@@ -35,6 +44,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
       return gap >= -4 && gap < 48 && approve.y + approve.height <= 800;
     })
     .toBe(true);
+  expect(await tailGap(page)).toBeLessThan(400);
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Approved', exact: true })).toBeVisible();
   await expect
@@ -50,6 +60,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
 
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('link', { name: 'Volunteer' })).toHaveAttribute('aria-current', 'page');
+  expect(await tailGap(page)).toBeLessThan(400);
   await expect(page.getByText(fictional)).toHaveCount(1);
   const volunteer = page.getByRole('main');
   await expect(volunteer).not.toContainText('TICK-QUIET-ROOM');

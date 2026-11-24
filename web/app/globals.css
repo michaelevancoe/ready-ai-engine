@@ -42,7 +42,7 @@ body {
 .frame {
   width: min(24rem, calc(100% - 2rem));
   margin: 0 auto;
-  padding: 1.25rem 0 100vh;
+  padding: 1.25rem 0 3rem;
 }
 
 h1,
