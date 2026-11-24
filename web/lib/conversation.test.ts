@@ -1,0 +1,176 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import {
+  initialConversation,
+  presentAsk,
+  project,
+  reduceConversation,
+  type Conversation,
+} from './conversation.ts';
+import { intakeTree } from './intake-tree.ts';
+import { listen, type Recognition, type RecognitionEvent } from './speech.ts';
+
+const LONG_HELPS = 'A quiet corner and a heads-up before the next song.';
+
+test('branching advances to the next prompt', () => {
+  let conversation = reduceConversation(intakeTree, initialConversation(), { type: 'start' });
+  assert.equal(readyText(conversation), 'To start: how would you describe Rowan in a sentence or two?');
+  const view = presentAsk(intakeTree, conversation);
+  assert.equal(view.kind, 'question');
+  if (view.kind !== 'question') return;
+  assert.equal(view.progress, 'Section 1 of 6 · About Rowan');
+  assert.equal(view.lines[0]?.text, "Hi Avery, I'm Ready. I'll ask a few short questions about Rowan, one at a time.");
+  conversation = say(conversation, 'He likes a quiet hello.');
+  assert.equal(readyText(conversation), 'What does Rowan love, at church or at home?');
+  conversation = say(conversation, 'Trains.');
+  assert.equal(readyText(conversation), 'What tends to overwhelm Rowan at church or in new places?');
+});
+
+test('a short What helps answer opens the follow-up and a long answer does not', () => {
+  const short = say(atHelps(), 'Headphones.');
+  assert.equal(
+    readyText(short),
+    'Thanks, Headphones. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
+  );
+  const followed = say(short, 'A quiet corner');
+  assert.equal(readyText(followed), 'How does Rowan communicate when words are hard?');
+  assert.equal(LONG_HELPS.length > 40, true);
+  const long = say(atHelps(), LONG_HELPS);
+  assert.equal(readyText(long), 'How does Rowan communicate when words are hard?');
+  assert.equal(long.answers['helps-more'], undefined);
+});
+
+test('skip does not open the follow-up', () => {
+  const skipped = reduceConversation(intakeTree, atHelps(), { type: 'skip' });
+  assert.equal(readyText(skipped), 'How does Rowan communicate when words are hard?');
+  assert.deepEqual(skipped.answers.helps, { kind: 'skipped' });
+  assert.equal(skipped.answers['helps-more'], undefined);
+});
+
+test('decline leaves medical empty and accept stores it off the post', () => {
+  const declined = reduceConversation(intakeTree, atOffer(), { type: 'declineMedical' });
+  assert.equal(declined.talk.mode, 'reviewWait');
+  assert.equal(declined.medical, 'declined');
+  const hidden = project(intakeTree, declined);
+  assert.equal(hidden.card.medical, '');
+  assert.equal(hidden.rows.find((row) => row.sectionId === 'medical')?.state, 'skipped');
+
+  const asking = reduceConversation(intakeTree, atOffer(), { type: 'acceptMedical' });
+  assert.equal(asking.medical, 'open');
+  assert.equal(readyText(asking), "What medical or health note should stay with Rowan's profile?");
+  const answered = say(asking, 'Carries an inhaler.');
+  assert.equal(answered.talk.mode, 'reviewWait');
+  const shown = project(intakeTree, answered);
+  assert.equal(shown.card.medical, 'Carries an inhaler.');
+  assert.equal(shown.rows.find((row) => row.sectionId === 'medical')?.state, 'drafted');
+  assert.deepEqual(Object.keys(shown.post).sort(), [
+    'ageYears',
+    'preferredName',
+    'sensoryNotes',
+    'supportNeeds',
+    'whatHelps',
+    'whatToAvoid',
+  ]);
+});
+
+test('project builds the six-key post from the answers', () => {
+  const declined = reduceConversation(intakeTree, atOffer(), { type: 'declineMedical' });
+  const projected = project(intakeTree, declined);
+  assert.equal(projected.post.preferredName, 'Rowan');
+  assert.equal(projected.post.ageYears, 7);
+  assert.equal(projected.post.sensoryNotes, 'Bright lights. Sudden sound.');
+  assert.equal(projected.post.supportNeeds, 'He likes a quiet hello. He uses picture cards.');
+  assert.equal(projected.post.whatToAvoid, 'Crowded doorways.');
+  assert.equal(projected.card.communication, 'He uses picture cards.');
+  assert.equal(projected.card.sensory, 'Bright lights. Sudden sound.');
+  assert.equal(projected.card.loves, 'Trains.');
+  assert.notEqual(projected.post.supportNeeds, projected.card.communication);
+});
+
+test('fix returns to that section and a blank reason does not', () => {
+  const waiting = reduceConversation(intakeTree, atOffer(), { type: 'declineMedical' });
+  const blank = reduceConversation(intakeTree, waiting, { type: 'fix', sectionId: 'helps', reason: '   ' });
+  assert.equal(blank, waiting);
+  const fixing = reduceConversation(intakeTree, waiting, { type: 'fix', sectionId: 'helps', reason: ' Add a snack. ' });
+  assert.equal(fixing.talk.mode, 'fixing');
+  if (fixing.talk.mode !== 'fixing') return;
+  assert.equal(fixing.talk.done, false);
+  assert.equal(fixing.talk.reason, 'Add a snack.');
+  assert.equal(readyText(fixing), 'When Rowan starts to feel overwhelmed, what helps most?');
+  assert.equal(fixing.answers.loves, waiting.answers.loves);
+  assert.equal(fixing.answers.sensory, waiting.answers.sensory);
+  const replaced = say(fixing, 'Headphones.');
+  assert.equal(
+    readyText(replaced),
+    'Thanks, Headphones. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
+  );
+  assert.equal(replaced.answers.sensory, waiting.answers.sensory);
+  const done = say(replaced, "That's everything");
+  assert.equal(done.talk.mode, 'fixing');
+  if (done.talk.mode !== 'fixing') return;
+  assert.equal(done.talk.done, true);
+  const back = reduceConversation(intakeTree, done, { type: 'finishFix' });
+  assert.equal(back.talk.mode, 'reviewWait');
+  assert.equal(back.answers.sensory, waiting.answers.sensory);
+  assert.equal(project(intakeTree, back).post.whatHelps, "Headphones. That's everything");
+});
+
+test('a transcript from speech and a typed string advance the same node', () => {
+  let heard = '';
+  const fake = fakeRecognition();
+  listen((text) => {
+    heard = text;
+  }, fake);
+  fake.emit('Trains at home.');
+  const typed = say(reduceConversation(intakeTree, initialConversation(), { type: 'start' }), 'Trains at home.');
+  const spoken = say(reduceConversation(intakeTree, initialConversation(), { type: 'start' }), heard);
+  assert.equal(heard, 'Trains at home.');
+  assert.deepEqual(spoken.talk, typed.talk);
+  assert.deepEqual(spoken.answers, typed.answers);
+  assert.equal(readyText(spoken), 'What does Rowan love, at church or at home?');
+});
+
+function say(conversation: Conversation, text: string): Conversation {
+  return reduceConversation(intakeTree, conversation, { type: 'answer', text });
+}
+
+function readyText(conversation: Conversation): string {
+  const view = presentAsk(intakeTree, conversation);
+  if (view.kind === 'review') return '';
+  const ready = view.lines.filter((line) => line.from === 'ready');
+  return ready[ready.length - 1]?.text ?? '';
+}
+
+function atHelps(): Conversation {
+  let conversation = reduceConversation(intakeTree, initialConversation(), { type: 'start' });
+  conversation = say(conversation, 'He likes a quiet hello.');
+  conversation = say(conversation, 'Trains.');
+  return say(conversation, 'Crowded doorways.');
+}
+
+function atOffer(): Conversation {
+  let conversation = say(atHelps(), LONG_HELPS);
+  conversation = say(conversation, 'He uses picture cards.');
+  return say(conversation, 'Bright lights.Sudden sound.');
+}
+
+function fakeRecognition(): Recognition & { emit(text: string): void } {
+  const recognition: Recognition & { emit(text: string): void } = {
+    continuous: false,
+    interimResults: false,
+    lang: '',
+    onresult: null,
+    onerror: null,
+    onend: null,
+    start() {},
+    stop() {},
+    emit(text: string) {
+      const event: RecognitionEvent = {
+        resultIndex: 0,
+        results: { length: 1, 0: { isFinal: true, length: 1, 0: { transcript: text } } },
+      };
+      recognition.onresult?.(event);
+    },
+  };
+  return recognition;
+}
