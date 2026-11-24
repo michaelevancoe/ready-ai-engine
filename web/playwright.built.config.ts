@@ -6,7 +6,7 @@ const webRoot = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   testDir: 'e2e',
-  testMatch: 'built-worker.spec.ts',
+  testMatch: ['built-worker.spec.ts', 'built-worker-flows.spec.ts'],
   timeout: 60_000,
   expect: { timeout: 30_000 },
   use: {

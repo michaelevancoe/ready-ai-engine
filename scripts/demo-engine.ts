@@ -1,11 +1,33 @@
 import type { WorkerBindings } from '../src/bindings.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
+import {
+  lessonMessages,
+  lessonSchema,
+  lessonSchemaName,
+  parseLesson,
+  parseLessonRequest,
+  parseSocialStory,
+  parseSocialStoryRequest,
+  parseSundayUpdate,
+  parseSundayUpdateRequest,
+  socialStoryMessages,
+  socialStorySchema,
+  socialStorySchemaName,
+  sundayUpdateMessages,
+  sundayUpdateSchema,
+  sundayUpdateSchemaName,
+  type LessonRequest,
+  type SocialStoryRequest,
+  type SundayUpdateRequest,
+} from '../src/demo-drafts.ts';
+import { ConfigError, GenerateError } from '../src/errors.ts';
+import { generate } from '../src/generate.ts';
 import { json } from '../src/http.ts';
 import { parseIntake, type IntakeAnswers } from '../src/intake.ts';
 import { signHs256 } from '../src/jwt.ts';
 import { emitSafe } from '../src/log.ts';
-import type { ChildProfile } from '../src/profile.ts';
-import { isRecord } from '../src/schema.ts';
+import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
+import { isRecord, type JsonSchema } from '../src/schema.ts';
 import { chatEnvelope, churchStore, ids, testEnv, type MemoryStore } from '../test/fixtures.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
 import { liveDemoBindings, mergeDemoEnv, parseDevVars } from './live-env.ts';
@@ -94,7 +116,64 @@ export class DemoContext {
     if (request.method === 'POST' && /^\/v1\/profiles\/([^/]+)\/approve$/.test(url.pathname)) {
       return this.callEngine(url, '{}');
     }
+    if (request.method === 'POST' && url.pathname === '/v1/drafts/social-story') {
+      return this.handleSocialStory(request);
+    }
+    if (request.method === 'POST' && url.pathname === '/v1/drafts/lesson') {
+      return this.handleLesson(request);
+    }
+    if (request.method === 'POST' && url.pathname === '/v1/drafts/sunday-update') {
+      return this.handleSundayUpdate(request);
+    }
     return json({ error: 'not_found' }, 404);
+  }
+
+  private async handleSocialStory(request: Request): Promise<Response> {
+    const parsed = await parsedBody(request, parseSocialStoryRequest);
+    if (parsed instanceof Response) return parsed;
+    return this.completeDraft(socialStoryMessages(parsed), socialStorySchemaName, socialStorySchema, parseSocialStory);
+  }
+
+  private async handleLesson(request: Request): Promise<Response> {
+    const parsed = await parsedBody(request, parseLessonRequest);
+    if (parsed instanceof Response) return parsed;
+    return this.completeDraft(lessonMessages(parsed), lessonSchemaName, lessonSchema, parseLesson);
+  }
+
+  private async handleSundayUpdate(request: Request): Promise<Response> {
+    const parsed = await parsedBody(request, parseSundayUpdateRequest);
+    if (parsed instanceof Response) return parsed;
+    return this.completeDraft(
+      sundayUpdateMessages(parsed),
+      sundayUpdateSchemaName,
+      sundayUpdateSchema,
+      parseSundayUpdate,
+    );
+  }
+
+  private async completeDraft<T>(
+    messages: readonly { role: 'system' | 'user'; content: string }[],
+    schemaName: string,
+    schema: JsonSchema,
+    parse: (value: unknown) => T,
+  ): Promise<Response> {
+    try {
+      const value = await generate({
+        endpoint: 'intake.profile',
+        messages,
+        schemaName,
+        schema,
+        parse,
+        env: this.deps.env,
+        fetch: this.deps.fetch,
+        log: this.deps.log,
+      });
+      return json(value, 200);
+    } catch (error) {
+      if (error instanceof GenerateError) return json({ error: 'generation_failed' }, 502);
+      if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+      throw error;
+    }
   }
 
   private async callEngine(url: URL, body: string): Promise<Response> {
@@ -131,6 +210,18 @@ async function prepareIntake(request: Request): Promise<Response | string> {
   return JSON.stringify(intake);
 }
 
+async function parsedBody<T>(request: Request, parse: (value: unknown) => T | null): Promise<Response | T> {
+  let value: unknown;
+  try {
+    value = (await request.json()) as unknown;
+  } catch {
+    return json({ error: 'invalid_input' }, 400);
+  }
+  const parsed = parse(value);
+  if (parsed === null) return json({ error: 'invalid_input' }, 400);
+  return parsed;
+}
+
 function exactAnswers(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value);
@@ -152,12 +243,30 @@ const mockGateway: typeof fetch = async (input, init) => {
   } catch {
     return new Response(null, { status: 502 });
   }
-  const answers = answersFromGateway(payload);
-  if (answers === null) return new Response(null, { status: 502 });
-  return chatEnvelope(profileFromAnswers(answers));
+  const name = schemaName(payload);
+  if (name === null) return new Response(null, { status: 502 });
+  if (name === childProfileSchemaName) {
+    const answers = answersFromGateway(payload);
+    if (answers === null) return new Response(null, { status: 502 });
+    return chatEnvelope(profileFromAnswers(answers));
+  }
+  const user = userJson(payload);
+  if (user === null) return new Response(null, { status: 502 });
+  const content = mockDraft(name, user);
+  if (content === null) return new Response(null, { status: 502 });
+  return chatEnvelope(content);
 };
 
-function answersFromGateway(payload: unknown): IntakeAnswers | null {
+function schemaName(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const format = payload.response_format;
+  if (!isRecord(format)) return null;
+  const spec = format.json_schema;
+  if (!isRecord(spec) || typeof spec.name !== 'string' || spec.name.length === 0) return null;
+  return spec.name;
+}
+
+function userJson(payload: unknown): unknown | null {
   if (!isRecord(payload) || !Array.isArray(payload.messages)) return null;
   let content: string | null = null;
   for (const message of payload.messages) {
@@ -166,12 +275,60 @@ function answersFromGateway(payload: unknown): IntakeAnswers | null {
     }
   }
   if (content === null) return null;
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(content) as unknown;
+    return JSON.parse(content) as unknown;
   } catch {
     return null;
   }
+}
+
+function mockDraft(name: string, user: unknown): unknown | null {
+  switch (name) {
+    case socialStorySchemaName: {
+      const parsed = parseSocialStoryRequest(user);
+      if (parsed === null) return null;
+      return mockSocialStory(parsed);
+    }
+    case lessonSchemaName: {
+      const parsed = parseLessonRequest(user);
+      if (parsed === null) return null;
+      return mockLesson(parsed);
+    }
+    case sundayUpdateSchemaName: {
+      const parsed = parseSundayUpdateRequest(user);
+      if (parsed === null) return null;
+      return mockSundayUpdate(parsed);
+    }
+    default:
+      return null;
+  }
+}
+
+function mockSocialStory(input: SocialStoryRequest): { title: string; body: string } {
+  return {
+    title: 'Sunday with Rowan',
+    body: input.lines.map((line) => line.text).join('\n').slice(0, 2000),
+  };
+}
+
+function mockLesson(input: LessonRequest): { summary: string; steps: string[] } {
+  const steps = [input.lesson.slice(0, 400)];
+  for (const line of input.lines) {
+    if (steps.length >= 8) break;
+    steps.push(line.text.slice(0, 400));
+  }
+  return { summary: input.lesson.slice(0, 600), steps };
+}
+
+function mockSundayUpdate(input: SundayUpdateRequest): { body: string } {
+  const name = input.childName;
+  const room = 2000 - name.length - 1;
+  const notes = room > 0 ? input.notes.slice(0, room) : '';
+  return { body: notes.length === 0 ? name.slice(0, 2000) : `${notes}\n${name}` };
+}
+
+function answersFromGateway(payload: unknown): IntakeAnswers | null {
+  const parsed = userJson(payload);
   if (!isRecord(parsed)) return null;
   if (typeof parsed.preferredName !== 'string' || typeof parsed.ageYears !== 'number') return null;
   if (typeof parsed.sensoryNotes !== 'string' || typeof parsed.supportNeeds !== 'string') return null;

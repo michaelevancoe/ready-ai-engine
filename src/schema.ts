@@ -13,6 +13,7 @@ export type JsonSchema =
   | {
       type: 'array';
       items: JsonSchema;
+      minItems?: number;
       maxItems?: number;
     };
 
@@ -30,6 +31,7 @@ export function validateJson(schema: JsonSchema, value: unknown): boolean {
       );
     case 'array': {
       if (!Array.isArray(value)) return false;
+      if (schema.minItems !== undefined && value.length < schema.minItems) return false;
       if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
       return value.every((item) => validateJson(schema.items, item));
     }

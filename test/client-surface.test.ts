@@ -11,14 +11,19 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const clientFiles = [
   'web/app/page.tsx',
   'web/app/layout.tsx',
+  'web/app/visit-shell.tsx',
+  'web/app/volunteer/page.tsx',
+  'web/app/leader/page.tsx',
   'web/lib/desk.ts',
+  'web/lib/drafts.ts',
   'web/lib/fictional-label.ts',
   'web/lib/local-demo.ts',
+  'web/lib/visit.ts',
 ];
 
-test('the page shows the fictional-data label', () => {
-  const page = readFileSync(join(root, 'web/app/page.tsx'), 'utf8');
-  assert.equal(page.includes('FICTIONAL_DATA_LABEL'), true);
+test('the shell shows the fictional-data label', () => {
+  const shell = readFileSync(join(root, 'web/app/visit-shell.tsx'), 'utf8');
+  assert.equal(shell.includes('FICTIONAL_DATA_LABEL'), true);
   assert.equal(FICTIONAL_DATA_LABEL.includes('fictional data only'), true);
   assert.equal(FICTIONAL_DATA_LABEL.includes('real child'), true);
 });
