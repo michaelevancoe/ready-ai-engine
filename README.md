@@ -91,19 +91,27 @@ Live answers use the same Workers AI path as the local demo. Local runs and test
 
 The deploy reads `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_ACCOUNT_ID`, and `AI_GATEWAY_ID` from the shell. When one is unset or blank, `web/cloudflare.config.ts` keeps the dummy value, so a credential-free build still works. Do not edit that file, and do not commit the account id.
 
-From `web`, set the account id and deploy. This command publishes the Worker. It is not part of CI.
+From `web`, set the account id. The first deploy of a new Worker must include `AI_GATEWAY_TOKEN`. `cf` rejects that deploy when the secret is absent. Build, then deploy the built output with a dotenv secrets file. The file contains `AI_GATEWAY_TOKEN=${READY_AI_GATEWAY_TOKEN}`. `cf` expands that reference from the environment. The token stays out of the file and out of shell history. This publish step is not part of CI.
 
 ```bash
 cd web
 export AI_GATEWAY_ACCOUNT_ID='paste-account-id-here'
-AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1 \
-AI_GATEWAY_ID=ready-demo \
-npm run deploy:vinext
+export AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1
+export AI_GATEWAY_ID=ready-demo
+read -s READY_AI_GATEWAY_TOKEN
+export READY_AI_GATEWAY_TOKEN
+printf '%s\n' 'AI_GATEWAY_TOKEN=${READY_AI_GATEWAY_TOKEN}' > .env.deploy
+npm run build:vinext
+npx cf deploy --prebuilt --mode production --secrets-file .env.deploy
+rm .env.deploy
+unset READY_AI_GATEWAY_TOKEN
 ```
 
 The deploy command prints a `workers.dev` URL. Call that URL `DEMO_URL`. Confirm the command output has no preview URL.
 
-The gateway token is a Worker secret. Set it after the Worker exists. Do not pass `--text`. That flag stores the token in shell history. In a terminal, this command asks `Enter value for --text` and masks the input.
+A later deploy keeps the existing secret. From `web`, export the same three gateway values and run `npm run deploy:vinext`.
+
+To replace the token, use the masked prompt. Do not pass `--text`. That flag stores the token in shell history. In a terminal, this command asks `Enter value for --text` and masks the input.
 
 ```bash
 npx cf workers secrets update AI_GATEWAY_TOKEN --worker ready-demo --type secret_text
@@ -124,7 +132,7 @@ curl -sI "$DEMO_URL/v1/intake/profile"
 curl -s "$DEMO_URL/robots.txt"
 ```
 
-Each response includes `x-robots-tag: noindex`. The robots body is `User-agent: *` and `Disallow: /`. The page shows `Demo: fictional data only. Please don't enter real child information.`
+Each response includes `x-robots-tag: noindex`. The robots body is `User-agent: *` and `Disallow: /`. Request one `/_next/static/` URL named by the page HTML. That response is 200, has a stylesheet or script content type, and includes `x-robots-tag: noindex`. The page shows `Demo: fictional data only. Please don't enter real child information.`
 
 On 2026-11-25, delete the Worker. Deleting the Worker deletes its secret.
 

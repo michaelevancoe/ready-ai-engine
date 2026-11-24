@@ -68,7 +68,7 @@ function bundleModules(bundleDir: string): Record<string, ModuleRecord> {
       }
       const type = moduleType(path);
       if (type === undefined) continue;
-      const key = relative(bundleDir, path).split('\\').join('/');
+      const key = relative(bundleDir, path);
       modules[key] = { type, contents: readFileSync(path, 'utf8') };
     }
   };

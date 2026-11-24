@@ -152,6 +152,18 @@ test('live mode rejects an empty gateway token before fetch', async () => {
   await assertLiveRejected(liveShell({ AI_GATEWAY_TOKEN: '' }));
 });
 
+test('worker bindings use the mock and skip fetch when the model is not live', async () => {
+  let calls = 0;
+  const demo = DemoContext.fromBindings({ ...liveShell(), READY_DEMO_MODEL: 'mock' }, async () => {
+    calls += 1;
+    throw new Error('mock must not fetch');
+  });
+  const intake = await demo.handle(quietRoomIntake());
+  assert.equal(intake.status, 201);
+  assert.equal(calls, 0);
+  assert.equal((await intake.text()).includes('TICK-QUIET-ROOM'), true);
+});
+
 test('worker bindings reject an empty gateway token before fetch', () => {
   assert.throws(() => DemoContext.fromBindings(liveShell({ AI_GATEWAY_TOKEN: '' })), (error: unknown) => {
     assert.ok(error instanceof ConfigError);
