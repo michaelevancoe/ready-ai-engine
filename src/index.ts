@@ -1,6 +1,7 @@
 import type { ExportedHandler } from '@cloudflare/workers-types';
 import { handleRequest } from './app.ts';
 import { emitSafe } from './log.ts';
+import { supabaseAccessSource } from './supabase-access.ts';
 import { supabaseAuthVerifier } from './supabase-auth.ts';
 import { SupabaseStore } from './supabase-store.ts';
 
@@ -18,6 +19,11 @@ export default {
         }),
       log: emitSafe,
       auth: supabaseAuthVerifier({
+        supabaseUrl: env.SUPABASE_URL,
+        anonKey: env.SUPABASE_ANON_KEY,
+        fetch: globalThis.fetch,
+      }),
+      accessSource: supabaseAccessSource({
         supabaseUrl: env.SUPABASE_URL,
         anonKey: env.SUPABASE_ANON_KEY,
         fetch: globalThis.fetch,

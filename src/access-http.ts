@@ -2,6 +2,7 @@ import { runAccess, runAccessForUser, type AccessCommand, type AccessWorld } fro
 import { InputError } from './errors.ts';
 import { json, readJson } from './http.ts';
 import { isRecord } from './schema.ts';
+import type { AccessSource } from './supabase-access.ts';
 import type { AuthVerifier } from './supabase-auth.ts';
 
 function sessionId(request: Request): string | null {
@@ -77,5 +78,21 @@ export async function handleAccess(
     verifier === undefined
       ? runAccess(world, token, command)
       : runAccessForUser(world, token === null ? null : ((await verifier.verify(token))?.userId ?? null), command);
+  return json(result.body, result.status);
+}
+
+export async function handleAccessSource(
+  request: Request,
+  source: AccessSource,
+  verifier: AuthVerifier,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const command = await commandFor(request, url.pathname);
+  if (command === null) return json({ error: 'not_found' }, 404);
+  const token = sessionId(request);
+  if (token === null) return json({ error: 'unauthorized' }, 401);
+  const user = await verifier.verify(token);
+  if (user === null) return json({ error: 'unauthorized' }, 401);
+  const result = await source.run({ userId: user.userId, accessToken: token, command });
   return json(result.body, result.status);
 }

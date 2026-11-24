@@ -47,3 +47,13 @@ export class StoreError extends Error {
     this.status = status;
   }
 }
+
+export class UpstreamError extends Error {
+  readonly status: 503 | 504;
+
+  constructor(status: 503 | 504) {
+    super(status === 504 ? 'timeout' : 'unavailable');
+    this.name = 'UpstreamError';
+    this.status = status;
+  }
+}
