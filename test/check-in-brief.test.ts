@@ -323,10 +323,9 @@ test('a new answer drops a stale draft', () => {
   visit = reduceVisit(visit, { type: 'intake', event: { type: 'submit', nonce: 1 } });
   visit = reduceVisit(visit, { type: 'intake', event: { type: 'draft', profile, nonce: 1 } });
   assert.equal(visit.intake.status, 'draft');
-  visit = reduceVisit(visit, {
-    type: 'conversation',
-    event: { type: 'fix', sectionId: 'sensory', reason: 'Quieter.' },
-  });
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'beginFix' } });
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'chooseSection', sectionId: 'sensory' } });
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'giveReason', text: 'Quieter.' } });
   assert.equal(visit.intake.status, 'draft');
   visit = say(visit, 'TICK-SOFTER-SEAT');
   assert.equal(visit.intake.status, 'idle');

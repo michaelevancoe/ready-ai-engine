@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
 import { postSocialStory } from '../lib/drafts';
-import { presentAsk, project, type AskView, type Conversation, type ProjectRow } from '../lib/conversation';
+import { presentAsk, project, type AskLine, type AskView, type Conversation, type ProjectRow } from '../lib/conversation';
 import { approveProfile, submitIntake, type IntakeGate, type ShownProfile } from '../lib/desk';
 import { intakeTree } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
@@ -43,11 +43,14 @@ export default function Page() {
   const projected = project(intakeTree, conversation);
   const profile = profileOf(gate);
   const [showProfile, setShowProfile] = useState(false);
-  const [fixOpen, setFixOpen] = useState(false);
   const posted = useRef<Conversation['answers'] | null>(null);
   const openOnDraft = useRef(false);
   const nonce = useRef(0);
-  const reviewing = showProfile && profile !== null && (gate.status === 'draft' || gate.status === 'approving' || (gate.status === 'error' && gate.retry === 'approve'));
+  const reviewing =
+    conversation.talk.mode === 'reviewWait' &&
+    showProfile &&
+    profile !== null &&
+    (gate.status === 'draft' || gate.status === 'approving' || (gate.status === 'error' && gate.retry === 'approve'));
   const drafting = conversation.talk.mode === 'reviewWait' && !reviewing && gate.status !== 'approved';
   const heading = childHeading(childPreferredName(visit));
   useScrollWhen(drafting, 'drafting');
@@ -57,7 +60,6 @@ export default function Page() {
   useEffect(() => {
     if (conversation.talk.mode === 'reviewWait') return;
     setShowProfile(false);
-    setFixOpen(false);
   }, [conversation.talk.mode]);
 
   useEffect(() => {
@@ -107,14 +109,10 @@ export default function Page() {
     void sendIntake(conversation);
   }
 
-  function onFix(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const sectionId = data.get('section');
-    const reason = data.get('reason');
-    if (typeof sectionId !== 'string' || typeof reason !== 'string' || reason.trim() === '') return;
-    setFixOpen(false);
-    dispatch({ type: 'conversation', event: { type: 'fix', sectionId, reason } });
+  function onProfile(): void {
+    openOnDraft.current = true;
+    if (gate.status === 'draft') setShowProfile(true);
+    dispatch({ type: 'conversation', event: { type: 'leaveFix' } });
   }
 
   function onLeave(): void {
@@ -143,6 +141,7 @@ export default function Page() {
         <QuestionScreen
           ask={ask}
           onLeave={onLeave}
+          onProfile={onProfile}
           onSeeAgain={onSeeAgain}
           dispatch={dispatch}
         />
@@ -175,26 +174,9 @@ export default function Page() {
               <button type="button" className="approve" onClick={() => void onApprove()}>
                 Approve
               </button>
-              {fixOpen ? (
-                <form onSubmit={onFix}>
-                  <fieldset>
-                    <legend>Which section should change?</legend>
-                    {intakeTree.sections.map((section) => (
-                      <label className="choice" key={section.id}>
-                        <input type="radio" name="section" value={section.id} required />
-                        {section.reviewLabel}
-                      </label>
-                    ))}
-                  </fieldset>
-                  <label htmlFor="fix-reason">Reason</label>
-                  <input id="fix-reason" name="reason" required autoComplete="off" />
-                  <button type="submit">No, fix this</button>
-                </form>
-              ) : (
-                <button type="button" onClick={() => setFixOpen(true)}>
-                  No, fix this
-                </button>
-              )}
+              <button type="button" onClick={() => dispatch({ type: 'conversation', event: { type: 'beginFix' } })}>
+                No, fix this
+              </button>
             </>
           ) : null}
           {gate.status === 'approving' ? (
@@ -220,11 +202,13 @@ export default function Page() {
 function QuestionScreen({
   ask,
   onLeave,
+  onProfile,
   onSeeAgain,
   dispatch,
 }: {
   ask: Exclude<AskView, { kind: 'review' }>;
   onLeave: () => void;
+  onProfile: () => void;
   onSeeAgain: () => void;
   dispatch: Dispatch<VisitEvent>;
 }) {
@@ -232,8 +216,8 @@ function QuestionScreen({
   const [listening, setListening] = useState(false);
   const [speech, setSpeech] = useState<'ready' | 'missing'>('missing');
   const session = useRef<{ stop(): void } | null>(null);
-  const questionKey = ask.kind === 'offer' ? 'offer' : `${ask.progress}:${ask.placeholder}:${ask.fixing?.done ?? false}`;
-  const focusAnswer = ask.kind === 'question' && ask.fixing !== null && !ask.fixing.done;
+  const questionKey = questionIdentity(ask);
+  const focusAnswer = (ask.kind === 'question' && ask.fixing !== null && !ask.fixing.done) || ask.kind === 'fixReason';
   useEffect(() => {
     setSpeech(speechSupport());
   }, []);
@@ -250,7 +234,11 @@ function QuestionScreen({
     session.current?.stop();
     session.current = null;
     setListening(false);
-    dispatch({ type: 'conversation', event: { type: 'answer', text } });
+    if (ask.kind === 'fixReason') {
+      dispatch({ type: 'conversation', event: { type: 'giveReason', text } });
+    } else {
+      dispatch({ type: 'conversation', event: { type: 'answer', text } });
+    }
     setDraft('');
   }
 
@@ -269,37 +257,47 @@ function QuestionScreen({
     }
   }
 
-  const leave = ask.leave;
-  const progress = ask.kind === 'offer' ? 'Optional · Medical' : ask.progress;
-  const filled = filledBars(ask);
-  const total = ask.countedTotal + 1;
   const fixing = ask.kind === 'question' ? ask.fixing : null;
-  const showComposer = ask.kind === 'question' && fixing?.done !== true;
+  const fixingLabel = fixing?.label ?? (ask.kind === 'fixReason' ? ask.label : null);
+  const backToProfile = ask.leave === intakeTree.fixCopy.back;
+  const showComposer = (ask.kind === 'question' && fixing?.done !== true) || ask.kind === 'fixReason';
+  const placeholder = ask.kind === 'question' || ask.kind === 'fixReason' ? ask.placeholder : '';
+  const promptIndex = lastReadyIndex(ask.lines);
 
   return (
     <section id="intake" aria-label="Questions">
       <div className="top-bar">
-        <button type="button" className="inline" onClick={onLeave}>
+        <button type="button" className="inline" onClick={backToProfile ? onProfile : onLeave}>
           <span aria-hidden="true">← </span>
-          {leave}
+          {ask.leave}
         </button>
-        <span className="guided">{fixing === null ? 'Guided by Ready' : `Fixing: ${fixing.label}`}</span>
+        <span className="guided">{fixingLabel === null ? 'Guided by Ready' : `Fixing: ${fixingLabel}`}</span>
       </div>
-      <p className="progress-label">
-        <span>{progress}</span>
-        <span>Medical: optional</span>
-      </p>
-      <div className="bars" aria-hidden="true">
-        {Array.from({ length: total }, (_, index) => (
-          <span key={index} className={index < filled ? 'on' : ''} />
+      {ask.kind === 'question' || ask.kind === 'offer' ? (
+        <>
+          <p className="progress-label">
+            <span>{ask.kind === 'offer' ? 'Optional · Medical' : ask.progress}</span>
+            <span>Medical: optional</span>
+          </p>
+          <div className="bars" aria-hidden="true">
+            {Array.from({ length: ask.countedTotal + 1 }, (_, index) => (
+              <span key={index} className={index < filledBars(ask) ? 'on' : ''} />
+            ))}
+          </div>
+        </>
+      ) : null}
+      <p className="placeholder-note">{intakeTree.placeholderNote}</p>
+      <div className="thread" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
+        {ask.lines.map((line, index) => (
+          <p
+            key={`${line.from}-${index}`}
+            id={index === promptIndex ? 'current-question' : undefined}
+            className={line.from === 'parent' ? 'bubble parent' : 'bubble ready'}
+          >
+            {line.text}
+          </p>
         ))}
       </div>
-      <p className="placeholder-note">{intakeTree.placeholderNote}</p>
-      {ask.lines.map((line, index) => (
-        <p key={`${line.from}-${index}`} className={line.from === 'parent' ? 'bubble parent' : 'bubble ready'}>
-          {line.text}
-        </p>
-      ))}
       {ask.kind === 'offer' ? (
         <>
           <button
@@ -307,17 +305,30 @@ function QuestionScreen({
             className="primary"
             onClick={() => dispatch({ type: 'conversation', event: { type: 'declineMedical' } })}
           >
-            Skip for now
+            {ask.skipLabel}
           </button>
           <button type="button" onClick={() => dispatch({ type: 'conversation', event: { type: 'acceptMedical' } })}>
-            Yes, add medical info
+            {ask.acceptLabel}
           </button>
           <p className="hint">{MEDICAL_HELP}</p>
         </>
       ) : null}
-      {showComposer && ask.kind === 'question' ? (
+      {ask.kind === 'fixPick' ? (
+        <div className="chips">
+          {ask.chips.map((chip) => (
+            <button
+              type="button"
+              key={chip.id}
+              onClick={() => dispatch({ type: 'conversation', event: { type: 'chooseSection', sectionId: chip.id } })}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {showComposer && (ask.kind === 'question' || ask.kind === 'fixReason') ? (
         <>
-          {ask.skip ? (
+          {ask.kind === 'question' && ask.skip ? (
             <button
               type="button"
               className="inline"
@@ -326,7 +337,7 @@ function QuestionScreen({
               Skip this one
             </button>
           ) : null}
-          {ask.chips.length > 0 ? (
+          {ask.kind === 'question' && ask.chips.length > 0 ? (
             <div className="chips">
               {ask.chips.map((chip) => (
                 <button type="button" key={chip} onClick={() => commit(joinAnswer(draft, chip))}>
@@ -335,7 +346,7 @@ function QuestionScreen({
               ))}
             </div>
           ) : null}
-          {ask.closeChip === null ? null : (
+          {ask.kind === 'question' && ask.closeChip !== null ? (
             <button
               type="button"
               className="inline"
@@ -353,7 +364,7 @@ function QuestionScreen({
             >
               {ask.closeChip}
             </button>
-          )}
+          ) : null}
           <div className="composer">
             <label className="sr-only" htmlFor="answer">
               Your answer
@@ -362,7 +373,8 @@ function QuestionScreen({
               id="answer"
               rows={3}
               value={draft}
-              placeholder={ask.placeholder}
+              placeholder={placeholder}
+              aria-describedby="current-question"
               autoComplete="off"
               onChange={(event) => setDraft(event.target.value)}
             />
@@ -730,12 +742,40 @@ function profileOf(gate: IntakeGate): ShownProfile | null {
   }
 }
 
+function questionIdentity(ask: Exclude<AskView, { kind: 'review' }>): string {
+  switch (ask.kind) {
+    case 'offer':
+      return 'offer';
+    case 'fixPick':
+      return 'fix-pick';
+    case 'fixReason':
+      return `fix-reason:${ask.label}`;
+    case 'question':
+      return `${ask.progress}:${ask.placeholder}:${ask.fixing?.done ?? false}`;
+    default: {
+      const leftover: never = ask;
+      return leftover;
+    }
+  }
+}
+
+function lastReadyIndex(lines: readonly AskLine[]): number {
+  let found = -1;
+  lines.forEach((line, index) => {
+    if (line.from === 'ready') found = index;
+  });
+  return found;
+}
+
 function filledBars(ask: Exclude<AskView, { kind: 'review' }>): number {
   switch (ask.kind) {
     case 'offer':
       return ask.countedTotal + 1;
     case 'question':
       return ask.onMedical ? ask.countedTotal + 1 : ask.countedIndex;
+    case 'fixPick':
+    case 'fixReason':
+      return 0;
     default: {
       const leftover: never = ask;
       return leftover;

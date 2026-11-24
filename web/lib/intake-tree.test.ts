@@ -15,6 +15,27 @@ test('the shipped tree parses and carries the placeholder note', () => {
   assert.equal(parsed.tree.nodes.find((node) => node.id === 'helps')?.follow?.nodeId, 'helps-more');
 });
 
+test('an unreachable node fails and a follow target still parses', () => {
+  const parsed = parseIntakeTree({
+    ...intakeTree,
+    nodes: [
+      ...intakeTree.nodes,
+      {
+        id: 'extra',
+        sectionId: 'about',
+        prompt: 'Another question about Rowan?',
+        placeholder: 'Type your answer...',
+        writes: [{ target: 'summary' }],
+      },
+    ],
+  });
+  assert.equal(parsed.ok, false);
+  if (parsed.ok) return;
+  assert.equal(parsed.error, 'unreachable-node:extra');
+  assert.equal(intakeTree.nodes.some((node) => node.id === 'helps-more'), true);
+  assert.equal(intakeTree.sections.some((section) => section.nodeId === 'helps-more'), false);
+});
+
 test('a dangling follow id fails', () => {
   const broken = parseIntakeTree(withHelpsFollow(intakeTree, 'missing-follow'));
   assert.equal(broken.ok, false);

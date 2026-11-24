@@ -344,7 +344,10 @@ function resetsGate(event: ConversationEvent): boolean {
     case 'reopen':
       return true;
     case 'start':
-    case 'fix':
+    case 'beginFix':
+    case 'chooseSection':
+    case 'giveReason':
+    case 'leaveFix':
     case 'finishFix':
       return false;
     default: {

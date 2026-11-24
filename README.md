@@ -39,7 +39,7 @@ Tests mock the network. They do not need Cloudflare or Supabase credentials.
 
 Run the demo on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The parent page asks one question at a time from `web/lib/intake-tree.ts`. The wording is a placeholder pending a professional question set.
 
-Edit that file to change a question, its prompt, a branch, a follow-up, or the profile section a node writes. A later question update is a pull request that edits `web/lib/intake-tree.ts`. Voice uses the browser speech API and stores no audio. Approve the draft to see Approved.
+Edit that file to change a question, its prompt, a branch, a follow-up, the medical opt-in, the fix prompts, or the profile section a node writes. A later question update is a pull request that edits `web/lib/intake-tree.ts`. Voice uses the browser speech API and stores no audio. Approve the draft to see Approved.
 
 The demo process keeps the fictional church in memory and signs the Avery session on each request. The page posts to its own address. It forwards `/v1` to that process only when `READY_LOCAL_DEMO` is `1`. `npm run demo` does not set that variable.
 

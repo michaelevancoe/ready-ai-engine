@@ -8,6 +8,8 @@ export type Talk =
   | { readonly mode: 'ask'; readonly nodeId: string }
   | { readonly mode: 'medicalOffer' }
   | { readonly mode: 'reviewWait' }
+  | { readonly mode: 'fixPick' }
+  | { readonly mode: 'fixReason'; readonly sectionId: string }
   | {
       readonly mode: 'fixing';
       readonly sectionId: string;
@@ -28,7 +30,10 @@ export type ConversationEvent =
   | { readonly type: 'skip' }
   | { readonly type: 'declineMedical' }
   | { readonly type: 'acceptMedical' }
-  | { readonly type: 'fix'; readonly sectionId: string; readonly reason: string }
+  | { readonly type: 'beginFix' }
+  | { readonly type: 'chooseSection'; readonly sectionId: string }
+  | { readonly type: 'giveReason'; readonly text: string }
+  | { readonly type: 'leaveFix' }
   | { readonly type: 'finishFix' }
   | { readonly type: 'reopen' };
 
@@ -55,14 +60,29 @@ export type AskView =
       readonly chips: readonly string[];
       readonly closeChip: string | null;
       readonly skip: boolean;
-      readonly leave: 'Home' | 'Save & exit';
+      readonly leave: string;
       readonly fixing: FixingView | null;
     }
   | {
       readonly kind: 'offer';
       readonly lines: readonly AskLine[];
       readonly countedTotal: number;
-      readonly leave: 'Save & exit';
+      readonly leave: string;
+      readonly skipLabel: string;
+      readonly acceptLabel: string;
+    }
+  | {
+      readonly kind: 'fixPick';
+      readonly lines: readonly AskLine[];
+      readonly chips: readonly { readonly id: string; readonly label: string }[];
+      readonly leave: string;
+    }
+  | {
+      readonly kind: 'fixReason';
+      readonly lines: readonly AskLine[];
+      readonly label: string;
+      readonly placeholder: string;
+      readonly leave: string;
     }
   | { readonly kind: 'review' };
 
@@ -97,9 +117,6 @@ export interface Projection {
   readonly rows: readonly ProjectRow[];
 }
 
-const MEDICAL_OFFER =
-  'Would you like to share medical info? It stays off by default, and only you can turn it on for volunteers.';
-
 export function initialConversation(): Conversation {
   return { talk: { mode: 'intro' }, answers: {}, medical: 'unasked' };
 }
@@ -116,8 +133,15 @@ export function reduceConversation(tree: IntakeTree, conversation: Conversation,
       return decline(conversation);
     case 'acceptMedical':
       return accept(tree, conversation);
-    case 'fix':
-      return beginFix(tree, conversation, event.sectionId, event.reason);
+    case 'beginFix':
+      return openFix(conversation);
+    case 'chooseSection':
+      return chooseSection(tree, conversation, event.sectionId);
+    case 'giveReason':
+      if (conversation.talk.mode !== 'fixReason') return conversation;
+      return commit(tree, conversation, { kind: 'answered', text: event.text });
+    case 'leaveFix':
+      return leaveFix(conversation);
     case 'finishFix':
       return finishFix(conversation);
     case 'reopen':
@@ -138,6 +162,10 @@ export function presentAsk(tree: IntakeTree, conversation: Conversation): AskVie
       return questionView(tree, conversation);
     case 'medicalOffer':
       return offerView(tree, conversation);
+    case 'fixPick':
+      return fixPickView(tree);
+    case 'fixReason':
+      return fixReasonView(tree, conversation);
     case 'reviewWait':
       return { kind: 'review' };
     default: {
@@ -192,7 +220,20 @@ function accept(tree: IntakeTree, conversation: Conversation): Conversation {
   return { ...conversation, talk: { mode: 'ask', nodeId: section.nodeId }, medical: 'open' };
 }
 
+function openFix(conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'reviewWait') return conversation;
+  return { ...conversation, talk: { mode: 'fixPick' } };
+}
+
+function chooseSection(tree: IntakeTree, conversation: Conversation, sectionId: string): Conversation {
+  if (conversation.talk.mode !== 'fixPick') return conversation;
+  const section = sectionById(tree, sectionId);
+  if (section === undefined) return conversation;
+  return { ...conversation, talk: { mode: 'fixReason', sectionId: section.id } };
+}
+
 function beginFix(tree: IntakeTree, conversation: Conversation, sectionId: string, reason: string): Conversation {
+  if (conversation.talk.mode !== 'fixReason' || conversation.talk.sectionId !== sectionId) return conversation;
   const trimmed = reason.trim();
   if (trimmed.length === 0) return conversation;
   const section = sectionById(tree, sectionId);
@@ -201,6 +242,24 @@ function beginFix(tree: IntakeTree, conversation: Conversation, sectionId: strin
     ...conversation,
     talk: { mode: 'fixing', sectionId: section.id, nodeId: section.nodeId, reason: trimmed, done: false },
   };
+}
+
+function leaveFix(conversation: Conversation): Conversation {
+  switch (conversation.talk.mode) {
+    case 'fixPick':
+    case 'fixReason':
+    case 'fixing':
+      return { ...conversation, talk: { mode: 'reviewWait' } };
+    case 'intro':
+    case 'ask':
+    case 'medicalOffer':
+    case 'reviewWait':
+      return conversation;
+    default: {
+      const leftover: never = conversation.talk;
+      return leftover;
+    }
+  }
 }
 
 function finishFix(conversation: Conversation): Conversation {
@@ -217,6 +276,10 @@ function reopen(tree: IntakeTree, conversation: Conversation): Conversation {
 
 function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer): Conversation {
   if (answer.kind === 'answered' && answer.text.trim() === '') return conversation;
+  if (conversation.talk.mode === 'fixReason') {
+    if (answer.kind !== 'answered') return conversation;
+    return beginFix(tree, conversation, conversation.talk.sectionId, answer.text);
+  }
   const located = locate(tree, conversation);
   if (located === null || (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing')) return conversation;
   const { node, section } = located;
@@ -274,7 +337,12 @@ function questionView(tree: IntakeTree, conversation: Conversation): AskView {
     chips: done ? [] : (node.chips ?? []),
     closeChip: done || node.closeChip === undefined ? null : node.closeChip,
     skip: !done,
-    leave: conversation.talk.mode === 'ask' && node.id === first?.nodeId ? 'Home' : 'Save & exit',
+    leave:
+      conversation.talk.mode === 'fixing'
+        ? tree.fixCopy.back
+        : conversation.talk.mode === 'ask' && node.id === first?.nodeId
+          ? 'Home'
+          : 'Save & exit',
     fixing:
       conversation.talk.mode === 'fixing'
         ? { label: section.reviewLabel, reason: conversation.talk.reason, done: conversation.talk.done }
@@ -286,8 +354,42 @@ function offerView(tree: IntakeTree, conversation: Conversation): AskView {
   const lines: AskLine[] = [];
   const previous = lastAnswer(tree, conversation);
   if (previous !== null) lines.push({ from: 'parent', text: previous });
-  lines.push({ from: 'ready', text: MEDICAL_OFFER });
-  return { kind: 'offer', lines, countedTotal: countedSections(tree).length, leave: 'Save & exit' };
+  lines.push({ from: 'ready', text: tree.medicalOffer.lead });
+  lines.push({ from: 'ready', text: tree.medicalOffer.prompt });
+  return {
+    kind: 'offer',
+    lines,
+    countedTotal: countedSections(tree).length,
+    leave: 'Save & exit',
+    skipLabel: tree.medicalOffer.skipLabel,
+    acceptLabel: tree.medicalOffer.acceptLabel,
+  };
+}
+
+function fixPickView(tree: IntakeTree): AskView {
+  return {
+    kind: 'fixPick',
+    lines: [{ from: 'ready', text: tree.fixCopy.pick }],
+    chips: tree.sections.map((section) => ({ id: section.id, label: section.reviewLabel })),
+    leave: tree.fixCopy.back,
+  };
+}
+
+function fixReasonView(tree: IntakeTree, conversation: Conversation): AskView {
+  if (conversation.talk.mode !== 'fixReason') return { kind: 'review' };
+  const section = sectionById(tree, conversation.talk.sectionId);
+  if (section === undefined) return { kind: 'review' };
+  return {
+    kind: 'fixReason',
+    lines: [
+      { from: 'ready', text: tree.fixCopy.pick },
+      { from: 'parent', text: section.reviewLabel },
+      { from: 'ready', text: tree.fixCopy.reason },
+    ],
+    label: section.reviewLabel,
+    placeholder: tree.fixCopy.reasonPlaceholder,
+    leave: tree.fixCopy.back,
+  };
 }
 
 function questionLines(
@@ -309,7 +411,7 @@ function questionLines(
     const previous = previousExchange(tree, conversation, node.id);
     if (previous !== null) lines.push(...previous);
   }
-  lines.push({ from: 'ready', text: fill(node.prompt, tree, conversation, node.id) });
+  lines.push({ from: 'ready', text: promptText(tree, conversation, node) });
   if (fixing !== null && !fixing.done) {
     const earlier = answeredText(conversation, node.id);
     if (earlier !== null) lines.push({ from: 'parent', text: earlier });
@@ -402,12 +504,12 @@ function openedFollow(tree: IntakeTree, node: IntakeNode, text: string): string 
 function rowFor(tree: IntakeTree, conversation: Conversation, section: IntakeSection): ProjectRow {
   const parts: string[] = [];
   let skipped = false;
-  for (const node of tree.nodes) {
-    if (node.sectionId !== section.id) continue;
-    if (conversation.answers[node.id]?.kind === 'skipped') skipped = true;
-    const text = answeredText(conversation, node.id);
-    if (text !== null) parts.push(text);
-  }
+    for (const node of tree.nodes) {
+      if (node.sectionId !== section.id) continue;
+      if (conversation.answers[node.id]?.kind === 'skipped') skipped = true;
+      const text = spokenPart(tree, conversation, node);
+      if (text !== null) parts.push(text);
+    }
   const text = spaceSentences(parts.join(' '));
   const drafted = section.kind === 'medical' ? conversation.medical !== 'declined' && !skipped && text.length > 0 : text.length > 0;
   return {
@@ -424,7 +526,7 @@ function joined(tree: IntakeTree, conversation: Conversation, match: (write: Wri
     for (const node of tree.nodes) {
       if (node.sectionId !== section.id) continue;
       if (!node.writes.some(match)) continue;
-      const text = answeredText(conversation, node.id);
+      const text = spokenPart(tree, conversation, node);
       if (text === null) continue;
       parts.push(text);
     }
@@ -437,6 +539,23 @@ function answeredText(conversation: Conversation, nodeId: string): string | null
   if (answer === undefined || answer.kind !== 'answered') return null;
   const text = answer.text.trim();
   return text.length === 0 ? null : text;
+}
+
+function spokenPart(tree: IntakeTree, conversation: Conversation, node: IntakeNode): string | null {
+  const text = answeredText(conversation, node.id);
+  if (text === null) return null;
+  const follow = tree.nodes.some((other) => other.follow?.nodeId === node.id);
+  if (!follow || /[.!?]$/u.test(text)) return text;
+  return `${text}.`;
+}
+
+function promptText(tree: IntakeTree, conversation: Conversation, node: IntakeNode): string {
+  const text = fill(node.prompt, tree, conversation, node.id);
+  if (conversation.talk.mode !== 'ask') return text;
+  const section = sectionById(tree, node.sectionId);
+  if (section === undefined || section.kind !== 'counted' || section.nodeId !== node.id) return text;
+  if (countedSections(tree)[0]?.id === section.id) return text;
+  return `${tree.acknowledgement} ${text}`;
 }
 
 function fill(template: string, tree: IntakeTree, conversation: Conversation, nodeId: string): string {

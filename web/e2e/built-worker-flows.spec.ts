@@ -47,9 +47,11 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await reviewProfile(page);
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'No, fix this' }).click();
-  await page.getByRole('radio', { name: 'Sensory', exact: true }).check();
-  await page.getByLabel('Reason').fill('The room should be quieter.');
-  await page.getByRole('button', { name: 'No, fix this' }).click();
+  await expect(page.getByRole('log', { name: 'Conversation' })).toBeVisible();
+  await page.getByRole('button', { name: 'Sensory', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('The room should be quieter.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('link', { name: "Rowan's profile" }).or(page.getByRole('button', { name: "Rowan's profile" }))).toBeVisible();
   await expect(page.getByText('What sensory things should volunteers know about Rowan at church?')).toBeVisible();
   await expect(page.getByText('The room should be quieter.')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Your answer' })).toBeVisible();

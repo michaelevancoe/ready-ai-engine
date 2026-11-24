@@ -26,10 +26,27 @@ export interface IntakeSection {
   readonly reviewLabel: string;
 }
 
+export interface MedicalOffer {
+  readonly lead: string;
+  readonly prompt: string;
+  readonly skipLabel: string;
+  readonly acceptLabel: string;
+}
+
+export interface FixCopy {
+  readonly pick: string;
+  readonly reason: string;
+  readonly reasonPlaceholder: string;
+  readonly back: string;
+}
+
 export interface IntakeTree {
   readonly placeholderNote: string;
   readonly child: { readonly preferredName: 'Rowan'; readonly ageYears: 7 };
   readonly parentName: 'Avery';
+  readonly acknowledgement: string;
+  readonly medicalOffer: MedicalOffer;
+  readonly fixCopy: FixCopy;
   readonly intro: readonly string[];
   readonly sections: readonly IntakeSection[];
   readonly nodes: readonly IntakeNode[];
@@ -49,6 +66,20 @@ const RAW = {
   placeholderNote: PLACEHOLDER_NOTE,
   child: { preferredName: 'Rowan', ageYears: 7 },
   parentName: 'Avery',
+  acknowledgement: "That's really helpful.",
+  medicalOffer: {
+    lead: "That's all the sections. One last question, and it's optional.",
+    prompt:
+      'Would you like to share medical info? It stays off by default, and only you can turn it on for volunteers.',
+    skipLabel: 'Skip for now',
+    acceptLabel: 'Yes, add medical info',
+  },
+  fixCopy: {
+    pick: 'Which part should we fix?',
+    reason: 'What should change?',
+    reasonPlaceholder: TYPE_ANSWER,
+    back: "Rowan's profile",
+  },
   intro: [
     "Hi {parent}, I'm Ready. I'll ask a few short questions about Rowan, one at a time.",
     'Talk or type, whichever is easier. You can skip anything, and nothing is shared until you approve Rowan\'s profile.',
@@ -117,7 +148,7 @@ const RAW = {
       id: 'helps-more',
       sectionId: 'helps',
       prompt:
-        'Thanks, {prior}. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
+        'Thanks, that helps. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
       placeholder: 'Add a little more...',
       chips: ['A quiet corner', 'A heads-up before changes'],
       closeChip: "That's everything",
@@ -165,6 +196,11 @@ export function parseIntakeTree(input: unknown): TreeParse {
     return fail('invalid-tree');
   }
   if (input.parentName !== 'Avery') return fail('invalid-tree');
+  if (!nonEmpty(input.acknowledgement)) return fail('invalid-tree');
+  const medicalOffer = medicalOfferOf(input.medicalOffer);
+  if (medicalOffer === null) return fail('invalid-tree');
+  const fixCopy = fixCopyOf(input.fixCopy);
+  if (fixCopy === null) return fail('invalid-tree');
   const intro = stringList(input.intro);
   if (intro === null || intro.length === 0) return fail('invalid-tree');
   const sections = sectionList(input.sections);
@@ -182,12 +218,23 @@ export function parseIntakeTree(input: unknown): TreeParse {
     if (!sectionIds.has(node.sectionId)) return fail(`unknown-section:${node.sectionId}`);
     if (node.follow !== undefined && !ids.has(node.follow.nodeId)) return fail(`unknown-node:${node.follow.nodeId}`);
   }
+  const reachable = new Set<string>();
+  for (const section of sections) reachable.add(section.nodeId);
+  for (const node of nodes) {
+    if (node.follow !== undefined) reachable.add(node.follow.nodeId);
+  }
+  for (const node of nodes) {
+    if (!reachable.has(node.id)) return fail(`unreachable-node:${node.id}`);
+  }
   return {
     ok: true,
     tree: {
       placeholderNote: PLACEHOLDER_NOTE,
       child: { preferredName: 'Rowan', ageYears: 7 },
       parentName: 'Avery',
+      acknowledgement: input.acknowledgement,
+      medicalOffer,
+      fixCopy,
       intro,
       sections,
       nodes,
@@ -203,6 +250,22 @@ function ship(input: unknown): IntakeTree {
 
 function fail(error: string): TreeParse {
   return { ok: false, error };
+}
+
+function medicalOfferOf(value: unknown): MedicalOffer | null {
+  if (!isRecord(value)) return null;
+  if (!nonEmpty(value.lead) || !nonEmpty(value.prompt) || !nonEmpty(value.skipLabel) || !nonEmpty(value.acceptLabel)) {
+    return null;
+  }
+  return { lead: value.lead, prompt: value.prompt, skipLabel: value.skipLabel, acceptLabel: value.acceptLabel };
+}
+
+function fixCopyOf(value: unknown): FixCopy | null {
+  if (!isRecord(value)) return null;
+  if (!nonEmpty(value.pick) || !nonEmpty(value.reason) || !nonEmpty(value.reasonPlaceholder) || !nonEmpty(value.back)) {
+    return null;
+  }
+  return { pick: value.pick, reason: value.reason, reasonPlaceholder: value.reasonPlaceholder, back: value.back };
 }
 
 function sectionList(value: unknown): IntakeSection[] | null {
@@ -305,6 +368,10 @@ function isListed<T extends string>(value: unknown, keys: readonly T[]): value i
 
 function isText(value: unknown): value is string {
   return typeof value === 'string';
+}
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

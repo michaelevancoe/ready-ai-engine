@@ -21,40 +21,29 @@ test('branching advances to the next prompt', () => {
   assert.equal(view.progress, 'Section 1 of 6 · About Rowan');
   assert.equal(view.lines[0]?.text, "Hi Avery, I'm Ready. I'll ask a few short questions about Rowan, one at a time.");
   conversation = say(conversation, 'He likes a quiet hello.');
-  assert.equal(readyText(conversation), 'What does Rowan love, at church or at home?');
+  assert.equal(readyText(conversation), acknowledged('What does Rowan love, at church or at home?'));
   conversation = say(conversation, 'Trains.');
-  assert.equal(readyText(conversation), 'What tends to overwhelm Rowan at church or in new places?');
+  assert.equal(readyText(conversation), acknowledged('What tends to overwhelm Rowan at church or in new places?'));
 });
 
 test('a short What helps answer opens the follow-up and a long answer does not', () => {
   const short = say(atHelps(), 'Headphones.');
-  assert.equal(
-    readyText(short),
-    'Thanks, Headphones. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
-  );
+  assert.equal(readyText(short), HELPS_FOLLOW);
   const followed = say(short, 'A quiet corner');
-  assert.equal(readyText(followed), 'How does Rowan communicate when words are hard?');
+  assert.equal(readyText(followed), acknowledged('How does Rowan communicate when words are hard?'));
   assert.equal(LONG_HELPS.length > 40, true);
   const long = say(atHelps(), LONG_HELPS);
-  assert.equal(readyText(long), 'How does Rowan communicate when words are hard?');
+  assert.equal(readyText(long), acknowledged('How does Rowan communicate when words are hard?'));
   assert.equal(long.answers['helps-more'], undefined);
 });
 
 test('a longer replacement drops the earlier follow-up', () => {
   const followed = say(say(atHelps(), 'Headphones.'), 'A quiet corner');
-  const fixing = reduceConversation(intakeTree, followed, {
-    type: 'fix',
-    sectionId: 'helps',
-    reason: 'More detail.',
-  });
+  const fixing = fixSection(followed, 'helps', 'More detail.');
   const replaced = say(fixing, LONG_HELPS);
   assert.equal(replaced.answers['helps-more'], undefined);
   assert.equal(project(intakeTree, replaced).post.whatHelps, LONG_HELPS);
-  const skipped = reduceConversation(
-    intakeTree,
-    reduceConversation(intakeTree, followed, { type: 'fix', sectionId: 'helps', reason: 'Skip it.' }),
-    { type: 'skip' },
-  );
+  const skipped = reduceConversation(intakeTree, fixSection(followed, 'helps', 'Skip it.'), { type: 'skip' });
   assert.equal(skipped.answers['helps-more'], undefined);
   assert.equal(project(intakeTree, skipped).post.whatHelps, '');
 });
@@ -64,23 +53,15 @@ test('a blank answer stays on the question', () => {
   const blank = say(ready, '   ');
   assert.equal(blank, ready);
   const followed = say(say(ready, 'Headphones.'), 'A quiet corner');
-  const fixing = reduceConversation(intakeTree, followed, {
-    type: 'fix',
-    sectionId: 'helps',
-    reason: 'More detail.',
-  });
+  const fixing = fixSection(followed, 'helps', 'More detail.');
   const wiped = say(fixing, ' ');
   assert.equal(wiped, fixing);
-  assert.equal(project(intakeTree, wiped).post.whatHelps, 'Headphones. A quiet corner');
+  assert.equal(project(intakeTree, wiped).post.whatHelps, 'Headphones. A quiet corner.');
 });
 
 test('a second short answer keeps the earlier follow-up when nothing new is added', () => {
   const followed = say(say(atHelps(), 'Headphones.'), 'A quiet corner');
-  const fixing = reduceConversation(intakeTree, followed, {
-    type: 'fix',
-    sectionId: 'helps',
-    reason: 'Shorter.',
-  });
+  const fixing = fixSection(followed, 'helps', 'Shorter.');
   const shorter = say(fixing, 'Snack.');
   const view = presentAsk(intakeTree, shorter);
   assert.equal(view.kind, 'question');
@@ -90,7 +71,7 @@ test('a second short answer keeps the earlier follow-up when nothing new is adde
     true,
   );
   const kept = reduceConversation(intakeTree, shorter, { type: 'skip' });
-  assert.equal(project(intakeTree, kept).post.whatHelps, 'Snack. A quiet corner');
+  assert.equal(project(intakeTree, kept).post.whatHelps, 'Snack. A quiet corner.');
   assert.equal(kept.answers.loves, followed.answers.loves);
   const first = say(atHelps(), 'Headphones.');
   const cleared = reduceConversation(intakeTree, first, { type: 'skip' });
@@ -109,12 +90,19 @@ test('going back does not ask medical again after it was decided', () => {
 
 test('skip does not open the follow-up', () => {
   const skipped = reduceConversation(intakeTree, atHelps(), { type: 'skip' });
-  assert.equal(readyText(skipped), 'How does Rowan communicate when words are hard?');
+  assert.equal(readyText(skipped), acknowledged('How does Rowan communicate when words are hard?'));
   assert.deepEqual(skipped.answers.helps, { kind: 'skipped' });
   assert.equal(skipped.answers['helps-more'], undefined);
 });
 
 test('decline leaves medical empty and accept stores it off the post', () => {
+  const offer = presentAsk(intakeTree, atOffer());
+  assert.equal(offer.kind, 'offer');
+  if (offer.kind !== 'offer') return;
+  assert.equal(offer.lines.some((line) => line.text === intakeTree.medicalOffer.lead), true);
+  assert.equal(offer.lines.at(-1)?.text, intakeTree.medicalOffer.prompt);
+  assert.equal(offer.skipLabel, 'Skip for now');
+  assert.equal(offer.acceptLabel, 'Yes, add medical info');
   const declined = reduceConversation(intakeTree, atOffer(), { type: 'declineMedical' });
   assert.equal(declined.talk.mode, 'reviewWait');
   assert.equal(declined.medical, 'declined');
@@ -156,21 +144,38 @@ test('project builds the six-key post from the answers', () => {
 
 test('fix returns to that section and a blank reason does not', () => {
   const waiting = reduceConversation(intakeTree, atOffer(), { type: 'declineMedical' });
-  const blank = reduceConversation(intakeTree, waiting, { type: 'fix', sectionId: 'helps', reason: '   ' });
-  assert.equal(blank, waiting);
-  const fixing = reduceConversation(intakeTree, waiting, { type: 'fix', sectionId: 'helps', reason: ' Add a snack. ' });
+  const picking = reduceConversation(intakeTree, waiting, { type: 'beginFix' });
+  const pick = presentAsk(intakeTree, picking);
+  assert.equal(pick.kind, 'fixPick');
+  if (pick.kind !== 'fixPick') return;
+  assert.equal(pick.lines[0]?.text, intakeTree.fixCopy.pick);
+  assert.equal(pick.leave, "Rowan's profile");
+  assert.equal(
+    pick.chips.some((chip) => chip.id === 'helps' && chip.label === 'What helps'),
+    true,
+  );
+  const chosen = reduceConversation(intakeTree, picking, { type: 'chooseSection', sectionId: 'helps' });
+  const reason = presentAsk(intakeTree, chosen);
+  assert.equal(reason.kind, 'fixReason');
+  if (reason.kind !== 'fixReason') return;
+  assert.equal(reason.lines.at(-1)?.text, intakeTree.fixCopy.reason);
+  assert.equal(reason.leave, "Rowan's profile");
+  const blank = reduceConversation(intakeTree, chosen, { type: 'giveReason', text: '   ' });
+  assert.equal(blank, chosen);
+  const fixing = reduceConversation(intakeTree, chosen, { type: 'giveReason', text: ' Add a snack. ' });
   assert.equal(fixing.talk.mode, 'fixing');
   if (fixing.talk.mode !== 'fixing') return;
   assert.equal(fixing.talk.done, false);
   assert.equal(fixing.talk.reason, 'Add a snack.');
+  const fixingView = presentAsk(intakeTree, fixing);
+  assert.equal(fixingView.kind, 'question');
+  if (fixingView.kind !== 'question') return;
+  assert.equal(fixingView.leave, "Rowan's profile");
   assert.equal(readyText(fixing), 'When Rowan starts to feel overwhelmed, what helps most?');
   assert.equal(fixing.answers.loves, waiting.answers.loves);
   assert.equal(fixing.answers.sensory, waiting.answers.sensory);
   const replaced = say(fixing, 'Headphones.');
-  assert.equal(
-    readyText(replaced),
-    'Thanks, Headphones. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
-  );
+  assert.equal(readyText(replaced), HELPS_FOLLOW);
   assert.equal(replaced.answers.sensory, waiting.answers.sensory);
   const done = say(replaced, "That's everything");
   assert.equal(done.talk.mode, 'fixing');
@@ -184,7 +189,7 @@ test('fix returns to that section and a blank reason does not', () => {
   if (reopened.talk.mode !== 'ask') return;
   assert.equal(reopened.talk.nodeId, 'sensory');
   assert.equal(reopened.answers, back.answers);
-  assert.equal(project(intakeTree, back).post.whatHelps, "Headphones. That's everything");
+  assert.equal(project(intakeTree, back).post.whatHelps, "Headphones. That's everything.");
 });
 
 test('a transcript from speech and a typed string advance the same node', () => {
@@ -199,8 +204,35 @@ test('a transcript from speech and a typed string advance the same node', () => 
   assert.equal(heard, 'Trains at home.');
   assert.deepEqual(spoken.talk, typed.talk);
   assert.deepEqual(spoken.answers, typed.answers);
-  assert.equal(readyText(spoken), 'What does Rowan love, at church or at home?');
+  assert.equal(readyText(spoken), acknowledged('What does Rowan love, at church or at home?'));
 });
+
+const HELPS_FOLLOW =
+  'Thanks, that helps. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?';
+
+function acknowledged(prompt: string): string {
+  return `${intakeTree.acknowledgement} ${prompt}`;
+}
+
+function atReview(conversation: Conversation): Conversation {
+  let current = conversation;
+  while (current.talk.mode === 'ask' || current.talk.mode === 'intro') {
+    const next = reduceConversation(intakeTree, current, { type: 'skip' });
+    if (next === current) break;
+    current = next;
+  }
+  if (current.talk.mode === 'medicalOffer') {
+    return reduceConversation(intakeTree, current, { type: 'declineMedical' });
+  }
+  return current;
+}
+
+function fixSection(conversation: Conversation, sectionId: string, reason: string): Conversation {
+  const waiting = conversation.talk.mode === 'reviewWait' ? conversation : atReview(conversation);
+  const picking = reduceConversation(intakeTree, waiting, { type: 'beginFix' });
+  const chosen = reduceConversation(intakeTree, picking, { type: 'chooseSection', sectionId });
+  return reduceConversation(intakeTree, chosen, { type: 'giveReason', text: reason });
+}
 
 function say(conversation: Conversation, text: string): Conversation {
   return reduceConversation(intakeTree, conversation, { type: 'answer', text });
