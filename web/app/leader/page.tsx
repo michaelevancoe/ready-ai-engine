@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { postLesson } from '../../lib/drafts';
-import { checkInBrief, childPreferredName, readyValue, type ChurchSetup } from '../../lib/visit';
+import { postLesson, postSundayUpdate } from '../../lib/drafts';
+import { checkInBrief, childPreferredName, reviewValue, type ChurchSetup } from '../../lib/visit';
 import { useScrollWhen, useVisit } from '../visit-shell';
 
 const CHURCH_FIELDS = [
@@ -17,10 +17,12 @@ const CHURCH_FIELDS = [
 export default function LeaderPage() {
   const { visit, dispatch } = useVisit();
   const brief = checkInBrief(visit);
-  const lesson = readyValue(visit.lesson);
+  const lesson = reviewValue(visit.lesson);
   const blocked = brief.status !== 'approved';
   const [initialLesson] = useState(visit.lessonSource);
   const [churchSaved, setChurchSaved] = useState(false);
+  useScrollWhen(visit.update.phase === 'writing', 'update-status');
+  useScrollWhen(visit.update.phase === 'ready', 'update-draft');
   useScrollWhen(visit.lesson.phase === 'writing', 'lesson-status');
   useScrollWhen(visit.lesson.phase === 'ready', 'lesson-draft');
 
@@ -39,6 +41,20 @@ export default function LeaderPage() {
       },
     });
     setChurchSaved(true);
+  }
+
+  async function onWriteNote(): Promise<void> {
+    if (visit.role !== 'leader' || visit.notes.trim() === '' || visit.update.phase === 'writing') return;
+    dispatch({ type: 'writeUpdate' });
+    const result = await postSundayUpdate(visit.notes, childPreferredName(visit));
+    if (result.ok) dispatch({ type: 'updateReady', value: result.value });
+    else dispatch({ type: 'updateFailed', message: result.message });
+  }
+
+  function onApproveNote(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const value = new FormData(event.currentTarget).get('parentNote');
+    dispatch({ type: 'approveUpdate', body: typeof value === 'string' ? value : '' });
   }
 
   async function onAdapt(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -77,6 +93,44 @@ export default function LeaderPage() {
         </button>
       </form>
       {churchSaved ? <p role="status">Church saved.</p> : null}
+      <section aria-label="Internal notes">
+        <h2>Internal notes</h2>
+        <p>Only Theo Park and Devon Placeholder see this.</p>
+        {visit.notes.trim() === '' ? <p>None saved.</p> : <p>{visit.notes}</p>}
+      </section>
+      <section aria-label="Parent note">
+        <h2>Parent note</h2>
+        <button
+          type="button"
+          className="primary"
+          disabled={visit.notes.trim() === '' || visit.update.phase === 'writing'}
+          onClick={() => void onWriteNote()}
+        >
+          Write the parent note
+        </button>
+        {visit.update.phase === 'writing' ? (
+          <p id="update-status" className="draft-status" role="status">
+            Writing the draft.
+          </p>
+        ) : null}
+        {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
+        {visit.update.phase === 'ready' ? (
+          <form id="update-draft" onSubmit={onApproveNote}>
+            <label htmlFor="parent-note">Parent note</label>
+            <textarea
+              id="parent-note"
+              name="parentNote"
+              rows={5}
+              defaultValue={visit.update.value.body}
+              autoComplete="off"
+            />
+            <button type="submit" className="approve">
+              Approve parent note
+            </button>
+          </form>
+        ) : null}
+        {visit.update.phase === 'approved' ? <p className="draft-text">{visit.update.value.body}</p> : null}
+      </section>
       <section aria-label="Lesson adaptation">
         <h2>Adapt a lesson</h2>
         <form onSubmit={(event) => void onAdapt(event)}>
@@ -114,6 +168,11 @@ export default function LeaderPage() {
             </ol>
           </div>
         )}
+        {visit.lesson.phase === 'ready' ? (
+          <button type="button" className="approve" onClick={() => dispatch({ type: 'approveLesson' })}>
+            Approve lesson
+          </button>
+        ) : null}
       </section>
     </main>
   );

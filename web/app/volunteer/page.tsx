@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { checkInBrief, childHeading, childPreferredName } from '../../lib/visit';
+import { approvedValue, checkInBrief, childHeading, childPreferredName } from '../../lib/visit';
 import { useVisit } from '../visit-shell';
 
 export default function VolunteerPage() {
   const { visit, dispatch } = useVisit();
   const brief = checkInBrief(visit);
+  const lesson = approvedValue(visit.lesson);
   const [initialNotes] = useState(visit.notes);
   const [saved, setSaved] = useState(false);
 
@@ -62,6 +63,17 @@ export default function VolunteerPage() {
             </button>
           </form>
           {saved && visit.notes.trim() !== '' ? <p role="status">Notes saved.</p> : null}
+          {lesson === null ? null : (
+            <section aria-label="Sunday lesson">
+              <h2>Sunday lesson</h2>
+              <p>{lesson.summary}</p>
+              <ol>
+                {lesson.steps.map((step, index) => (
+                  <li key={`${index}-${step}`}>{step}</li>
+                ))}
+              </ol>
+            </section>
+          )}
         </section>
       ) : (
         <p>The parent has not approved a Sunday brief.</p>

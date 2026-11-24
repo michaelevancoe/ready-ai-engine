@@ -134,7 +134,7 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   );
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
-  assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), true);
+  assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);
   assert.equal(note.body.endsWith('Theo Park'), true);
   assert.equal(note.body.includes('['), false);
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
@@ -364,7 +364,7 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   );
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
-  assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), true);
+  assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);
   assert.equal(note.body.includes('Rowan'), true);
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');

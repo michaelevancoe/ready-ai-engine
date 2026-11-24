@@ -1,10 +1,12 @@
 'use client';
 
 import { Label } from '@radix-ui/react-label';
-import { useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
-import { postSocialStory, postSundayUpdate } from '../lib/drafts';
+import { useEffect, useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
+import { postSocialStory } from '../lib/drafts';
 import {
   approveProfile,
+  PROFILE_SECTIONS,
+  isProfileSection,
   readAnswers,
   reducePage,
   submitIntake,
@@ -15,11 +17,11 @@ import {
 import {
   BRIEF_FIELDS,
   BRIEF_LABELS,
+  approvedValue,
   briefLines,
   childHeading,
   childPreferredName,
-  readyValue,
-  storyValue,
+  reviewValue,
   type BriefField,
   type ProfileCard,
   type Visit,
@@ -42,9 +44,18 @@ export default function Page() {
   const phase = visit.intake;
   const view = viewOf(phase);
   const heading = childHeading(childPreferredName(visit));
+  const [fixOpen, setFixOpen] = useState(false);
+  const intakeKey = phase.status === 'ready' ? `ready:${phase.focus ?? ''}:${phase.fixReason}` : phase.status;
   useScrollWhen(phase.status === 'approved', 'edit-profile');
   useScrollWhen(phase.status === 'draft', 'profile');
   useScrollWhen(view.banner?.text === 'Writing the draft.', 'desk-status');
+  useEffect(() => {
+    if (phase.status !== 'ready' || phase.focus === null) return;
+    const node = document.getElementById(phase.focus);
+    if (!(node instanceof HTMLElement)) return;
+    node.focus();
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [phase]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -64,6 +75,18 @@ export default function Page() {
     const profile = phase.profile;
     dispatch({ type: 'intake', event: { type: 'approve' } });
     dispatch({ type: 'intake', event: await approveProfile(profile) });
+  }
+
+  function onFix(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (phase.status !== 'draft') return;
+    const data = new FormData(event.currentTarget);
+    const section = data.get('section');
+    const reason = data.get('reason');
+    if (typeof section !== 'string' || typeof reason !== 'string' || !isProfileSection(section)) return;
+    if (reason.trim() === '') return;
+    setFixOpen(false);
+    dispatch({ type: 'intake', event: { type: 'fix', section, reason } });
   }
 
   return (
@@ -101,7 +124,7 @@ export default function Page() {
           <span className="muted">{visit.church.service}</span>
         </span>
       </p>
-      <form id="intake" onSubmit={(event) => void onSubmit(event)}>
+      <form id="intake" key={intakeKey} onSubmit={(event) => void onSubmit(event)}>
         {view.fields.map((field) => (
           <div className="field" key={field.key}>
             <Label htmlFor={field.key}>{field.label}</Label>
@@ -111,6 +134,9 @@ export default function Page() {
               <input id={field.key} name={field.key} defaultValue={field.value} autoComplete="off" />
             )}
             {field.error === null ? null : <p role="alert">{field.error}</p>}
+            {phase.status === 'ready' && phase.focus === field.key && phase.fixReason !== '' ? (
+              <p role="status">{phase.fixReason}</p>
+            ) : null}
           </div>
         ))}
         {view.primary === 'submit' ? (
@@ -137,9 +163,31 @@ export default function Page() {
             </section>
           ))}
           {view.primary === 'approve' ? (
-            <button type="button" className="approve" onClick={() => void onApprove()}>
-              Approve
-            </button>
+            <>
+              <button type="button" className="approve" onClick={() => void onApprove()}>
+                Approve
+              </button>
+              {fixOpen ? (
+                <form onSubmit={onFix}>
+                  <fieldset>
+                    <legend>Which section is wrong?</legend>
+                    {PROFILE_SECTIONS.map(([key, label]) => (
+                      <label className="choice" key={key}>
+                        <input type="radio" name="section" value={key} required />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <label htmlFor="fix-reason">Reason</label>
+                  <input id="fix-reason" name="reason" required autoComplete="off" />
+                  <button type="submit">No, fix this</button>
+                </form>
+              ) : (
+                <button type="button" onClick={() => setFixOpen(true)}>
+                  No, fix this
+                </button>
+              )}
+            </>
           ) : null}
         </div>
       )}
@@ -166,8 +214,8 @@ function ApprovedJourney({
 }) {
   const [cardSaved, setCardSaved] = useState(false);
   const lines = briefLines(visit.card, visit.visibility);
-  const story = storyValue(visit.story);
-  const update = readyValue(visit.update);
+  const story = reviewValue(visit.story);
+  const update = approvedValue(visit.update);
   const shared = visit.brief.phase === 'approved' ? visit.brief.lines : lines;
   const medicalShared = shared.some((line) => line.field === 'medical');
   const name = childPreferredName(visit);
@@ -175,8 +223,6 @@ function ApprovedJourney({
   useScrollWhen(visit.story.phase === 'ready', 'story-draft');
   useScrollWhen(visit.story.phase === 'approved', 'sunday-brief');
   useScrollWhen(visit.brief.phase === 'approved', 'sunday-update');
-  useScrollWhen(visit.update.phase === 'writing', 'update-status');
-  useScrollWhen(visit.update.phase === 'ready', 'update-draft');
 
   function readCard(): ProfileCard {
     const form = document.getElementById('profile-card');
@@ -210,14 +256,6 @@ function ApprovedJourney({
     const card = readCard();
     if (cardChanged(card)) dispatch({ type: 'saveCard', card });
     dispatch({ type: 'approveBrief' });
-  }
-
-  async function onWriteUpdate(): Promise<void> {
-    if (visit.notes.trim() === '' || visit.update.phase === 'writing') return;
-    dispatch({ type: 'writeUpdate' });
-    const result = await postSundayUpdate(visit.notes, name);
-    if (result.ok) dispatch({ type: 'updateReady', value: result.value });
-    else dispatch({ type: 'updateFailed', message: result.message });
   }
 
   return (
@@ -313,22 +351,9 @@ function ApprovedJourney({
       {visit.brief.phase === 'approved' ? (
         <section aria-label="Sunday update" id="sunday-update">
           <h2>Sunday update</h2>
-          {visit.notes.trim() === '' ? <p>Theo's notes will appear here.</p> : null}
-          <button
-            type="button"
-            className="primary"
-            disabled={visit.notes.trim() === '' || visit.update.phase === 'writing'}
-            onClick={() => void onWriteUpdate()}
-          >
-            Write the Sunday update
-          </button>
-          {visit.update.phase === 'writing' ? (
-            <p id="update-status" className="draft-status" role="status">
-              Writing the draft.
-            </p>
-          ) : null}
-          {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
-          {update === null ? null : (
+          {update === null ? (
+            <p>Waiting for an approved Sunday update.</p>
+          ) : (
             <p className="draft-text" id="update-draft">
               {update.body}
             </p>

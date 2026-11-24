@@ -47,11 +47,11 @@ The demo uses the mock unless you set `READY_DEMO_MODEL` to `live`. Any other va
 
 **Parent**, **Volunteer**, and **Leader** are links at the top. They share one visit in the browser. A refresh resets that visit. Mock mode stays the default.
 
-Avery Sampleton uses Parent to approve Rowan's profile and a Sunday brief. The brief keeps the visible fields that have text at the moment of approval. The medical field starts off. Avery must turn it on and approve again before the brief includes it.
+Avery Sampleton uses Parent to approve Rowan's profile and a Sunday brief. Avery does not write the Sunday update. The brief keeps the visible fields that have text at the moment of approval. The medical field starts off. Avery must turn it on and approve again before the brief includes it. Avery sees the Sunday update only after Devon approves it.
 
-Theo Park uses Volunteer to read that brief and save notes after Sunday. Volunteer shows no profile text before the brief is approved.
+Theo Park uses Volunteer to read that brief and save notes after Sunday. Those notes stay on the volunteer and leader screens. Volunteer shows no profile text before the brief is approved. Volunteer sees the lesson only after Devon approves it.
 
-Devon Placeholder uses Leader to edit the church and adapt a fictional lesson. **Adapt lesson** stays off until the Sunday brief is approved. The lesson uses that approved brief.
+Devon Placeholder uses Leader to edit the church and adapt a fictional lesson. Devon writes a separate parent note and approves it. Devon approves the lesson before a volunteer sees it. **Adapt lesson** stays off until the Sunday brief is approved. The lesson uses that approved brief.
 
 From the repo root, install, check, and test. Then start the demo process.
 
