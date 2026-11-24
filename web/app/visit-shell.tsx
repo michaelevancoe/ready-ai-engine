@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { createContext, useContext, useEffect, useReducer, type Dispatch, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useReducer,
+  useRef,
+  type Dispatch,
+  type ReactNode,
+} from 'react';
 import { FICTIONAL_DATA_LABEL } from '../lib/fictional-label';
 import { initialVisit, reduceVisit, type DemoRole, type Visit, type VisitEvent } from '../lib/visit';
 
@@ -17,6 +25,16 @@ export function useVisit(): VisitState {
   const state = useContext(VisitContext);
   if (state === null) throw new Error('Visit state is missing.');
   return state;
+}
+
+export function useScrollWhen(active: boolean, id: string, block: ScrollLogicalPosition = 'start'): void {
+  const previous = useRef(active);
+  useEffect(() => {
+    if (!previous.current && active) {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block });
+    }
+    previous.current = active;
+  }, [active, block, id]);
 }
 
 export function VisitShell({ children }: { children: ReactNode }) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { storyBodyAccepted, updateBodyAccepted } from '../src/demo-drafts.ts';
+import { storyBodyAccepted, stripBracketPlaceholders, updateBodyAccepted } from '../src/demo-drafts.ts';
 
 const labels =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
@@ -29,4 +29,20 @@ test('updateBodyAccepted accepts the model words around the notes', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const body = `Sunday went well. ${notes} The quiet seat helped.`;
   assert.equal(updateBodyAccepted(body, notes, 'Juniper'), true);
+});
+
+test('stripBracketPlaceholders removes a bracketed name and keeps the note', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const body = `Sunday went well. ${notes} The quiet seat helped.\n[Volunteer's Name]`;
+  assert.equal(
+    stripBracketPlaceholders(body),
+    `Sunday went well. ${notes} The quiet seat helped.`,
+  );
+  assert.equal(stripBracketPlaceholders('Hello [Name].'), 'Hello.');
+  assert.equal(stripBracketPlaceholders('[Name]'), '');
+  assert.equal(stripBracketPlaceholders('Thanks, [Volunteer’s Name].'), 'Thanks.');
+});
+
+test('updateBodyAccepted rejects an empty body left by a placeholder', () => {
+  assert.equal(updateBodyAccepted('', 'TICK-AFTER-SUNDAY', 'Juniper'), false);
 });

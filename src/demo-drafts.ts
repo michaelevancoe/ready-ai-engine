@@ -51,6 +51,8 @@ const LINE_KEYS = ['field', 'label', 'text'] as const;
 const SOCIAL_STORY_RULES = [
   'The data is fictional. Do not invent medical facts.',
   'Write a short warm story a child could hear before church, in the first person or the second person.',
+  'Open naturally, as in "You arrive at church" or "I arrive at church".',
+  'Do not set the child\'s name off with commas, and do not write "you, Name,".',
   'Use a few short sentences about arriving, the room, what might happen, and what helps.',
   "Use only the approved lines and the child's preferred name.",
   'Return JSON with title and body, and write the body as prose rather than a dict.',
@@ -64,12 +66,16 @@ const LESSON_RULES = [
   'Do not drop a lesson step.',
 ].join(' ');
 
+export const DEMO_VOLUNTEER_NAME = 'Theo Park';
+
 const SUNDAY_RULES = [
   'The data is fictional. Do not invent medical facts.',
   'Write a short warm note from the volunteer to the parent, in your own words, summarizing how Sunday went.',
   'Mention wins and what helped.',
-  'Invent nothing beyond the notes and the name.',
+  'Invent nothing beyond the notes and the names.',
   'Do not copy the notes.',
+  `Sign the note as ${DEMO_VOLUNTEER_NAME}, or leave no signature line.`,
+  "Do not write a bracketed placeholder such as [Name] or [Volunteer's Name].",
 ].join(' ');
 
 const LABEL_WORDS = new Set([
@@ -212,7 +218,10 @@ export function lessonMessages(request: LessonRequest): DraftMessage[] {
 export function sundayUpdateMessages(request: SundayUpdateRequest): DraftMessage[] {
   return [
     { role: 'system', content: SUNDAY_RULES },
-    { role: 'user', content: `Child: ${request.childName}\nNotes:\n${request.notes}` },
+    {
+      role: 'user',
+      content: `Child: ${request.childName}\nVolunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n${request.notes}`,
+    },
   ];
 }
 
@@ -237,8 +246,24 @@ function withoutChildName(body: string, childName: string): string {
   return body.split(childName).join('');
 }
 
+const BRACKET_PLACEHOLDER = /\[[A-Za-z][A-Za-z'’/\- ]{0,79}\]/g;
+
+export function stripBracketPlaceholders(body: string): string {
+  return body
+    .replace(BRACKET_PLACEHOLDER, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .replace(/,([.!?])/g, '$1')
+    .replace(/,\s*,/g, ',')
+    .replace(/\n\s*[—–-]\s*(?=\n|$)/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function updateBodyAccepted(body: string, notes: string, childName: string): boolean {
-  if (body === notes) return false;
+  if (body.length === 0 || body === notes) return false;
   return collapseSpace(withoutChildName(body, childName)) !== collapseSpace(notes);
 }
 
@@ -264,6 +289,7 @@ export function parseLesson(value: unknown): LessonDraft {
 export function parseSundayUpdate(value: unknown, notes: string, childName: string): SundayUpdateDraft {
   if (!validateJson(sundayUpdateSchema, value) || !isRecord(value)) throw new SchemaRejected();
   if (typeof value.body !== 'string') throw new SchemaRejected();
-  if (!updateBodyAccepted(value.body, notes, childName)) throw new SchemaRejected();
-  return { body: value.body };
+  const body = stripBracketPlaceholders(value.body);
+  if (!updateBodyAccepted(body, notes, childName)) throw new SchemaRejected();
+  return { body };
 }

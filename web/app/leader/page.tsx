@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { postLesson } from '../../lib/drafts';
 import { checkInBrief, childPreferredName, readyValue, type ChurchSetup } from '../../lib/visit';
-import { useVisit } from '../visit-shell';
+import { useScrollWhen, useVisit } from '../visit-shell';
 
 const CHURCH_FIELDS = [
   ['name', 'Church name'],
@@ -21,6 +21,8 @@ export default function LeaderPage() {
   const blocked = brief.status !== 'approved';
   const [initialLesson] = useState(visit.lessonSource);
   const [churchSaved, setChurchSaved] = useState(false);
+  useScrollWhen(visit.lesson.phase === 'writing', 'lesson-status', 'nearest');
+  useScrollWhen(visit.lesson.phase === 'ready', 'lesson-draft', 'nearest');
 
   function onSaveChurch(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -95,18 +97,22 @@ export default function LeaderPage() {
           >
             Adapt lesson
           </button>
+          {visit.lesson.phase === 'writing' ? (
+            <p id="lesson-status" className="draft-status" role="status">
+              Writing the draft.
+            </p>
+          ) : null}
         </form>
-        {visit.lesson.phase === 'writing' ? <p role="status">Writing the draft.</p> : null}
         {visit.lesson.phase === 'failed' ? <p role="alert">{visit.lesson.message}</p> : null}
         {lesson === null ? null : (
-          <>
+          <div id="lesson-draft">
             <p>{lesson.summary}</p>
             <ol>
               {lesson.steps.map((step, index) => (
                 <li key={`${index}-${step}`}>{step}</li>
               ))}
             </ol>
-          </>
+          </div>
         )}
       </section>
     </main>

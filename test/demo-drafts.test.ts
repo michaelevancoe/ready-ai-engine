@@ -62,15 +62,22 @@ test('live drafts call the intake model and hide the gateway token', async () =>
     'lesson_adaptation',
     'Child: Rowan\nLesson:\nTICK-LESSON-PLAN\nApproved needs:\nSensory needs: TICK-QUIET-ROOM',
   );
-  assertCall(calls[2], 'sunday_update', 'Child: Rowan\nNotes:\nTICK-AFTER-SUNDAY');
+  assertCall(
+    calls[2],
+    'sunday_update',
+    'Child: Rowan\nVolunteer: Theo Park\nNotes:\nTICK-AFTER-SUNDAY',
+  );
   const storySystem = systemText(calls[0]);
   assert.equal(storySystem.includes('rather than a dict'), true);
+  assert.equal(storySystem.includes("Do not set the child's name off with commas"), true);
   const lessonSystem = systemText(calls[1]);
   assert.equal(lessonSystem.includes('the individual'), true);
   assert.equal(lessonSystem.includes('Do not drop a lesson step.'), true);
   const updateSystem = systemText(calls[2]);
   assert.equal(updateSystem.includes('your own words'), true);
   assert.equal(updateSystem.includes('Do not copy the notes.'), true);
+  assert.equal(updateSystem.includes('Theo Park'), true);
+  assert.equal(updateSystem.includes("[Volunteer's Name]"), true);
   const storyText = JSON.stringify(await story.json());
   assert.equal(storyText.includes(testEnv.AI_GATEWAY_TOKEN), false);
 });
@@ -84,7 +91,7 @@ test('the Sunday update user message is plain text', async () => {
   assert.equal(update.status, 200);
   assert.equal(calls.length, 1);
   const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content;
-  assert.equal(user, 'Child: Rowan\nNotes:\nTICK-AFTER-SUNDAY');
+  assert.equal(user, 'Child: Rowan\nVolunteer: Theo Park\nNotes:\nTICK-AFTER-SUNDAY');
 });
 
 test('a failed draft does not return the gateway body', async () => {
@@ -128,6 +135,8 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), true);
+  assert.equal(note.body.endsWith('Theo Park'), true);
+  assert.equal(note.body.includes('['), false);
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');
   assert.notEqual(note.body.replace(/\s+/g, ''), 'TICK-AFTER-SUNDAYRowan');
@@ -168,6 +177,22 @@ test('parseSundayUpdate accepts the model words around the notes', () => {
   assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper'), { body });
 });
 
+test('parseSundayUpdate strips a bracketed name so it never reaches the screen', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const told = `Sunday went well. ${notes} The quiet seat helped.`;
+  assert.deepEqual(
+    parseSundayUpdate({ body: `${told}\n[Volunteer's Name]` }, notes, 'Juniper'),
+    { body: told },
+  );
+  assert.deepEqual(parseSundayUpdate({ body: `${told} [Name]` }, notes, 'Juniper'), { body: told });
+  assert.throws(() => parseSundayUpdate({ body: '[Name]' }, notes, 'Juniper'), SchemaRejected);
+  assert.throws(
+    () => parseSundayUpdate({ body: "[Volunteer's Name]" }, notes, 'Juniper'),
+    SchemaRejected,
+  );
+  assert.throws(() => parseSundayUpdate({ body: `${notes}\n[Name]` }, notes, 'Juniper'), SchemaRejected);
+});
+
 test('a dict story body fails the existing generation retry', async () => {
   const result = await generated(
     '/v1/drafts/social-story',
@@ -191,6 +216,29 @@ test('a copied Sunday update fails the existing generation retry', async () => {
   );
   assert.equal(named.status, 502);
   assert.equal(named.calls, 3);
+});
+
+test('a bracketed Sunday signature is stripped and a placeholder alone retries', async () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const told = `Sunday went well. ${notes} The quiet seat helped.`;
+  const signed = await generated(
+    '/v1/drafts/sunday-update',
+    { notes, childName: 'Juniper' },
+    { body: `${told}\n[Volunteer's Name]` },
+  );
+  assert.equal(signed.status, 200);
+  assert.equal(signed.calls, 1);
+  assert.deepEqual(signed.payload, { body: told });
+  assert.equal(JSON.stringify(signed.payload).includes('['), false);
+
+  const only = await generated(
+    '/v1/drafts/sunday-update',
+    { notes, childName: 'Juniper' },
+    { body: '[Name]' },
+  );
+  assert.equal(only.status, 502);
+  assert.equal(only.calls, 3);
+  assert.deepEqual(only.payload, { error: 'generation_failed' });
 });
 
 test('a Sunday update with the model words is returned', async () => {

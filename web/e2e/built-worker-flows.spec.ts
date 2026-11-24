@@ -28,10 +28,13 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(page.getByRole('heading', { name: 'Approved', exact: true })).toBeVisible();
   await expect
     .poll(async () => {
+      const nav = await page.getByRole('navigation', { name: 'Role' }).boundingBox();
       const box = await page.getByRole('region', { name: 'Edit profile' }).boundingBox();
-      return box?.y ?? 1000;
+      if (nav === null || box === null) return false;
+      const gap = box.y - (nav.y + nav.height);
+      return gap >= -4 && gap < 48;
     })
-    .toBeLessThan(48);
+    .toBe(true);
   await save(page, 'flows-parent-approved.png');
 
   await page.getByRole('link', { name: 'Volunteer' }).click();

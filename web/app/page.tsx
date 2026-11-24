@@ -1,7 +1,7 @@
 'use client';
 
 import { Label } from '@radix-ui/react-label';
-import { useEffect, useRef, useState, type Dispatch, type FormEvent } from 'react';
+import { useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
 import { postSocialStory, postSundayUpdate } from '../lib/drafts';
 import {
   approveProfile,
@@ -25,24 +25,25 @@ import {
   type Visit,
   type VisitEvent,
 } from '../lib/visit';
-import { useVisit } from './visit-shell';
+import { useScrollWhen, useVisit } from './visit-shell';
 
-function useScrollOnEnter(active: boolean, id: string): void {
-  const previous = useRef(active);
-  useEffect(() => {
-    if (!previous.current && active) {
-      document.getElementById(id)?.scrollIntoView({ block: 'start' });
-    }
-    previous.current = active;
-  }, [active, id]);
-}
+const STEPS = [
+  ['intake', 'Intake'],
+  ['profile', 'Profile'],
+  ['sunday-story', 'Story'],
+  ['sunday-brief', 'Brief'],
+  ['sunday-update', 'Update'],
+] as const;
+
+type StepId = (typeof STEPS)[number][0];
 
 export default function Page() {
   const { visit, dispatch } = useVisit();
   const phase = visit.intake;
   const view = viewOf(phase);
   const heading = childHeading(childPreferredName(visit));
-  useScrollOnEnter(phase.status === 'approved', 'edit-profile');
+  useScrollWhen(phase.status === 'approved', 'edit-profile');
+  useScrollWhen(view.banner?.text === 'Writing the draft.', 'desk-status', 'nearest');
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -77,11 +78,20 @@ export default function Page() {
         Avery Sampleton reviews a Sunday brief for {heading} before Theo Park or Devon Placeholder can see it.
       </p>
       <ol className="steps" aria-label="Sunday steps">
-        <li>Intake</li>
-        <li>Profile</li>
-        <li>Story</li>
-        <li>Brief</li>
-        <li>Update</li>
+        {STEPS.map(([id, label]) => {
+          const target = stepTarget(id, phase.status, visit.brief.phase, view.statusLabel !== null);
+          return (
+            <li key={id}>
+              {target === null ? (
+                label
+              ) : (
+                <a href={`#${target}`} onClick={(event) => jumpTo(event, target)}>
+                  {label}
+                </a>
+              )}
+            </li>
+          );
+        })}
       </ol>
       <p className="church-card">
         <span className="portrait">Placeholder photo</span>
@@ -90,7 +100,7 @@ export default function Page() {
           <span className="muted">{visit.church.service}</span>
         </span>
       </p>
-      <form onSubmit={(event) => void onSubmit(event)}>
+      <form id="intake" onSubmit={(event) => void onSubmit(event)}>
         {view.fields.map((field) => (
           <div className="field" key={field.key}>
             <Label htmlFor={field.key}>{field.label}</Label>
@@ -107,23 +117,31 @@ export default function Page() {
             Submit
           </button>
         ) : null}
+        {view.banner?.tone === 'busy' ? (
+          <p id="desk-status" className="draft-status" role="status">
+            {view.banner.text}
+          </p>
+        ) : null}
       </form>
-      {view.banner?.tone === 'busy' ? <p role="status">{view.banner.text}</p> : null}
       {view.banner?.tone === 'error' ? <p role="alert">{view.banner.text}</p> : null}
-      {view.statusLabel === null ? null : <h2>{view.statusLabel}</h2>}
-      {view.sections.map((section) => (
-        <section key={section.heading} aria-label={section.heading}>
-          <h3>{section.heading}</h3>
-          {section.lines.map((line, index) => (
-            <p key={`${section.heading}-${index}`}>{line}</p>
+      {view.statusLabel === null ? null : (
+        <div id="profile">
+          <h2>{view.statusLabel}</h2>
+          {view.sections.map((section) => (
+            <section key={section.heading} aria-label={section.heading}>
+              <h3>{section.heading}</h3>
+              {section.lines.map((line, index) => (
+                <p key={`${section.heading}-${index}`}>{line}</p>
+              ))}
+            </section>
           ))}
-        </section>
-      ))}
-      {view.primary === 'approve' ? (
-        <button type="button" className="approve" onClick={() => void onApprove()}>
-          Approve
-        </button>
-      ) : null}
+          {view.primary === 'approve' ? (
+            <button type="button" className="approve" onClick={() => void onApprove()}>
+              Approve
+            </button>
+          ) : null}
+        </div>
+      )}
       {view.dismiss ? (
         <button type="button" onClick={() => dispatch({ type: 'intake', event: { type: 'dismiss' } })}>
           Back
@@ -152,8 +170,12 @@ function ApprovedJourney({
   const shared = visit.brief.phase === 'approved' ? visit.brief.lines : lines;
   const medicalShared = shared.some((line) => line.field === 'medical');
   const name = childPreferredName(visit);
-  useScrollOnEnter(visit.story.phase === 'approved', 'sunday-brief');
-  useScrollOnEnter(visit.brief.phase === 'approved', 'sunday-update');
+  useScrollWhen(visit.story.phase === 'writing', 'story-status', 'nearest');
+  useScrollWhen(visit.story.phase === 'ready', 'story-draft', 'nearest');
+  useScrollWhen(visit.story.phase === 'approved', 'sunday-brief');
+  useScrollWhen(visit.brief.phase === 'approved', 'sunday-update');
+  useScrollWhen(visit.update.phase === 'writing', 'update-status', 'nearest');
+  useScrollWhen(visit.update.phase === 'ready', 'update-draft', 'nearest');
 
   function readCard(): ProfileCard {
     const form = document.getElementById('profile-card');
@@ -236,7 +258,9 @@ function ApprovedJourney({
         <button
           type="button"
           className="primary"
-          onClick={() => document.getElementById('sunday-story')?.scrollIntoView({ block: 'start' })}
+          onClick={() =>
+            document.getElementById('sunday-story')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
         >
           Continue
         </button>
@@ -251,10 +275,14 @@ function ApprovedJourney({
         >
           Write the Sunday story
         </button>
-        {visit.story.phase === 'writing' ? <p role="status">Writing the draft.</p> : null}
+        {visit.story.phase === 'writing' ? (
+          <p id="story-status" className="draft-status" role="status">
+            Writing the draft.
+          </p>
+        ) : null}
         {visit.story.phase === 'failed' ? <p role="alert">{visit.story.message}</p> : null}
         {story === null ? null : (
-          <div className="story-card">
+          <div className="story-card" id="story-draft">
             <h3>{story.title}</h3>
             <p className="draft-text">{story.body}</p>
           </div>
@@ -293,9 +321,17 @@ function ApprovedJourney({
           >
             Write the Sunday update
           </button>
-          {visit.update.phase === 'writing' ? <p role="status">Writing the draft.</p> : null}
+          {visit.update.phase === 'writing' ? (
+            <p id="update-status" className="draft-status" role="status">
+              Writing the draft.
+            </p>
+          ) : null}
           {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
-          {update === null ? null : <p className="draft-text">{update.body}</p>}
+          {update === null ? null : (
+            <p className="draft-text" id="update-draft">
+              {update.body}
+            </p>
+          )}
         </section>
       ) : null}
     </>
@@ -345,6 +381,35 @@ function ShareSwitch({
       </span>
     </button>
   );
+}
+
+function stepTarget(
+  id: StepId,
+  intake: Visit['intake']['status'],
+  brief: Visit['brief']['phase'],
+  profileVisible: boolean,
+): string | null {
+  switch (id) {
+    case 'intake':
+      return 'intake';
+    case 'profile':
+      if (!profileVisible) return null;
+      return intake === 'approved' ? 'edit-profile' : 'profile';
+    case 'sunday-story':
+    case 'sunday-brief':
+      return intake === 'approved' ? id : null;
+    case 'sunday-update':
+      return brief === 'approved' ? id : null;
+    default: {
+      const leftover: never = id;
+      return leftover;
+    }
+  }
+}
+
+function jumpTo(event: MouseEvent<HTMLAnchorElement>, id: string): void {
+  event.preventDefault();
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function answersFrom(form: FormData): AnswerDraft {
