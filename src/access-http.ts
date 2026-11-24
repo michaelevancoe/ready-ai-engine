@@ -1,7 +1,8 @@
-import { runAccess, type AccessCommand, type AccessWorld } from './access.ts';
+import { runAccess, runAccessForUser, type AccessCommand, type AccessWorld } from './access.ts';
 import { InputError } from './errors.ts';
 import { json, readJson } from './http.ts';
 import { isRecord } from './schema.ts';
+import type { AuthVerifier } from './supabase-auth.ts';
 
 function sessionId(request: Request): string | null {
   const header = request.headers.get('authorization');
@@ -63,10 +64,18 @@ async function commandFor(request: Request, pathname: string): Promise<AccessCom
   return null;
 }
 
-export async function handleAccess(request: Request, world: AccessWorld): Promise<Response> {
+export async function handleAccess(
+  request: Request,
+  world: AccessWorld,
+  verifier?: AuthVerifier,
+): Promise<Response> {
   const url = new URL(request.url);
   const command = await commandFor(request, url.pathname);
   if (command === null) return json({ error: 'not_found' }, 404);
-  const result = runAccess(world, sessionId(request), command);
+  const token = sessionId(request);
+  const result =
+    verifier === undefined
+      ? runAccess(world, token, command)
+      : runAccessForUser(world, token === null ? null : ((await verifier.verify(token))?.userId ?? null), command);
   return json(result.body, result.status);
 }

@@ -294,11 +294,13 @@ function acceptInvite(
   return { status: 201, body: { role: invite.role } };
 }
 
-export function runAccess(world: AccessWorld, sessionId: string | null, command: AccessCommand): AccessResult {
-  if (sessionId === null) return unauthorized();
-  const session = world.sessions.find((item) => item.sessionId === sessionId);
-  if (session === undefined) return unauthorized();
-  const actor = actorOf(world, session.userId);
+export function runAccessForUser(
+  world: AccessWorld,
+  userId: string | null,
+  command: AccessCommand,
+): AccessResult {
+  if (userId === null) return unauthorized();
+  const actor = actorOf(world, userId);
   switch (command.type) {
     case 'membership':
       if (actor === null) return notFound();
@@ -314,12 +316,19 @@ export function runAccess(world: AccessWorld, sessionId: string | null, command:
     case 'grant':
       return grantMedical(world, actor, command.childId);
     case 'register':
-      return selfRegister(world, session.userId, command.organizationId, command.requestedRole);
+      return selfRegister(world, userId, command.organizationId, command.requestedRole);
     case 'invite':
       return createInvite(world, actor, command.organizationId, command.requestedRole);
     case 'accept':
-      return acceptInvite(world, session.userId, command.inviteId, command.claimedRole);
+      return acceptInvite(world, userId, command.inviteId, command.claimedRole);
     default:
       return assertNever(command);
   }
+}
+
+export function runAccess(world: AccessWorld, sessionId: string | null, command: AccessCommand): AccessResult {
+  if (sessionId === null) return unauthorized();
+  const session = world.sessions.find((item) => item.sessionId === sessionId);
+  if (session === undefined) return unauthorized();
+  return runAccessForUser(world, session.userId, command);
 }
