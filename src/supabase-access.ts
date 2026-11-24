@@ -98,9 +98,17 @@ export function supabaseAccessSource(options: SupabaseAccessOptions): AccessSour
         method: init.method,
         headers,
         body,
+        redirect: 'manual',
         signal: timer.signal,
       });
       status = response.status;
+      if (status >= 300 && status < 400) {
+        await response.body?.cancel()?.then(
+          () => undefined,
+          () => undefined,
+        );
+        return { status: 401, body: null };
+      }
       text = await response.text();
     } catch (error) {
       throw new UpstreamError(isTimeout(error) ? 504 : 503);
@@ -196,14 +204,19 @@ export function supabaseAccessSource(options: SupabaseAccessOptions): AccessSour
       if (!isRecord(line) || typeof line.field !== 'string' || typeof line.text !== 'string') {
         throw new StoreError(502);
       }
+      if (line.field === 'medical') continue;
       lines.push({ field: line.field, text: line.text });
     }
-    const visible = await rpc('medical_visible', input.accessToken, { target_child: row.child_id });
-    const failure = rpcFailure(visible);
-    if (failure !== null) return failure;
-    if (visible.body !== true && visible.body !== false) throw new StoreError(502);
-    const shown = visible.body ? lines : lines.filter((line) => line.field !== 'medical');
-    return { status: 200, body: { id: briefId, lines: shown } };
+    const note = await one('medical_notes', input.accessToken, {
+      select: 'note',
+      child_id: `eq.${row.child_id}`,
+    });
+    if (isResult(note)) return note;
+    if (note !== null) {
+      if (typeof note.note !== 'string') throw new StoreError(502);
+      lines.push({ field: 'medical', text: note.note });
+    }
+    return { status: 200, body: { id: briefId, lines } };
   }
 
   async function readChurch(input: AccessCaller, organizationId: string): Promise<AccessResult> {

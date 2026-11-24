@@ -1,4 +1,4 @@
-import { runAccess, runAccessForUser, type AccessCommand, type AccessWorld } from './access.ts';
+import type { AccessCommand } from './access.ts';
 import { InputError } from './errors.ts';
 import { json, readJson } from './http.ts';
 import { isRecord } from './schema.ts';
@@ -63,22 +63,6 @@ async function commandFor(request: Request, pathname: string): Promise<AccessCom
     return { type: 'accept', inviteId: accept[1], claimedRole: typeof claimed === 'string' ? claimed : null };
   }
   return null;
-}
-
-export async function handleAccess(
-  request: Request,
-  world: AccessWorld,
-  verifier?: AuthVerifier,
-): Promise<Response> {
-  const url = new URL(request.url);
-  const command = await commandFor(request, url.pathname);
-  if (command === null) return json({ error: 'not_found' }, 404);
-  const token = sessionId(request);
-  const result =
-    verifier === undefined
-      ? runAccess(world, token, command)
-      : runAccessForUser(world, token === null ? null : ((await verifier.verify(token))?.userId ?? null), command);
-  return json(result.body, result.status);
 }
 
 export async function handleAccessSource(

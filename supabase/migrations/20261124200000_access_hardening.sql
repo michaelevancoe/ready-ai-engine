@@ -243,12 +243,15 @@ create policy rooms_select_scoped
   to authenticated
   using (
     public.current_membership_role(organization_id) = 'leader'
-    or exists (
-      select 1
-      from public.volunteer_assignments a
-      where a.room_id = rooms.id
-        and a.organization_id = rooms.organization_id
-        and a.user_id = auth.uid()
+    or (
+      public.current_membership_role(organization_id) = 'volunteer'
+      and exists (
+        select 1
+        from public.volunteer_assignments a
+        where a.room_id = rooms.id
+          and a.organization_id = rooms.organization_id
+          and a.user_id = auth.uid()
+      )
     )
   );
 
@@ -258,14 +261,21 @@ create policy sundays_select_scoped
   to authenticated
   using (
     public.current_membership_role(organization_id) = 'leader'
-    or exists (
-      select 1
-      from public.volunteer_assignments a
-      where a.sunday_id = sundays.id
-        and a.organization_id = sundays.organization_id
-        and a.user_id = auth.uid()
+    or (
+      public.current_membership_role(organization_id) = 'volunteer'
+      and exists (
+        select 1
+        from public.volunteer_assignments a
+        where a.sunday_id = sundays.id
+          and a.organization_id = sundays.organization_id
+          and a.user_id = auth.uid()
+      )
     )
   );
+
+alter table public.shared_briefs
+  add constraint shared_briefs_lines_no_medical
+  check (not (lines @> '[{"field":"medical"}]'::jsonb));
 
 create policy volunteer_assignments_select_scoped
   on public.volunteer_assignments

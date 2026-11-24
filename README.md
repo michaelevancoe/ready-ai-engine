@@ -175,9 +175,9 @@ Leave `READY_SIGN_IN` unset. The demo worker and the intake routes stay as they 
 
 Set `READY_SIGN_IN=on` to open those routes on a local engine process. The process reads `SUPABASE_URL` and `SUPABASE_ANON_KEY`. It checks the caller's bearer token with `GET /auth/v1/user`, then reads and writes memberships, children, briefs, invites, and medical grants with that same token so row-level security applies. It ignores Auth role claims. It does not read a service-role key.
 
-Tests use a fake Auth response for that check. Tests that omit the verifier still use a local session directory. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
+Tests use a fake Auth response for that check. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
 
-A parent reads only their own child and self-registers as a parent. A volunteer reads only a shared brief for their room and Sunday. Medical lines stay out of that brief until that child's parent grants them. A leader reads that church's setup and lessons, and invites a volunteer or a leader. A requested role that does not match that path is refused.
+A parent reads only their own child and self-registers as a parent. A volunteer reads only a shared brief for their room and Sunday. Medical text lives in `medical_notes`, and a brief line cannot use the field `medical`. A leader reads that church's setup and lessons, and invites a volunteer or a leader. A requested role that does not match that path is refused.
 
 ## Move to team-owned accounts
 

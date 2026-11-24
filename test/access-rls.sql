@@ -15,6 +15,12 @@ insert into public.children (id, organization_id, display_name, parent_user_id) 
     '10000000-0000-4000-8000-0000000000a1',
     'Harbor Child',
     '10000000-0000-4000-8000-0000000000c1'
+  ),
+  (
+    '10000000-0000-4000-8000-0000000000d2',
+    '10000000-0000-4000-8000-0000000000a1',
+    'Other Child',
+    '10000000-0000-4000-8000-0000000000c2'
   );
 
 insert into public.memberships (organization_id, user_id, role) values
@@ -46,16 +52,78 @@ insert into public.volunteer_assignments (organization_id, user_id, room_id, sun
     '10000000-0000-4000-8000-0000000000c4',
     '10000000-0000-4000-8000-0000000000e2',
     '10000000-0000-4000-8000-0000000000f2'
+  ),
+  (
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000c1',
+    '10000000-0000-4000-8000-0000000000e1',
+    '10000000-0000-4000-8000-0000000000f1'
   );
 
-insert into public.shared_briefs (id, organization_id, child_id, room_id, sunday_id, shared, lines) values (
-  '10000000-0000-4000-8000-0000000000b1',
-  '10000000-0000-4000-8000-0000000000a1',
+insert into public.shared_briefs (id, organization_id, child_id, room_id, sunday_id, shared, lines) values
+  (
+    '10000000-0000-4000-8000-0000000000b1',
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000e1',
+    '10000000-0000-4000-8000-0000000000f1',
+    true,
+    '[{"field":"loves","text":"Harbor loves"}]'::jsonb
+  ),
+  (
+    '10000000-0000-4000-8000-0000000000b2',
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000e2',
+    '10000000-0000-4000-8000-0000000000f1',
+    true,
+    '[{"field":"loves","text":"Other room"}]'::jsonb
+  ),
+  (
+    '10000000-0000-4000-8000-0000000000b3',
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000e1',
+    '10000000-0000-4000-8000-0000000000f2',
+    true,
+    '[{"field":"loves","text":"Other sunday"}]'::jsonb
+  );
+
+insert into public.medical_notes (child_id, organization_id, note) values (
   '10000000-0000-4000-8000-0000000000d1',
-  '10000000-0000-4000-8000-0000000000e1',
-  '10000000-0000-4000-8000-0000000000f1',
-  true,
-  '[{"field":"loves","text":"Harbor loves"},{"field":"medical","text":"Harbor medical"}]'::jsonb
+  '10000000-0000-4000-8000-0000000000a1',
+  'Harbor medical'
+);
+
+insert into public.church_setup (organization_id, name, service, room, leader_label, ages, plan) values
+  (
+    '10000000-0000-4000-8000-0000000000a1',
+    'Harbor Church',
+    'Sunday',
+    'Harbor Room',
+    'Harbor Lead',
+    '6-8',
+    'Harbor plan'
+  ),
+  (
+    '10000000-0000-4000-8000-0000000000a2',
+    'Inland Church',
+    'Sunday',
+    'Inland Room',
+    'Inland Lead',
+    '6-8',
+    'Inland plan'
+  );
+
+insert into public.lessons (id, organization_id, title) values
+  ('10000000-0000-4000-8000-0000000000b4', '10000000-0000-4000-8000-0000000000a1', 'Harbor Lesson'),
+  ('10000000-0000-4000-8000-0000000000b5', '10000000-0000-4000-8000-0000000000a2', 'Inland Lesson');
+
+insert into public.invitations (id, organization_id, role, created_by) values (
+  '10000000-0000-4000-8000-0000000000a9',
+  '10000000-0000-4000-8000-0000000000a1',
+  'volunteer',
+  '10000000-0000-4000-8000-0000000000c6'
 );
 
 do $$
@@ -292,6 +360,160 @@ end
 $$;
 
 do $$
+begin
+  begin
+    insert into public.shared_briefs (id, organization_id, child_id, room_id, sunday_id, shared, lines)
+    values (
+      '10000000-0000-4000-8000-0000000000b9',
+      '10000000-0000-4000-8000-0000000000a1',
+      '10000000-0000-4000-8000-0000000000d1',
+      '10000000-0000-4000-8000-0000000000e1',
+      '10000000-0000-4000-8000-0000000000f1',
+      true,
+      '[{"field":"medical","text":"hidden"}]'::jsonb
+    );
+    raise exception 'medical line was stored on a brief';
+  exception
+    when check_violation then
+      null;
+  end;
+end
+$$;
+
+do $$
+declare
+  own_children int;
+  other_children int;
+  room_count int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c1', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c1","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  select count(*) into own_children
+  from public.children
+  where id = '10000000-0000-4000-8000-0000000000d1';
+  select count(*) into other_children
+  from public.children
+  where id = '10000000-0000-4000-8000-0000000000d2';
+  select count(*) into room_count from public.rooms;
+  if own_children <> 1 or other_children <> 0 then
+    raise exception 'parent children own=% other=%', own_children, other_children;
+  end if;
+  if room_count <> 0 then
+    raise exception 'parent with an assignment sees % rooms', room_count;
+  end if;
+  execute 'reset role';
+end
+$$;
+
+do $$
+declare
+  own_brief int;
+  other_room int;
+  other_sunday int;
+  medical_lines int;
+  notes int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c3', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c3","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  select count(*) into own_brief
+  from public.shared_briefs
+  where id = '10000000-0000-4000-8000-0000000000b1';
+  select count(*) into other_room
+  from public.shared_briefs
+  where id = '10000000-0000-4000-8000-0000000000b2';
+  select count(*) into other_sunday
+  from public.shared_briefs
+  where id = '10000000-0000-4000-8000-0000000000b3';
+  select count(*) into medical_lines
+  from public.shared_briefs b, jsonb_array_elements(b.lines) line
+  where line->>'field' = 'medical';
+  select count(*) into notes from public.medical_notes;
+  if own_brief <> 1 or other_room <> 0 or other_sunday <> 0 then
+    raise exception 'volunteer briefs own=% room=% sunday=%', own_brief, other_room, other_sunday;
+  end if;
+  if medical_lines <> 0 or notes <> 0 then
+    raise exception 'volunteer medical lines=% notes=%', medical_lines, notes;
+  end if;
+  begin
+    perform public.create_invite('10000000-0000-4000-8000-0000000000a1', 'leader');
+    raise exception 'volunteer create_invite succeeded';
+  exception
+    when raise_exception then
+      if sqlerrm is distinct from 'forbidden' then
+        raise;
+      end if;
+  end;
+  execute 'reset role';
+end
+$$;
+
+do $$
+declare
+  harbor_church int;
+  inland_church int;
+  harbor_lesson int;
+  inland_lesson int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c6', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c6","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  select count(*) into harbor_church from public.church_setup where name = 'Harbor Church';
+  select count(*) into inland_church from public.church_setup where name = 'Inland Church';
+  select count(*) into harbor_lesson from public.lessons where title = 'Harbor Lesson';
+  select count(*) into inland_lesson from public.lessons where title = 'Inland Lesson';
+  if harbor_church <> 1 or inland_church <> 0 or harbor_lesson <> 1 or inland_lesson <> 0 then
+    raise exception 'leader church harbor=% inland=% lesson harbor=% inland=%',
+      harbor_church, inland_church, harbor_lesson, inland_lesson;
+  end if;
+  execute 'reset role';
+end
+$$;
+
+do $$
+declare
+  memberships int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c5', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c5","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  begin
+    perform public.accept_invite('10000000-0000-4000-8000-0000000000a9', 'leader');
+    raise exception 'mismatched accept_invite succeeded';
+  exception
+    when raise_exception then
+      if sqlerrm is distinct from 'forbidden' then
+        raise;
+      end if;
+  end;
+  execute 'reset role';
+  select count(*) into memberships
+  from public.memberships
+  where user_id = '10000000-0000-4000-8000-0000000000c5';
+  if memberships <> 0 then
+    raise exception 'mismatched accept inserted a membership';
+  end if;
+end
+$$;
+
+do $$
 declare
   visible boolean;
 begin
@@ -362,6 +584,13 @@ begin
         raise;
       end if;
   end;
+  if (
+    select n.note
+    from public.medical_notes n
+    where n.child_id = '10000000-0000-4000-8000-0000000000d1'
+  ) is distinct from 'Harbor medical' then
+    raise exception 'assigned volunteer cannot read the note after the grant';
+  end if;
   execute 'reset role';
 end
 $$;

@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { DemoContext } from '../scripts/demo-engine.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import { signInEnabled } from '../src/access.ts';
+import { supabaseAccessSource } from '../src/supabase-access.ts';
+import { supabaseAuthVerifier } from '../src/supabase-auth.ts';
 import { churchStore, testEnv } from './fixtures.ts';
 import { NOINDEX, ROBOTS_TXT, dispatchDemo } from '../web/lib/public-demo.ts';
 
@@ -65,31 +67,27 @@ test('the flag defaults off and the deployed demo routes stay the same', async (
   assert.equal(await robots.text(), ROBOTS_TXT);
 });
 
-test('access routes stay closed when the flag is off, even with a populated world', async () => {
-  const world = {
-    sessions: [{ sessionId: 'user-parent-harbor', userId: 'user-parent-harbor' }],
-    memberships: [{ userId: 'user-parent-harbor', organizationId: 'org-harbor', role: 'parent' as const }],
-    children: [
-      {
-        id: 'child-harbor',
-        organizationId: 'org-harbor',
-        parentUserId: 'user-parent-harbor',
-        displayName: 'HARBOR-CHILD',
-      },
-    ],
-    assignments: [],
-    briefs: [],
-    churches: [{ organizationId: 'org-harbor', name: 'HARBOR-CHURCH' }],
-    lessons: [],
-    medicalGrants: [],
-    invites: [],
+test('access routes stay closed when the flag is off and make no network call', async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify([{ display_name: 'HARBOR-CHILD' }]), { status: 200 });
   };
   const base: AppDeps = {
     env: testEnv,
-    fetch: async () => new Response(null, { status: 500 }),
+    fetch: fetchImpl,
     storeFactory: () => churchStore(),
     log: () => undefined,
-    accessWorld: world,
+    auth: supabaseAuthVerifier({
+      supabaseUrl: testEnv.SUPABASE_URL,
+      anonKey: testEnv.SUPABASE_ANON_KEY,
+      fetch: fetchImpl,
+    }),
+    accessSource: supabaseAccessSource({
+      supabaseUrl: testEnv.SUPABASE_URL,
+      anonKey: testEnv.SUPABASE_ANON_KEY,
+      fetch: fetchImpl,
+    }),
   };
   const closed = await handleRequest(
     new Request('https://example.com/v1/access/children/child-harbor', {
@@ -103,13 +101,15 @@ test('access routes stay closed when the flag is off, even with a populated worl
   assert.equal(closed.status, unknown.status);
   assert.equal(closedText, unknownText);
   assert.equal(closedText.includes('HARBOR-CHILD'), false);
+  assert.equal(calls, 0);
 
   const misconfigured = await handleRequest(
     new Request('https://example.com/v1/access/children/child-harbor', {
       headers: { authorization: 'Bearer user-parent-harbor' },
     }),
-    { ...base, accessWorld: undefined, env: { ...testEnv, READY_SIGN_IN: 'on' } },
+    { ...base, accessSource: undefined, auth: undefined, env: { ...testEnv, READY_SIGN_IN: 'on' } },
   );
   assert.equal(misconfigured.status, 500);
   assert.deepEqual(await misconfigured.json(), { error: 'misconfigured' });
+  assert.equal(calls, 0);
 });

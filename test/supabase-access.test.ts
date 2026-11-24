@@ -22,6 +22,7 @@ interface Call {
   apikey: string | null;
   authorization: string | null;
   body: string | null;
+  redirect: string | undefined;
 }
 
 function deps(fetchImpl: typeof fetch, flag: 'on' | 'off' = 'on'): AppDeps {
@@ -67,6 +68,7 @@ function router(routes: Record<string, unknown>, calls: Call[]): typeof fetch {
       apikey: headers.get('apikey'),
       authorization: headers.get('authorization'),
       body: typeof init?.body === 'string' ? init.body : null,
+      redirect: init?.redirect,
     });
     if (url.endsWith('/auth/v1/user')) {
       return new Response(JSON.stringify({ id: userId, role: 'service_role' }), { status: 200 });
@@ -80,9 +82,13 @@ function router(routes: Record<string, unknown>, calls: Call[]): typeof fetch {
 
 test('the worker entry reads tables with the user token and does not keep an in-memory world', () => {
   const source = readFileSync(join(root, 'src/index.ts'), 'utf8');
+  const app = readFileSync(join(root, 'src/app.ts'), 'utf8');
+  const access = readFileSync(join(root, 'src/access.ts'), 'utf8');
   assert.equal(source.includes('supabaseAccessSource'), true);
   assert.equal(source.includes('accessWorld'), false);
   assert.equal(source.includes('service_role'), false);
+  assert.equal(app.includes('accessWorld'), false);
+  assert.equal(access.includes('runAccess'), false);
 });
 
 test('flag off does not call Auth or the tables when a source is configured', async () => {
@@ -115,44 +121,68 @@ test('a membership read sends the anon key and the user bearer token', async () 
   assert.ok(table);
   assert.equal(table.apikey, testEnv.SUPABASE_ANON_KEY);
   assert.equal(table.authorization, `Bearer ${token}`);
+  assert.equal(table.redirect, 'manual');
   assert.equal(table.url.includes(`user_id=eq.${userId}`), true);
   assert.equal(calls.some((call) => call.url.endsWith('/auth/v1/user')), true);
 });
 
-test('an empty child read is not found and a brief hides medical until the grant says it is visible', async () => {
+test('an empty child read is not found and a brief takes medical from medical notes', async () => {
   const hidden = await send(router({ '/rest/v1/children': [] }, []), 'GET', `/v1/access/children/${childId}`);
   assert.equal(hidden.status, 404);
   assert.equal(await hidden.text(), '{"error":"not_found"}');
 
   const lines = [
     { field: 'loves', text: 'HARBOR-LOVES' },
-    { field: 'medical', text: 'HARBOR-MEDICAL' },
+    { field: 'medical', text: 'BRIEF-MEDICAL' },
   ];
+  const calls: Call[] = [];
   const before = await send(
     router(
       {
         '/rest/v1/shared_briefs': [{ id: briefId, child_id: childId, lines }],
-        '/rest/v1/rpc/medical_visible': false,
+        '/rest/v1/medical_notes': [],
       },
-      [],
+      calls,
     ),
     'GET',
     `/v1/access/briefs/${briefId}`,
   );
   assert.deepEqual(await before.json(), { id: briefId, lines: [{ field: 'loves', text: 'HARBOR-LOVES' }] });
+  assert.equal(calls.some((call) => call.url.includes('/rest/v1/medical_notes')), true);
+  assert.equal(calls.some((call) => call.url.includes('medical_visible')), false);
 
   const after = await send(
     router(
       {
         '/rest/v1/shared_briefs': [{ id: briefId, child_id: childId, lines }],
-        '/rest/v1/rpc/medical_visible': true,
+        '/rest/v1/medical_notes': [{ note: 'HARBOR-MEDICAL' }],
       },
       [],
     ),
     'GET',
     `/v1/access/briefs/${briefId}`,
   );
-  assert.deepEqual(await after.json(), { id: briefId, lines });
+  assert.deepEqual(await after.json(), {
+    id: briefId,
+    lines: [
+      { field: 'loves', text: 'HARBOR-LOVES' },
+      { field: 'medical', text: 'HARBOR-MEDICAL' },
+    ],
+  });
+});
+
+test('a table redirect is not followed', async () => {
+  let calls = 0;
+  const redirect: typeof fetch = async (input, init) => {
+    calls += 1;
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    assert.equal(init?.redirect, 'manual');
+    if (url.endsWith('/auth/v1/user')) return new Response(JSON.stringify({ id: userId }), { status: 200 });
+    return new Response(null, { status: 302, headers: { location: 'https://example.com/elsewhere' } });
+  };
+  const moved = await send(redirect, 'GET', '/v1/access/membership');
+  assert.equal(moved.status, 401);
+  assert.equal(calls, 2);
 });
 
 test('church and lesson reads return only the row the table returned', async () => {
