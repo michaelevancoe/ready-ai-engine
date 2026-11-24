@@ -11,6 +11,7 @@ import type { SafeLog } from './log.ts';
 import { authorize } from './policy.ts';
 import { childProfileSchema, childProfileSchemaName, parseChildProfile } from './profile.ts';
 import type { ProfileRecord, ProfileStore } from './store.ts';
+import type { AuthVerifier } from './supabase-auth.ts';
 
 export interface AppDeps {
   env: WorkerBindings;
@@ -19,6 +20,7 @@ export interface AppDeps {
   log: (event: SafeLog) => void;
   now?: () => number;
   accessWorld?: AccessWorld;
+  auth?: AuthVerifier;
 }
 
 interface Authenticated {
@@ -152,7 +154,7 @@ async function route(request: Request, deps: AppDeps): Promise<Response> {
   if (url.pathname.startsWith('/v1/access/')) {
     if (!signInEnabled(deps.env.READY_SIGN_IN)) return json({ error: 'not_found' }, 404);
     if (deps.accessWorld === undefined) throw new ConfigError();
-    return handleAccess(request, deps.accessWorld);
+    return handleAccess(request, deps.accessWorld, deps.auth);
   }
   if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
   if (url.pathname === '/v1/intake/profile') return handleIntake(request, deps);

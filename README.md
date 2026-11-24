@@ -15,7 +15,7 @@ Account-specific values come from the environment. Provider and model names for 
 | `AI_GATEWAY_ID` | secret | AI Gateway id |
 | `AI_GATEWAY_TOKEN` | secret | `cf-aig-authorization` bearer token |
 | `SUPABASE_URL` | secret | Supabase project URL |
-| `SUPABASE_ANON_KEY` | secret | Supabase anon key. The Worker forwards the user JWT so RLS applies |
+| `SUPABASE_ANON_KEY` | secret | Supabase anon key. The Worker forwards the user JWT so RLS applies. The sign-in adapter also sends this value as `apikey` when it checks a session |
 | `SUPABASE_JWT_SECRET` | secret | HMAC secret for the project JWT (`sub` is the user id) |
 | `INTAKE_PROFILE_PROVIDER` | var | Primary provider slug |
 | `INTAKE_PROFILE_MODEL` | var | Primary model id |
@@ -173,7 +173,9 @@ The sign-in migration, once applied, replaces that wide approved-profile select 
 
 Leave `READY_SIGN_IN` unset. The demo worker and the intake routes stay as they are, and `/v1/access/` answers `404`.
 
-To open those routes on a local engine process, set `READY_SIGN_IN=on`. Tests supply a local session directory. This repo has no Supabase project. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
+Set `READY_SIGN_IN=on` to open those routes on a local engine process. The process reads `SUPABASE_URL` and `SUPABASE_ANON_KEY`. It checks the caller's bearer token with `GET /auth/v1/user` and uses the returned user id in the role rules. It ignores Auth role claims. It does not read a service-role key.
+
+Tests use a fake Auth response for that check. Tests that omit the verifier still use a local session directory. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
 
 A parent reads only their own child and self-registers as a parent. A volunteer reads only a shared brief for their room and Sunday. Medical lines stay out of that brief until that child's parent grants them. A leader reads that church's setup and lessons, and invites a volunteer or a leader. A requested role that does not match that path is refused.
 
