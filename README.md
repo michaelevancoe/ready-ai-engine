@@ -21,6 +21,7 @@ Account-specific values come from the environment. Provider and model names for 
 | `INTAKE_PROFILE_MODEL` | var | Primary model id |
 | `INTAKE_PROFILE_FALLBACK_PROVIDER` | var | Fallback provider slug |
 | `INTAKE_PROFILE_FALLBACK_MODEL` | var | Fallback model id |
+| `READY_SIGN_IN` | unset | Engine access routes. Only the exact value `on` opens them. The demo worker does not read it. |
 
 `generate()` builds the OpenAI-compatible chat-completions URL from the gateway base, account id, and gateway id, then appends `/compat/chat/completions`. The request model is `{provider}/{model}`. On a schema failure or a gateway error it retries the primary model once, then calls the fallback model once. Logs contain the endpoint, attempt, provider, model, and outcome. They do not contain prompts, intake answers, or profile text. Gateway payload logging is turned off with `cf-aig-collect-log-payload: false`.
 
@@ -165,6 +166,16 @@ Membership roles are `admin`, `parent`, and `volunteer`. `children.parent_user_i
 | Read an approved profile | Any member of the organization, including volunteers |
 
 Volunteers never see drafts. Another parent in the same organization does not see or approve this child's draft. The service role is not used by the Worker.
+
+The sign-in migration, once applied, replaces that wide approved-profile select with the child's parent. Volunteers then read shared briefs. Nothing in this repo applies the migration.
+
+## Role access
+
+Leave `READY_SIGN_IN` unset. The demo worker and the intake routes stay as they are, and `/v1/access/` answers `404`.
+
+To open those routes on a local engine process, set `READY_SIGN_IN=on`. Tests supply a local session directory. This repo has no Supabase project. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
+
+A parent reads only their own child and self-registers as a parent. A volunteer reads only a shared brief for their room and Sunday. Medical lines stay out of that brief until that child's parent grants them. A leader reads that church's setup and lessons, and invites a volunteer or a leader. A requested role that does not match that path is refused.
 
 ## Move to team-owned accounts
 
