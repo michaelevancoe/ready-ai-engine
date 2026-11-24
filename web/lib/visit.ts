@@ -1,4 +1,6 @@
-import { initialPhase, reducePage, spaceSentences, type PageEvent, type PagePhase } from './desk.ts';
+import { initialConversation, project, reduceConversation, type Conversation, type ConversationEvent } from './conversation.ts';
+import { initialGate, reduceGate, type GateEvent, type IntakeGate } from './desk.ts';
+import { intakeTree } from './intake-tree.ts';
 
 export const BRIEF_FIELDS = [
   'loves',
@@ -60,7 +62,8 @@ export interface ChurchSetup {
 
 export interface Visit {
   readonly role: DemoRole;
-  readonly intake: PagePhase;
+  readonly intake: IntakeGate;
+  readonly conversation: Conversation;
   readonly card: ProfileCard;
   readonly cardTouched: boolean;
   readonly visibility: Visibility;
@@ -75,7 +78,8 @@ export interface Visit {
 
 export type VisitEvent =
   | { readonly type: 'role'; readonly role: DemoRole }
-  | { readonly type: 'intake'; readonly event: PageEvent }
+  | { readonly type: 'intake'; readonly event: GateEvent }
+  | { readonly type: 'conversation'; readonly event: ConversationEvent }
   | { readonly type: 'saveCard'; readonly card: ProfileCard }
   | { readonly type: 'visibility'; readonly field: BriefField; readonly on: boolean }
   | { readonly type: 'writeStory' }
@@ -111,7 +115,8 @@ export const BRIEF_LABELS: Record<BriefField, string> = {
 export function initialVisit(): Visit {
   return {
     role: 'parent',
-    intake: initialPhase(),
+    intake: initialGate(),
+    conversation: reduceConversation(intakeTree, initialConversation(), { type: 'start' }),
     card: blankCard(),
     cardTouched: false,
     visibility: {
@@ -146,6 +151,8 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
       return { ...visit, role: event.role };
     case 'intake':
       return applyIntake(visit, event.event);
+    case 'conversation':
+      return applyConversation(visit, event.event);
     case 'saveCard':
       return {
         ...visit,
@@ -227,9 +234,16 @@ export function briefLines(card: ProfileCard, visibility: Visibility): BriefLine
 }
 
 export function childPreferredName(visit: Visit): string {
-  const name = visit.intake.answers.preferredName.trim();
-  if (name.length === 0) return 'Rowan';
-  return name;
+  switch (visit.role) {
+    case 'parent':
+    case 'volunteer':
+    case 'leader':
+      return intakeTree.child.preferredName;
+    default: {
+      const leftover: never = visit.role;
+      return leftover;
+    }
+  }
 }
 
 export function childHeading(name: string): string {
@@ -305,24 +319,59 @@ function withdrawnBrief(): Pick<Visit, 'brief' | 'story' | 'lesson'> {
   };
 }
 
-function applyIntake(visit: Visit, event: PageEvent): Visit {
-  const intake = reducePage(visit.intake, event);
+function applyIntake(visit: Visit, event: GateEvent): Visit {
+  const intake = reduceGate(visit.intake, event);
   if (intake === visit.intake) return visit;
   if (visit.intake.status !== 'approved' && intake.status === 'approved' && !visit.cardTouched) {
-    return { ...visit, intake, card: seedCard(intake) };
+    return { ...visit, intake, card: project(intakeTree, visit.conversation).card };
   }
   return { ...visit, intake };
 }
 
-function seedCard(phase: Extract<PagePhase, { status: 'approved' }>): ProfileCard {
-  return {
-    loves: '',
-    overwhelms: spaceSentences(phase.answers.whatToAvoid),
-    whatHelps: spaceSentences(phase.answers.whatHelps),
-    communication: spaceSentences(phase.answers.supportNeeds),
-    sensory: spaceSentences(phase.answers.sensoryNotes),
-    medical: '',
-  };
+function applyConversation(visit: Visit, event: ConversationEvent): Visit {
+  const conversation = reduceConversation(intakeTree, visit.conversation, event);
+  if (conversation === visit.conversation) return visit;
+  if (!resetsGate(event) || !staleGate(visit.intake)) return { ...visit, conversation };
+  return { ...visit, conversation, intake: { status: 'idle' } };
+}
+
+function resetsGate(event: ConversationEvent): boolean {
+  switch (event.type) {
+    case 'answer':
+    case 'skip':
+    case 'declineMedical':
+    case 'acceptMedical':
+    case 'reopen':
+      return true;
+    case 'start':
+    case 'beginFix':
+    case 'chooseSection':
+    case 'giveReason':
+    case 'leaveFix':
+    case 'finishFix':
+      return false;
+    default: {
+      const leftover: never = event;
+      return leftover;
+    }
+  }
+}
+
+function staleGate(gate: IntakeGate): boolean {
+  switch (gate.status) {
+    case 'draft':
+    case 'approving':
+    case 'error':
+    case 'submitting':
+      return true;
+    case 'idle':
+    case 'approved':
+      return false;
+    default: {
+      const leftover: never = gate;
+      return leftover;
+    }
+  }
 }
 
 function blankCard(): ProfileCard {

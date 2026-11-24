@@ -14,10 +14,13 @@ const clientFiles = [
   'web/app/visit-shell.tsx',
   'web/app/volunteer/page.tsx',
   'web/app/leader/page.tsx',
+  'web/lib/conversation.ts',
   'web/lib/desk.ts',
   'web/lib/drafts.ts',
   'web/lib/fictional-label.ts',
+  'web/lib/intake-tree.ts',
   'web/lib/local-demo.ts',
+  'web/lib/speech.ts',
   'web/lib/visit.ts',
 ];
 

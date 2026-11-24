@@ -1,19 +1,11 @@
 'use client';
 
-import { Label } from '@radix-ui/react-label';
-import { useEffect, useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
 import { postSocialStory } from '../lib/drafts';
-import {
-  approveProfile,
-  PROFILE_SECTIONS,
-  isProfileSection,
-  readAnswers,
-  reducePage,
-  submitIntake,
-  viewOf,
-  type AnswerDraft,
-  type AnswerField,
-} from '../lib/desk';
+import { presentAsk, project, type AskLine, type AskView, type Conversation, type ProjectRow } from '../lib/conversation';
+import { approveProfile, submitIntake, type IntakeGate, type ShownProfile } from '../lib/desk';
+import { intakeTree } from '../lib/intake-tree';
+import { listen, speechSupport } from '../lib/speech';
 import {
   BRIEF_FIELDS,
   BRIEF_LABELS,
@@ -37,73 +29,101 @@ const STEPS = [
   ['sunday-update', 'Update'],
 ] as const;
 
+const SPEECH_FOOTER = "Talk or type. Voice uses your browser's speech-to-text. No audio is saved.";
+
+const MEDICAL_HELP = 'Skipping is the default. You can add it later in Who sees what.';
+
 type StepId = (typeof STEPS)[number][0];
 
 export default function Page() {
   const { visit, dispatch } = useVisit();
-  const phase = visit.intake;
-  const view = viewOf(phase);
+  const gate = visit.intake;
+  const conversation = visit.conversation;
+  const ask = presentAsk(intakeTree, conversation);
+  const projected = project(intakeTree, conversation);
+  const profile = profileOf(gate);
+  const [showProfile, setShowProfile] = useState(false);
+  const posted = useRef<Conversation['answers'] | null>(null);
+  const openOnDraft = useRef(false);
+  const nonce = useRef(0);
+  const reviewing =
+    conversation.talk.mode === 'reviewWait' &&
+    showProfile &&
+    profile !== null &&
+    (gate.status === 'draft' || gate.status === 'approving' || (gate.status === 'error' && gate.retry === 'approve'));
+  const drafting = conversation.talk.mode === 'reviewWait' && !reviewing && gate.status !== 'approved';
   const heading = childHeading(childPreferredName(visit));
-  const [fixOpen, setFixOpen] = useState(false);
-  const intakeKey = phase.status === 'ready' ? `ready:${phase.focus ?? ''}:${phase.fixReason}` : phase.status;
-  useScrollWhen(phase.status === 'approved', 'edit-profile');
-  useScrollWhen(phase.status === 'draft', 'profile');
-  useScrollWhen(view.banner?.text === 'Writing the draft.', 'desk-status');
-  useEffect(() => {
-    if (phase.status !== 'ready' || phase.focus === null) return;
-    const node = document.getElementById(phase.focus);
-    if (!(node instanceof HTMLElement)) return;
-    node.focus();
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [phase]);
+  useScrollWhen(drafting, 'drafting');
+  useScrollWhen(reviewing, 'profile');
+  useScrollWhen(gate.status === 'approved', 'edit-profile');
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const answers = answersFrom(new FormData(event.currentTarget));
-    const parsed = readAnswers(answers);
-    if (!parsed.ok) {
-      dispatch({ type: 'intake', event: { type: 'invalid', answers: parsed.draft, fieldErrors: parsed.fieldErrors } });
-      return;
+  useEffect(() => {
+    if (conversation.talk.mode === 'reviewWait') return;
+    setShowProfile(false);
+  }, [conversation.talk.mode]);
+
+  useEffect(() => {
+    if (conversation.talk.mode !== 'reviewWait' || gate.status !== 'idle') return;
+    if (posted.current === conversation.answers) return;
+    posted.current = conversation.answers;
+    void sendIntake(conversation);
+  }, [conversation, gate.status]);
+
+  useEffect(() => {
+    if (gate.status !== 'draft' || !openOnDraft.current) return;
+    openOnDraft.current = false;
+    setShowProfile(true);
+  }, [gate.status]);
+
+  async function sendIntake(current: Conversation): Promise<void> {
+    const id = nonce.current + 1;
+    nonce.current = id;
+    const post = project(intakeTree, current).post;
+    dispatch({ type: 'intake', event: { type: 'submit', nonce: id } });
+    const result = await submitIntake(post);
+    switch (result.type) {
+      case 'draft':
+        dispatch({ type: 'intake', event: { type: 'draft', profile: result.profile, nonce: id } });
+        return;
+      case 'fail':
+        dispatch({ type: 'intake', event: { type: 'fail', message: result.message, nonce: id } });
+        return;
+      default: {
+        const leftover: never = result;
+        return leftover;
+      }
     }
-    if (reducePage(phase, { type: 'submit', answers: parsed.draft }) === phase) return;
-    dispatch({ type: 'intake', event: { type: 'submit', answers: parsed.draft } });
-    dispatch({ type: 'intake', event: await submitIntake(parsed.answers) });
   }
 
   async function onApprove(): Promise<void> {
-    if (phase.status !== 'draft') return;
-    const profile = phase.profile;
+    if (gate.status !== 'draft') return;
+    const current = gate.profile;
     dispatch({ type: 'intake', event: { type: 'approve' } });
-    dispatch({ type: 'intake', event: await approveProfile(profile) });
+    dispatch({ type: 'intake', event: await approveProfile(current) });
   }
 
-  function onFix(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    if (phase.status !== 'draft') return;
-    const data = new FormData(event.currentTarget);
-    const section = data.get('section');
-    const reason = data.get('reason');
-    if (typeof section !== 'string' || typeof reason !== 'string' || !isProfileSection(section)) return;
-    if (reason.trim() === '') return;
-    setFixOpen(false);
-    dispatch({ type: 'intake', event: { type: 'fix', section, reason } });
+  function onSeeAgain(): void {
+    openOnDraft.current = true;
+    posted.current = conversation.answers;
+    dispatch({ type: 'conversation', event: { type: 'finishFix' } });
+    void sendIntake(conversation);
+  }
+
+  function onProfile(): void {
+    openOnDraft.current = true;
+    if (gate.status === 'draft') setShowProfile(true);
+    dispatch({ type: 'conversation', event: { type: 'leaveFix' } });
+  }
+
+  function onLeave(): void {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   return (
     <main>
-      <h1>
-        Feel prepared.
-        <br />
-        Feel known.
-        <br />
-        Feel welcome.
-      </h1>
-      <p>
-        Avery Sampleton reviews a Sunday brief for {heading} before Theo Park or Devon Placeholder can see it.
-      </p>
       <ol className="steps" aria-label="Sunday steps">
         {STEPS.map(([id, label]) => {
-          const target = stepTarget(id, phase.status, visit.brief.phase, view.statusLabel !== null);
+          const target = stepTarget(id, gate, visit.brief.phase, reviewing, drafting);
           return (
             <li key={id}>
               {target === null ? (
@@ -117,44 +137,31 @@ export default function Page() {
           );
         })}
       </ol>
-      <p className="church-card">
-        <span className="portrait">Placeholder photo</span>
-        <span>
-          <strong>{visit.church.name}</strong>
-          <span className="muted">{visit.church.service}</span>
-        </span>
-      </p>
-      <form id="intake" key={intakeKey} onSubmit={(event) => void onSubmit(event)}>
-        {view.fields.map((field) => (
-          <div className="field" key={field.key}>
-            <Label htmlFor={field.key}>{field.label}</Label>
-            {field.multiline ? (
-              <textarea id={field.key} name={field.key} rows={3} defaultValue={field.value} autoComplete="off" />
-            ) : (
-              <input id={field.key} name={field.key} defaultValue={field.value} autoComplete="off" />
-            )}
-            {field.error === null ? null : <p role="alert">{field.error}</p>}
-            {phase.status === 'ready' && phase.focus === field.key && phase.fixReason !== '' ? (
-              <p role="status">{phase.fixReason}</p>
-            ) : null}
-          </div>
-        ))}
-        {view.primary === 'submit' ? (
-          <button type="submit" className="primary">
-            Submit
-          </button>
-        ) : null}
-        {view.banner?.tone === 'busy' ? (
-          <p id="desk-status" className="draft-status" role="status">
-            {view.banner.text}
-          </p>
-        ) : null}
-      </form>
-      {view.banner?.tone === 'error' ? <p role="alert">{view.banner.text}</p> : null}
-      {view.statusLabel === null ? null : (
+      {ask.kind === 'review' ? null : (
+        <QuestionScreen
+          ask={ask}
+          onLeave={onLeave}
+          onProfile={onProfile}
+          onSeeAgain={onSeeAgain}
+          dispatch={dispatch}
+        />
+      )}
+      {drafting ? (
+        <Drafting
+          rows={projected.rows}
+          gate={gate}
+          onBack={() => {
+            onLeave();
+            dispatch({ type: 'conversation', event: { type: 'reopen' } });
+          }}
+          onReview={() => setShowProfile(true)}
+          onRetry={() => void sendIntake(conversation)}
+        />
+      ) : null}
+      {profile !== null && (gate.status === 'approved' || reviewing) ? (
         <div id="profile">
-          <h2>{view.statusLabel}</h2>
-          {view.sections.map((section) => (
+          {gate.status === 'approved' ? <h2>Approved</h2> : null}
+          {profile.sections.map((section) => (
             <section key={section.heading} aria-label={section.heading}>
               <h3>{section.heading}</h3>
               {section.lines.map((line, index) => (
@@ -162,44 +169,304 @@ export default function Page() {
               ))}
             </section>
           ))}
-          {view.primary === 'approve' ? (
+          {gate.status === 'draft' ? (
             <>
               <button type="button" className="approve" onClick={() => void onApprove()}>
                 Approve
               </button>
-              {fixOpen ? (
-                <form onSubmit={onFix}>
-                  <fieldset>
-                    <legend>Which section is wrong?</legend>
-                    {PROFILE_SECTIONS.map(([key, label]) => (
-                      <label className="choice" key={key}>
-                        <input type="radio" name="section" value={key} required />
-                        {label}
-                      </label>
-                    ))}
-                  </fieldset>
-                  <label htmlFor="fix-reason">Reason</label>
-                  <input id="fix-reason" name="reason" required autoComplete="off" />
-                  <button type="submit">No, fix this</button>
-                </form>
-              ) : (
-                <button type="button" onClick={() => setFixOpen(true)}>
-                  No, fix this
-                </button>
-              )}
+              <button type="button" onClick={() => dispatch({ type: 'conversation', event: { type: 'beginFix' } })}>
+                No, fix this
+              </button>
+            </>
+          ) : null}
+          {gate.status === 'approving' ? (
+            <p className="draft-status" role="status">
+              Approving the profile.
+            </p>
+          ) : null}
+          {gate.status === 'error' && gate.retry === 'approve' ? (
+            <>
+              <p role="alert">{gate.message}</p>
+              <button type="button" onClick={() => dispatch({ type: 'intake', event: { type: 'dismiss' } })}>
+                Back
+              </button>
             </>
           ) : null}
         </div>
-      )}
-      {view.dismiss ? (
-        <button type="button" onClick={() => dispatch({ type: 'intake', event: { type: 'dismiss' } })}>
-          Back
-        </button>
       ) : null}
-      {phase.status === 'approved' ? (
-        <ApprovedJourney visit={visit} dispatch={dispatch} heading={heading} />
-      ) : null}
+      {gate.status === 'approved' ? <ApprovedJourney visit={visit} dispatch={dispatch} heading={heading} /> : null}
     </main>
+  );
+}
+
+function QuestionScreen({
+  ask,
+  onLeave,
+  onProfile,
+  onSeeAgain,
+  dispatch,
+}: {
+  ask: Exclude<AskView, { kind: 'review' }>;
+  onLeave: () => void;
+  onProfile: () => void;
+  onSeeAgain: () => void;
+  dispatch: Dispatch<VisitEvent>;
+}) {
+  const [draft, setDraft] = useState('');
+  const [listening, setListening] = useState(false);
+  const [speech, setSpeech] = useState<'ready' | 'missing'>('missing');
+  const session = useRef<{ stop(): void } | null>(null);
+  const questionKey = questionIdentity(ask);
+  const focusAnswer = (ask.kind === 'question' && ask.fixing !== null && !ask.fixing.done) || ask.kind === 'fixReason';
+  useEffect(() => {
+    setSpeech(speechSupport());
+  }, []);
+  useEffect(() => {
+    setDraft('');
+    setListening(false);
+    session.current?.stop();
+    session.current = null;
+    if (focusAnswer) document.getElementById('answer')?.focus();
+  }, [focusAnswer, questionKey]);
+  useEffect(() => () => session.current?.stop(), []);
+
+  function commit(text: string): void {
+    session.current?.stop();
+    session.current = null;
+    setListening(false);
+    if (ask.kind === 'fixReason') {
+      dispatch({ type: 'conversation', event: { type: 'giveReason', text } });
+    } else {
+      dispatch({ type: 'conversation', event: { type: 'answer', text } });
+    }
+    setDraft('');
+  }
+
+  function onMic(): void {
+    session.current?.stop();
+    try {
+      session.current = listen(
+        (text) => setDraft(text),
+        undefined,
+        () => setListening(false),
+      );
+      setListening(true);
+    } catch {
+      session.current = null;
+      setListening(false);
+    }
+  }
+
+  const fixing = ask.kind === 'question' ? ask.fixing : null;
+  const fixingLabel = fixing?.label ?? (ask.kind === 'fixReason' ? ask.label : null);
+  const backToProfile = ask.leave === intakeTree.fixCopy.back;
+  const showComposer = (ask.kind === 'question' && fixing?.done !== true) || ask.kind === 'fixReason';
+  const placeholder = ask.kind === 'question' || ask.kind === 'fixReason' ? ask.placeholder : '';
+  const promptIndex = lastReadyIndex(ask.lines);
+
+  return (
+    <section id="intake" aria-label="Questions">
+      <div className="top-bar">
+        <button type="button" className="inline" onClick={backToProfile ? onProfile : onLeave}>
+          <span aria-hidden="true">← </span>
+          {ask.leave}
+        </button>
+        <span className="guided">{fixingLabel === null ? 'Guided by Ready' : `Fixing: ${fixingLabel}`}</span>
+      </div>
+      {ask.kind === 'question' || ask.kind === 'offer' ? (
+        <>
+          <p className="progress-label">
+            <span>{ask.kind === 'offer' ? 'Optional · Medical' : ask.progress}</span>
+            <span>Medical: optional</span>
+          </p>
+          <div className="bars" aria-hidden="true">
+            {Array.from({ length: ask.countedTotal + 1 }, (_, index) => (
+              <span key={index} className={index < filledBars(ask) ? 'on' : ''} />
+            ))}
+          </div>
+        </>
+      ) : null}
+      <p className="placeholder-note">{intakeTree.placeholderNote}</p>
+      <div className="thread" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
+        {ask.lines.map((line, index) => (
+          <p
+            key={`${line.from}-${index}`}
+            id={index === promptIndex ? 'current-question' : undefined}
+            className={line.from === 'parent' ? 'bubble parent' : 'bubble ready'}
+          >
+            {line.text}
+          </p>
+        ))}
+      </div>
+      {ask.kind === 'offer' ? (
+        <>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => dispatch({ type: 'conversation', event: { type: 'declineMedical' } })}
+          >
+            {ask.skipLabel}
+          </button>
+          <button type="button" onClick={() => dispatch({ type: 'conversation', event: { type: 'acceptMedical' } })}>
+            {ask.acceptLabel}
+          </button>
+          <p className="hint">{MEDICAL_HELP}</p>
+        </>
+      ) : null}
+      {ask.kind === 'fixPick' ? (
+        <div className="chips">
+          {ask.chips.map((chip) => (
+            <button
+              type="button"
+              key={chip.id}
+              onClick={() => dispatch({ type: 'conversation', event: { type: 'chooseSection', sectionId: chip.id } })}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {showComposer && (ask.kind === 'question' || ask.kind === 'fixReason') ? (
+        <>
+          {ask.kind === 'question' && ask.skip ? (
+            <button
+              type="button"
+              className="inline"
+              onClick={() => dispatch({ type: 'conversation', event: { type: 'skip' } })}
+            >
+              Skip this one
+            </button>
+          ) : null}
+          {ask.kind === 'question' && ask.chips.length > 0 ? (
+            <div className="chips">
+              {ask.chips.map((chip) => (
+                <button type="button" key={chip} onClick={() => commit(joinAnswer(draft, chip))}>
+                  {chip}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {ask.kind === 'question' && ask.closeChip !== null ? (
+            <button
+              type="button"
+              className="inline"
+              onClick={() => {
+                if (draft.trim() === '') {
+                  session.current?.stop();
+                  session.current = null;
+                  setListening(false);
+                  dispatch({ type: 'conversation', event: { type: 'skip' } });
+                  setDraft('');
+                  return;
+                }
+                commit(draft);
+              }}
+            >
+              {ask.closeChip}
+            </button>
+          ) : null}
+          <div className="composer">
+            <label className="sr-only" htmlFor="answer">
+              Your answer
+            </label>
+            <textarea
+              id="answer"
+              rows={3}
+              value={draft}
+              placeholder={placeholder}
+              aria-describedby="current-question"
+              autoComplete="off"
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            {speech === 'ready' ? (
+              <button type="button" className="mic" aria-label="Start voice answer" onClick={onMic}>
+                Mic
+              </button>
+            ) : null}
+          </div>
+          {listening ? (
+            <button type="button" onClick={() => commit(draft)}>
+              Tap to finish
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                if (draft.trim() === '') return;
+                commit(draft);
+              }}
+            >
+              Send
+            </button>
+          )}
+          {listening ? (
+            <p role="status" className="draft-status">
+              Listening…
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {fixing?.done ? (
+        <>
+          <button type="button" className="primary" onClick={onSeeAgain}>
+            See Rowan&apos;s profile again
+          </button>
+          <p className="hint">Returns to the profile for approval. Other answers are kept.</p>
+        </>
+      ) : null}
+      <p className="footer-note">{SPEECH_FOOTER}</p>
+    </section>
+  );
+}
+
+function Drafting({
+  rows,
+  gate,
+  onBack,
+  onReview,
+  onRetry,
+}: {
+  rows: readonly ProjectRow[];
+  gate: IntakeGate;
+  onBack: () => void;
+  onReview: () => void;
+  onRetry: () => void;
+}) {
+  const last = lastDraftedCounted(rows);
+  return (
+    <section aria-label="Drafting profile">
+      <div className="top-bar">
+        <button type="button" className="inline" onClick={onBack}>
+          <span aria-hidden="true">← </span>
+          Back to questions
+        </button>
+        <span className="guided">AI drafting</span>
+      </div>
+      <h2 id="drafting">Ready drafts Rowan&apos;s profile</h2>
+      <p>Turning your answers into a short profile. Only your words are used.</p>
+      <p className="placeholder-note">{intakeTree.placeholderNote}</p>
+      <ul className="draft-rows">
+        {rows.map((row) => (
+          <li key={row.sectionId}>
+            <span>{row.label}</span>
+            <span>{rowStatus(row, gate.status, last)}</span>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="primary" disabled={gate.status !== 'draft'} onClick={onReview}>
+        Review Rowan&apos;s profile
+      </button>
+      <p className="hint">Next: approve it, or tap &quot;No, fix this&quot; to go back to the right question.</p>
+      {gate.status === 'error' && gate.retry === 'submit' ? (
+        <>
+          <p role="alert">{gate.message}</p>
+          <button type="button" onClick={onRetry}>
+            Write the draft again
+          </button>
+        </>
+      ) : null}
+    </section>
   );
 }
 
@@ -305,7 +572,7 @@ function ApprovedJourney({
         </button>
       </section>
       <section aria-label="Sunday story" id="sunday-story">
-        <h2>This Sunday's story</h2>
+        <h2>This Sunday&apos;s story</h2>
         <button
           type="button"
           className="primary"
@@ -411,19 +678,22 @@ function ShareSwitch({
 
 function stepTarget(
   id: StepId,
-  intake: Visit['intake']['status'],
+  gate: IntakeGate,
   brief: Visit['brief']['phase'],
-  profileVisible: boolean,
+  reviewing: boolean,
+  drafting: boolean,
 ): string | null {
   switch (id) {
     case 'intake':
       return 'intake';
     case 'profile':
-      if (!profileVisible) return null;
-      return intake === 'approved' ? 'edit-profile' : 'profile';
+      if (gate.status === 'approved') return 'edit-profile';
+      if (reviewing) return 'profile';
+      if (drafting) return 'drafting';
+      return null;
     case 'sunday-story':
     case 'sunday-brief':
-      return intake === 'approved' ? id : null;
+      return gate.status === 'approved' ? id : null;
     case 'sunday-update':
       return brief === 'approved' ? id : null;
     default: {
@@ -438,17 +708,6 @@ function jumpTo(event: MouseEvent<HTMLAnchorElement>, id: string): void {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function answersFrom(form: FormData): AnswerDraft {
-  return {
-    preferredName: stringField(form, 'preferredName'),
-    ageYears: stringField(form, 'ageYears'),
-    sensoryNotes: stringField(form, 'sensoryNotes'),
-    supportNeeds: stringField(form, 'supportNeeds'),
-    whatHelps: stringField(form, 'whatHelps'),
-    whatToAvoid: stringField(form, 'whatToAvoid'),
-  };
-}
-
 function cardFrom(form: FormData): ProfileCard {
   return {
     loves: stringField(form, 'loves'),
@@ -460,7 +719,90 @@ function cardFrom(form: FormData): ProfileCard {
   };
 }
 
-function stringField(form: FormData, name: AnswerField | BriefField): string {
+function stringField(form: FormData, name: BriefField): string {
   const value = form.get(name);
   return typeof value === 'string' ? value : '';
+}
+
+function profileOf(gate: IntakeGate): ShownProfile | null {
+  switch (gate.status) {
+    case 'idle':
+    case 'submitting':
+      return null;
+    case 'error':
+      return gate.profile;
+    case 'draft':
+    case 'approving':
+    case 'approved':
+      return gate.profile;
+    default: {
+      const leftover: never = gate;
+      return leftover;
+    }
+  }
+}
+
+function questionIdentity(ask: Exclude<AskView, { kind: 'review' }>): string {
+  switch (ask.kind) {
+    case 'offer':
+      return 'offer';
+    case 'fixPick':
+      return 'fix-pick';
+    case 'fixReason':
+      return `fix-reason:${ask.label}`;
+    case 'question':
+      return `${ask.progress}:${ask.placeholder}:${ask.fixing?.done ?? false}`;
+    default: {
+      const leftover: never = ask;
+      return leftover;
+    }
+  }
+}
+
+function lastReadyIndex(lines: readonly AskLine[]): number {
+  let found = -1;
+  lines.forEach((line, index) => {
+    if (line.from === 'ready') found = index;
+  });
+  return found;
+}
+
+function filledBars(ask: Exclude<AskView, { kind: 'review' }>): number {
+  switch (ask.kind) {
+    case 'offer':
+      return ask.countedTotal + 1;
+    case 'question':
+      return ask.onMedical ? ask.countedTotal + 1 : ask.countedIndex;
+    case 'fixPick':
+    case 'fixReason':
+      return 0;
+    default: {
+      const leftover: never = ask;
+      return leftover;
+    }
+  }
+}
+
+function joinAnswer(draft: string, chip: string): string {
+  const typed = draft.trim();
+  if (typed.length === 0) return chip;
+  return `${typed} ${chip}`;
+}
+
+function lastDraftedCounted(rows: readonly ProjectRow[]): string | null {
+  let id: string | null = null;
+  for (const row of rows) {
+    const section = intakeTree.sections.find((item) => item.id === row.sectionId);
+    if (section === undefined || section.kind === 'medical' || row.state !== 'drafted') continue;
+    id = row.sectionId;
+  }
+  return id;
+}
+
+function rowStatus(row: ProjectRow, status: IntakeGate['status'], last: string | null): string {
+  const section = intakeTree.sections.find((item) => item.id === row.sectionId);
+  if (section?.kind === 'medical') return row.state === 'drafted' ? 'Drafted · off' : 'Skipped · off';
+  if (row.state === 'skipped') return 'Skipped';
+  if (status === 'submitting' && row.sectionId === last) return 'Drafting...';
+  return 'Drafted';
 }

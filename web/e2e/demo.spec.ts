@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { answerTree, reviewProfile } from './walk-tree';
 
 const artifacts = '/opt/cursor/artifacts';
 
@@ -22,12 +23,11 @@ test('approve a draft that includes the typed sensory note', async ({ page }) =>
   expect(intake.headers()['x-robots-tag']).toBe('noindex');
   await page.goto('/');
   await expect(page.getByText("Demo: fictional data only. Please don't enter real child information.")).toBeVisible();
-  await page.getByLabel('Sensory notes').fill('TICK-QUIET-ROOM');
-  await page.getByRole('button', { name: 'Submit' }).click();
-  await expect(page.getByRole('heading', { name: 'Draft' })).toBeVisible();
+  await answerTree(page, 'TICK-QUIET-ROOM');
+  await reviewProfile(page);
   await expect(page.getByRole('region', { name: 'Sensory considerations' })).toContainText('TICK-QUIET-ROOM');
   await save(page, 'demo-draft.png');
-  await page.getByRole('button', { name: 'Approve' }).click();
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Approved' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Sensory considerations' })).toContainText('TICK-QUIET-ROOM');
   await save(page, 'demo-approved.png');
