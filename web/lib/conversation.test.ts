@@ -40,6 +40,25 @@ test('a short What helps answer opens the follow-up and a long answer does not',
   assert.equal(long.answers['helps-more'], undefined);
 });
 
+test('a longer replacement drops the earlier follow-up', () => {
+  const followed = say(say(atHelps(), 'Headphones.'), 'A quiet corner');
+  const fixing = reduceConversation(intakeTree, followed, {
+    type: 'fix',
+    sectionId: 'helps',
+    reason: 'More detail.',
+  });
+  const replaced = say(fixing, LONG_HELPS);
+  assert.equal(replaced.answers['helps-more'], undefined);
+  assert.equal(project(intakeTree, replaced).post.whatHelps, LONG_HELPS);
+  const skipped = reduceConversation(
+    intakeTree,
+    reduceConversation(intakeTree, followed, { type: 'fix', sectionId: 'helps', reason: 'Skip it.' }),
+    { type: 'skip' },
+  );
+  assert.equal(skipped.answers['helps-more'], undefined);
+  assert.equal(project(intakeTree, skipped).post.whatHelps, '');
+});
+
 test('skip does not open the follow-up', () => {
   const skipped = reduceConversation(intakeTree, atHelps(), { type: 'skip' });
   assert.equal(readyText(skipped), 'How does Rowan communicate when words are hard?');

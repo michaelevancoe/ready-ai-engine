@@ -405,7 +405,7 @@ function Drafting({
         <>
           <p role="alert">{gate.message}</p>
           <button type="button" onClick={onRetry}>
-            Submit the form again
+            Write the draft again
           </button>
         </>
       ) : null}

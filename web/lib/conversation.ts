@@ -219,9 +219,9 @@ function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer
   const located = locate(tree, conversation);
   if (located === null || (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing')) return conversation;
   const { node, section } = located;
-  const answers = { ...conversation.answers, [node.id]: answer };
-  const medical = section.kind === 'medical' && answer.kind === 'answered' ? 'open' : conversation.medical;
   const followId = answer.kind === 'answered' ? openedFollow(tree, node, answer.text) : null;
+  const answers = dropClosedFollow({ ...conversation.answers, [node.id]: answer }, node, followId);
+  const medical = section.kind === 'medical' && answer.kind === 'answered' ? 'open' : conversation.medical;
   if (conversation.talk.mode === 'fixing') {
     if (followId !== null) {
       return {
@@ -368,6 +368,18 @@ function afterSection(tree: IntakeTree, sectionId: string): Talk {
   const next = counted[index + 1];
   if (next === undefined) return { mode: 'medicalOffer' };
   return { mode: 'ask', nodeId: next.nodeId };
+}
+
+function dropClosedFollow(
+  answers: Readonly<Record<string, NodeAnswer>>,
+  node: IntakeNode,
+  followId: string | null,
+): Readonly<Record<string, NodeAnswer>> {
+  const followNodeId = node.follow?.nodeId;
+  if (followNodeId === undefined || followId !== null || answers[followNodeId] === undefined) return answers;
+  const next = { ...answers };
+  delete next[followNodeId];
+  return next;
 }
 
 function openedFollow(tree: IntakeTree, node: IntakeNode, text: string): string | null {
