@@ -1,5 +1,3 @@
-// The wording is a placeholder pending Michael's professional question set.
-
 export type PostKey = 'sensoryNotes' | 'supportNeeds' | 'whatHelps' | 'whatToAvoid';
 
 export type CardKey = 'loves' | 'overwhelms' | 'whatHelps' | 'communication' | 'sensory' | 'medical';
