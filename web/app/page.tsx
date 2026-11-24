@@ -43,7 +43,8 @@ export default function Page() {
   const view = viewOf(phase);
   const heading = childHeading(childPreferredName(visit));
   useScrollWhen(phase.status === 'approved', 'edit-profile');
-  useScrollWhen(view.banner?.text === 'Writing the draft.', 'desk-status', 'nearest');
+  useScrollWhen(phase.status === 'draft', 'profile');
+  useScrollWhen(view.banner?.text === 'Writing the draft.', 'desk-status');
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -170,12 +171,12 @@ function ApprovedJourney({
   const shared = visit.brief.phase === 'approved' ? visit.brief.lines : lines;
   const medicalShared = shared.some((line) => line.field === 'medical');
   const name = childPreferredName(visit);
-  useScrollWhen(visit.story.phase === 'writing', 'story-status', 'nearest');
-  useScrollWhen(visit.story.phase === 'ready', 'story-draft', 'nearest');
+  useScrollWhen(visit.story.phase === 'writing', 'story-status');
+  useScrollWhen(visit.story.phase === 'ready', 'story-draft');
   useScrollWhen(visit.story.phase === 'approved', 'sunday-brief');
   useScrollWhen(visit.brief.phase === 'approved', 'sunday-update');
-  useScrollWhen(visit.update.phase === 'writing', 'update-status', 'nearest');
-  useScrollWhen(visit.update.phase === 'ready', 'update-draft', 'nearest');
+  useScrollWhen(visit.update.phase === 'writing', 'update-status');
+  useScrollWhen(visit.update.phase === 'ready', 'update-draft');
 
   function readCard(): ProfileCard {
     const form = document.getElementById('profile-card');
