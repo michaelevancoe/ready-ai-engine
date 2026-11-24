@@ -29,7 +29,8 @@ export type ConversationEvent =
   | { readonly type: 'declineMedical' }
   | { readonly type: 'acceptMedical' }
   | { readonly type: 'fix'; readonly sectionId: string; readonly reason: string }
-  | { readonly type: 'finishFix' };
+  | { readonly type: 'finishFix' }
+  | { readonly type: 'reopen' };
 
 export interface AskLine {
   readonly from: 'ready' | 'parent';
@@ -119,6 +120,8 @@ export function reduceConversation(tree: IntakeTree, conversation: Conversation,
       return beginFix(tree, conversation, event.sectionId, event.reason);
     case 'finishFix':
       return finishFix(conversation);
+    case 'reopen':
+      return reopen(tree, conversation);
     default: {
       const leftover: never = event;
       return leftover;
@@ -203,6 +206,13 @@ function beginFix(tree: IntakeTree, conversation: Conversation, sectionId: strin
 function finishFix(conversation: Conversation): Conversation {
   if (conversation.talk.mode !== 'fixing') return conversation;
   return { ...conversation, talk: { mode: 'reviewWait' } };
+}
+
+function reopen(tree: IntakeTree, conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'reviewWait') return conversation;
+  const last = countedSections(tree).at(-1);
+  if (last === undefined) return conversation;
+  return { ...conversation, talk: { mode: 'ask', nodeId: last.nodeId } };
 }
 
 function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer): Conversation {

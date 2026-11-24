@@ -1,25 +1,36 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { AnswerDraft, ProfileId, ShownProfile } from '../web/lib/desk.ts';
-import {
-  childHeading,
-  childPreferredName,
-  initialVisit,
-  reduceVisit,
-  type Visit,
-} from '../web/lib/visit.ts';
+import type { ProfileId, ShownProfile } from '../web/lib/desk.ts';
+import { childHeading, childPreferredName, initialVisit, reduceVisit, type Visit } from '../web/lib/visit.ts';
 
 function shown(status: 'draft' | 'approved'): ShownProfile {
   return {
     id: '10000000-0000-4000-8000-000000000031' as ProfileId,
     status,
-    sections: [{ heading: 'Summary', lines: ['Juniper, age 7.'] }],
+    sections: [{ heading: 'Summary', lines: ['Rowan, age 7.'] }],
   };
 }
 
-function approveIntake(visit: Visit, answers: AnswerDraft): Visit {
+function say(visit: Visit, text: string): Visit {
+  return reduceVisit(visit, { type: 'conversation', event: { type: 'answer', text } });
+}
+
+function approveIntake(visit: Visit, medical?: string): Visit {
+  let next = say(visit, 'He likes a quiet hello.');
+  next = say(next, 'Quiet blocks.');
+  next = say(next, 'Surprise loud songs.');
+  next = say(next, 'A warning before music.');
+  next = reduceVisit(next, { type: 'conversation', event: { type: 'skip' } });
+  next = say(next, 'Picture cards.');
+  next = say(next, 'TICK-QUIET-ROOM');
+  if (medical === undefined) {
+    next = reduceVisit(next, { type: 'conversation', event: { type: 'declineMedical' } });
+  } else {
+    next = reduceVisit(next, { type: 'conversation', event: { type: 'acceptMedical' } });
+    next = say(next, medical);
+  }
   const profile = shown('draft');
-  let next = reduceVisit(visit, { type: 'intake', event: { type: 'submit', answers } });
+  next = reduceVisit(next, { type: 'intake', event: { type: 'submit' } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'approve' } });
   return reduceVisit(next, {
@@ -28,28 +39,21 @@ function approveIntake(visit: Visit, answers: AnswerDraft): Visit {
   });
 }
 
-test('Juniper keeps her name and the intake lines replace the sample card', () => {
-  const start = initialVisit();
-  const visit = approveIntake(start, {
-    ...start.intake.answers,
-    preferredName: 'Juniper',
-    sensoryNotes: 'TICK-QUIET-ROOM',
-    supportNeeds: 'A picture before the change.',
-  });
-  assert.equal(childPreferredName(visit), 'Juniper');
-  assert.equal(childHeading(childPreferredName(visit)), 'Juniper');
-  assert.equal(childHeading('Rowan'), 'Rowan Sampleton');
-  assert.equal(visit.card.sensory, 'TICK-QUIET-ROOM');
-  assert.equal(visit.card.loves, '');
-  assert.equal(visit.card.communication, 'A picture before the change.');
-});
-
-test('a blank preferred name is Rowan Sampleton', () => {
-  const start = initialVisit();
-  const visit = approveIntake(start, {
-    ...start.intake.answers,
-    preferredName: '   ',
-  });
+test('the tree name is Rowan Sampleton and the card seeds from the answers', () => {
+  const visit = approveIntake(initialVisit());
   assert.equal(childPreferredName(visit), 'Rowan');
   assert.equal(childHeading(childPreferredName(visit)), 'Rowan Sampleton');
+  assert.equal(childHeading('Rowan'), 'Rowan Sampleton');
+  assert.equal(visit.card.loves, 'Quiet blocks.');
+  assert.equal(visit.card.communication, 'Picture cards.');
+  assert.equal(visit.card.sensory, 'TICK-QUIET-ROOM');
+  assert.equal(visit.visibility.medical, false);
+  assert.equal(visit.card.medical, '');
+});
+
+test('a medical answer does not turn the switch on', () => {
+  const visit = approveIntake(initialVisit(), 'TICK-MEDICAL-NOTE');
+  assert.equal(visit.card.medical, 'TICK-MEDICAL-NOTE');
+  assert.equal(visit.visibility.medical, false);
+  assert.equal(childPreferredName(visit), 'Rowan');
 });

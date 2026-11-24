@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { answerTree, reviewProfile } from './walk-tree';
 
 test('the built page hydrates and submits intake without a GET navigation', async ({ page }) => {
   const robots = await page.request.get('/robots.txt');
@@ -26,13 +27,13 @@ test('the built page hydrates and submits intake without a GET navigation', asyn
   expect(rejected.headers()['x-robots-tag']).toBe('noindex');
 
   await page.goto('/');
-  await page.getByLabel('Sensory notes').fill('TICK-QUIET-ROOM');
   const posted = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().includes('/v1/intake/profile'),
   );
-  await page.getByRole('button', { name: 'Submit' }).click();
-  await posted;
-  await expect(page.getByRole('heading', { name: 'Draft' })).toBeVisible();
+  await answerTree(page, 'TICK-QUIET-ROOM');
+  const request = await posted;
+  expect(request.postDataJSON()).toMatchObject({ sensoryNotes: 'TICK-QUIET-ROOM', preferredName: 'Rowan', ageYears: 7 });
+  await reviewProfile(page);
   await expect(page.getByRole('region', { name: 'Sensory considerations' })).toContainText('TICK-QUIET-ROOM');
   expect(new URL(page.url()).search).toBe('');
 });

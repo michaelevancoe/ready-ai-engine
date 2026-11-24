@@ -20,20 +20,49 @@ function shown(status: 'draft' | 'approved'): ShownProfile {
   };
 }
 
-function approveIntake(
-  visit: Visit,
-  sensoryNotes: string,
-  patch: Partial<Visit['intake']['answers']> = {},
-): Visit {
-  const answers = { ...visit.intake.answers, ...patch, sensoryNotes };
+function approveIntake(visit: Visit, lines: TreeLines = {}): Visit {
+  const helps = lines.helps ?? 'A warning before music.';
+  let next = say(visit, lines.about ?? 'He likes a quiet hello.');
+  next = say(next, lines.loves ?? 'Quiet blocks.');
+  next = say(next, lines.overwhelms ?? 'Surprise loud songs.');
+  next = say(next, helps);
+  if (helps.trim().length <= 40) next = sayOrSkip(next, lines.helpsMore);
+  next = say(next, lines.communication ?? 'Picture cards.');
+  next = say(next, lines.sensory ?? 'TICK-QUIET-ROOM');
+  if (lines.medical === undefined) {
+    next = reduceVisit(next, { type: 'conversation', event: { type: 'declineMedical' } });
+  } else {
+    next = reduceVisit(next, { type: 'conversation', event: { type: 'acceptMedical' } });
+    next = say(next, lines.medical);
+  }
   const profile = shown('draft');
-  let next = reduceVisit(visit, { type: 'intake', event: { type: 'submit', answers } });
+  next = reduceVisit(next, { type: 'intake', event: { type: 'submit' } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'draft', profile } });
   next = reduceVisit(next, { type: 'intake', event: { type: 'approve' } });
   return reduceVisit(next, {
     type: 'intake',
     event: { type: 'approved', profile: { ...profile, status: 'approved' } },
   });
+}
+
+interface TreeLines {
+  readonly about?: string;
+  readonly loves?: string;
+  readonly overwhelms?: string;
+  readonly helps?: string;
+  readonly helpsMore?: string;
+  readonly communication?: string;
+  readonly sensory?: string;
+  readonly medical?: string;
+}
+
+function say(visit: Visit, text: string): Visit {
+  return reduceVisit(visit, { type: 'conversation', event: { type: 'answer', text } });
+}
+
+function sayOrSkip(visit: Visit, text: string | undefined): Visit {
+  if (text === undefined) return reduceVisit(visit, { type: 'conversation', event: { type: 'skip' } });
+  return say(visit, text);
 }
 
 test('the sample church and a closed brief are the initial visit', () => {
@@ -63,19 +92,23 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   assert.equal(checkInBrief(visit).status, 'withheld');
   assert.equal(reduceVisit(visit, { type: 'approveBrief' }), visit);
 
-  visit = approveIntake(visit, 'TICK-QUIET-ROOM');
+  visit = approveIntake(visit);
   assert.equal(visit.card.loves, '');
   assert.equal(visit.card.medical, 'TICK-MEDICAL');
   assert.equal(checkInBrief(visit).status, 'withheld');
 
-  const fresh = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  const fresh = approveIntake(initialVisit());
   assert.equal(fresh.cardTouched, false);
-  assert.equal(fresh.card.loves, '');
+  assert.equal(fresh.card.loves, 'Quiet blocks.');
   assert.equal(fresh.card.overwhelms, 'Surprise loud songs.');
   assert.equal(fresh.card.whatHelps, 'A warning before music.');
-  assert.equal(fresh.card.communication, 'A quiet seat near the door.');
+  assert.equal(fresh.card.communication, 'Picture cards.');
   assert.equal(fresh.card.sensory, 'TICK-QUIET-ROOM');
   assert.equal(fresh.card.medical, '');
+  assert.equal(fresh.visibility.medical, false);
+  const opted = approveIntake(initialVisit(), { medical: 'TICK-MEDICAL-NOTE' });
+  assert.equal(opted.card.medical, 'TICK-MEDICAL-NOTE');
+  assert.equal(opted.visibility.medical, false);
   assert.equal(checkInBrief(fresh).status, 'withheld');
 
   visit = reduceVisit(fresh, {
@@ -147,7 +180,7 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
 });
 
 test('lesson and Sunday update stop when the draft is ready', () => {
-  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  let visit = approveIntake(initialVisit());
   assert.equal(reduceVisit(visit, { type: 'approveStory' }).story.phase, 'idle');
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
   assert.equal(reduceVisit(visit, { type: 'writeUpdate' }), visit);
@@ -227,7 +260,7 @@ test('a leader approves the edited parent note and the lesson', () => {
 });
 
 test('withdrawing the brief clears an approved lesson and keeps the parent note', () => {
-  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  let visit = approveIntake(initialVisit());
   visit = reduceVisit(visit, { type: 'approveBrief' });
   visit = reduceVisit(visit, { type: 'role', role: 'leader' });
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
@@ -250,7 +283,7 @@ test('withdrawing the brief clears an approved lesson and keeps the parent note'
 });
 
 test('withdrawing the brief clears the lesson and keeps the typed lesson', () => {
-  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  let visit = approveIntake(initialVisit());
   visit = reduceVisit(visit, { type: 'approveBrief' });
   visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
   visit = reduceVisit(visit, {
@@ -277,17 +310,41 @@ test('withdrawing the brief clears the lesson and keeps the typed lesson', () =>
   assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
 });
 
+test('a new answer drops a stale draft', () => {
+  let visit = say(initialVisit(), 'He likes a quiet hello.');
+  visit = say(visit, 'Quiet blocks.');
+  visit = say(visit, 'Surprise loud songs.');
+  visit = say(visit, 'A warning before music.');
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'skip' } });
+  visit = say(visit, 'Picture cards.');
+  visit = say(visit, 'TICK-QUIET-ROOM');
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'declineMedical' } });
+  const profile = shown('draft');
+  visit = reduceVisit(visit, { type: 'intake', event: { type: 'submit' } });
+  visit = reduceVisit(visit, { type: 'intake', event: { type: 'draft', profile } });
+  assert.equal(visit.intake.status, 'draft');
+  visit = reduceVisit(visit, {
+    type: 'conversation',
+    event: { type: 'fix', sectionId: 'sensory', reason: 'Quieter.' },
+  });
+  assert.equal(visit.intake.status, 'draft');
+  visit = say(visit, 'TICK-SOFTER-SEAT');
+  assert.equal(visit.intake.status, 'idle');
+  assert.equal(reduceVisit(visit, { type: 'intake', event: { type: 'approve' } }), visit);
+  assert.equal(visit.conversation.answers.loves?.kind, 'answered');
+});
+
 test('seeded intake lines gain a space between glued sentences', () => {
-  const visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM', {
-    whatToAvoid: 'Sudden loud noises.Surprise loud songs.',
-    whatHelps: 'corner.A warning',
+  const visit = approveIntake(initialVisit(), {
+    overwhelms: 'Sudden loud noises.Surprise loud songs.',
+    helps: 'corner.A warning',
   });
   assert.equal(visit.card.overwhelms, 'Sudden loud noises. Surprise loud songs.');
   assert.equal(visit.card.whatHelps, 'corner. A warning');
 });
 
 test('saveCard replaces seeded overwhelms and the brief keeps the new line', () => {
-  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  let visit = approveIntake(initialVisit());
   visit = reduceVisit(visit, {
     type: 'saveCard',
     card: { ...visit.card, overwhelms: 'Sudden loud noises.' },

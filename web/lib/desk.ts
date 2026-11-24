@@ -1,13 +1,3 @@
-export type AnswerField =
-  | 'preferredName'
-  | 'ageYears'
-  | 'sensoryNotes'
-  | 'supportNeeds'
-  | 'whatHelps'
-  | 'whatToAvoid';
-
-export type AnswerDraft = Record<AnswerField, string>;
-
 export interface IntakeAnswers {
   preferredName: string;
   ageYears: number;
@@ -15,11 +5,6 @@ export interface IntakeAnswers {
   supportNeeds: string;
   whatHelps: string;
   whatToAvoid: string;
-}
-
-export interface FieldError {
-  readonly field: AnswerField;
-  readonly message: string;
 }
 
 declare const profileIdBrand: unique symbol;
@@ -37,75 +22,32 @@ export interface ShownProfile {
   readonly sections: readonly ProfileSection[];
 }
 
-export type PagePhase =
-  | {
-      readonly status: 'ready';
-      readonly answers: AnswerDraft;
-      readonly fieldErrors: readonly FieldError[];
-      readonly focus: AnswerField | null;
-      readonly fixReason: string;
-    }
-  | { readonly status: 'submitting'; readonly answers: AnswerDraft }
-  | { readonly status: 'draft'; readonly answers: AnswerDraft; readonly profile: ShownProfile }
-  | { readonly status: 'approving'; readonly answers: AnswerDraft; readonly profile: ShownProfile }
-  | { readonly status: 'approved'; readonly answers: AnswerDraft; readonly profile: ShownProfile }
+export type IntakeGate =
+  | { readonly status: 'idle' }
+  | { readonly status: 'submitting' }
+  | { readonly status: 'draft'; readonly profile: ShownProfile }
+  | { readonly status: 'approving'; readonly profile: ShownProfile }
+  | { readonly status: 'approved'; readonly profile: ShownProfile }
   | {
       readonly status: 'error';
-      readonly answers: AnswerDraft;
       readonly message: string;
       readonly retry: 'submit';
       readonly profile: null;
     }
   | {
       readonly status: 'error';
-      readonly answers: AnswerDraft;
       readonly message: string;
       readonly retry: 'approve';
       readonly profile: ShownProfile;
     };
 
-export type PageEvent =
-  | { readonly type: 'invalid'; readonly answers: AnswerDraft; readonly fieldErrors: readonly FieldError[] }
-  | { readonly type: 'submit'; readonly answers: AnswerDraft }
+export type GateEvent =
+  | { readonly type: 'submit' }
   | { readonly type: 'draft'; readonly profile: ShownProfile }
   | { readonly type: 'approve' }
   | { readonly type: 'approved'; readonly profile: ShownProfile }
   | { readonly type: 'fail'; readonly message: string }
-  | { readonly type: 'fix'; readonly section: ProfileSectionKey; readonly reason: string }
   | { readonly type: 'dismiss' };
-
-export type ReadAnswers =
-  | { readonly ok: true; readonly answers: IntakeAnswers; readonly draft: AnswerDraft }
-  | { readonly ok: false; readonly draft: AnswerDraft; readonly fieldErrors: readonly FieldError[] };
-
-export interface DeskField {
-  readonly key: AnswerField;
-  readonly label: string;
-  readonly multiline: boolean;
-  readonly value: string;
-  readonly error: string | null;
-}
-
-export interface DeskView {
-  readonly fields: readonly DeskField[];
-  readonly banner: { readonly text: string; readonly tone: 'busy' | 'error' } | null;
-  readonly sections: readonly ProfileSection[];
-  readonly primary: 'submit' | 'approve' | null;
-  readonly dismiss: boolean;
-  readonly profile: ShownProfile | null;
-  readonly statusLabel: 'Draft' | 'Approved' | null;
-}
-
-const PREFILL: AnswerDraft = {
-  preferredName: 'Rowan',
-  ageYears: '7',
-  sensoryNotes: '',
-  supportNeeds: 'A quiet seat near the door.',
-  whatHelps: 'A warning before music.',
-  whatToAvoid: 'Surprise loud songs.',
-};
-
-const AGE_MESSAGE = 'Enter a whole age from 0 through 18.';
 
 const LOCAL_DEMO_DOWN = 'The local demo is not running.';
 
@@ -120,14 +62,13 @@ const SENTENCES = {
   demo_off: LOCAL_DEMO_DOWN,
 } as const;
 
-const FIELDS: readonly { key: AnswerField; label: string; multiline: boolean }[] = [
-  { key: 'preferredName', label: 'Preferred name', multiline: false },
-  { key: 'ageYears', label: 'Age', multiline: false },
-  { key: 'sensoryNotes', label: 'Sensory notes', multiline: true },
-  { key: 'supportNeeds', label: 'Support needs', multiline: true },
-  { key: 'whatHelps', label: 'What helps', multiline: true },
-  { key: 'whatToAvoid', label: 'What to avoid', multiline: true },
-];
+const SECTION_HEADINGS = [
+  ['summary', 'Summary'],
+  ['sensoryConsiderations', 'Sensory considerations'],
+  ['supportStrategies', 'Support strategies'],
+  ['avoid', 'Avoid'],
+  ['volunteerGuidance', 'Volunteer guidance'],
+] as const;
 
 interface ProfileText {
   summary: string;
@@ -137,120 +78,44 @@ interface ProfileText {
   volunteerGuidance: string;
 }
 
-export const PROFILE_SECTIONS = [
-  ['summary', 'Summary'],
-  ['sensoryConsiderations', 'Sensory considerations'],
-  ['supportStrategies', 'Support strategies'],
-  ['avoid', 'Avoid'],
-  ['volunteerGuidance', 'Volunteer guidance'],
-] as const satisfies ReadonlyArray<readonly [keyof ProfileText, string]>;
-
-export type ProfileSectionKey = (typeof PROFILE_SECTIONS)[number][0];
-
 export function spaceSentences(value: string): string {
   return value.replace(/([.!?])(\p{L})/gu, '$1 $2');
 }
 
-export function initialPhase(): PagePhase {
-  return { status: 'ready', answers: { ...PREFILL }, fieldErrors: [], focus: null, fixReason: '' };
+export function initialGate(): IntakeGate {
+  return { status: 'idle' };
 }
 
-export function isProfileSection(value: string): value is ProfileSectionKey {
-  return PROFILE_SECTIONS.some(([key]) => key === value);
-}
-
-function focusFor(section: ProfileSectionKey, answers: AnswerDraft): AnswerField {
-  switch (section) {
-    case 'summary':
-      return 'preferredName';
-    case 'sensoryConsiderations':
-      return 'sensoryNotes';
-    case 'supportStrategies':
-      return answers.whatHelps.length > 0 ? 'whatHelps' : 'supportNeeds';
-    case 'avoid':
-      return 'whatToAvoid';
-    case 'volunteerGuidance':
-      return 'whatHelps';
-    default: {
-      const leftover: never = section;
-      return leftover;
-    }
-  }
-}
-
-export function reducePage(phase: PagePhase, event: PageEvent): PagePhase {
+export function reduceGate(gate: IntakeGate, event: GateEvent): IntakeGate {
   switch (event.type) {
-    case 'invalid':
-      if (phase.status === 'ready' || (phase.status === 'error' && phase.retry === 'submit')) {
-        return {
-          status: 'ready',
-          answers: event.answers,
-          fieldErrors: event.fieldErrors,
-          focus: null,
-          fixReason: '',
-        };
-      }
-      return phase;
     case 'submit':
-      if (phase.status === 'ready' || (phase.status === 'error' && phase.retry === 'submit')) {
-        return { status: 'submitting', answers: event.answers };
+      if (gate.status === 'idle' || (gate.status === 'error' && gate.retry === 'submit')) {
+        return { status: 'submitting' };
       }
-      return phase;
+      return gate;
     case 'draft':
-      if (phase.status === 'submitting') {
-        return { status: 'draft', answers: phase.answers, profile: event.profile };
-      }
-      return phase;
+      if (gate.status === 'submitting') return { status: 'draft', profile: event.profile };
+      return gate;
     case 'approve':
-      if (phase.status === 'draft') {
-        return { status: 'approving', answers: phase.answers, profile: phase.profile };
-      }
-      return phase;
+      if (gate.status === 'draft') return { status: 'approving', profile: gate.profile };
+      return gate;
     case 'approved':
-      if (phase.status === 'approving' || phase.status === 'approved') {
-        return { status: 'approved', answers: phase.answers, profile: event.profile };
+      if (gate.status === 'approving' || gate.status === 'approved') {
+        return { status: 'approved', profile: event.profile };
       }
-      return phase;
+      return gate;
     case 'fail':
-      if (phase.status === 'submitting') {
-        return {
-          status: 'error',
-          answers: phase.answers,
-          message: event.message,
-          retry: 'submit',
-          profile: null,
-        };
+      if (gate.status === 'submitting') {
+        return { status: 'error', message: event.message, retry: 'submit', profile: null };
       }
-      if (phase.status === 'approving') {
-        return {
-          status: 'error',
-          answers: phase.answers,
-          message: event.message,
-          retry: 'approve',
-          profile: phase.profile,
-        };
+      if (gate.status === 'approving') {
+        return { status: 'error', message: event.message, retry: 'approve', profile: gate.profile };
       }
-      return phase;
-    case 'fix': {
-      if (phase.status !== 'draft') return phase;
-      const reason = event.reason.trim();
-      if (reason.length === 0) return phase;
-      return {
-        status: 'ready',
-        answers: phase.answers,
-        fieldErrors: [],
-        focus: focusFor(event.section, phase.answers),
-        fixReason: reason,
-      };
-    }
+      return gate;
     case 'dismiss':
-      if (phase.status === 'error' && phase.retry === 'submit') {
-        return { status: 'ready', answers: phase.answers, fieldErrors: [], focus: null, fixReason: '' };
-      }
-      if (phase.status === 'error' && phase.retry === 'approve') {
-        return { status: 'draft', answers: phase.answers, profile: phase.profile };
-      }
-      return phase;
+      if (gate.status === 'error' && gate.retry === 'submit') return { status: 'idle' };
+      if (gate.status === 'error' && gate.retry === 'approve') return { status: 'draft', profile: gate.profile };
+      return gate;
     default: {
       const leftover: never = event;
       return leftover;
@@ -258,94 +123,9 @@ export function reducePage(phase: PagePhase, event: PageEvent): PagePhase {
   }
 }
 
-export function viewOf(phase: PagePhase): DeskView {
-  const fields = fieldViews(phase.answers, phase.status === 'ready' ? phase.fieldErrors : []);
-  switch (phase.status) {
-    case 'ready':
-      return {
-        fields,
-        banner: null,
-        sections: [],
-        primary: 'submit',
-        dismiss: false,
-        profile: null,
-        statusLabel: null,
-      };
-    case 'submitting':
-      return {
-        fields,
-        banner: { text: 'Writing the draft.', tone: 'busy' },
-        sections: [],
-        primary: null,
-        dismiss: false,
-        profile: null,
-        statusLabel: null,
-      };
-    case 'draft':
-      return {
-        fields,
-        banner: null,
-        sections: phase.profile.sections,
-        primary: 'approve',
-        dismiss: false,
-        profile: phase.profile,
-        statusLabel: 'Draft',
-      };
-    case 'approving':
-      return {
-        fields,
-        banner: { text: 'Approving the profile.', tone: 'busy' },
-        sections: phase.profile.sections,
-        primary: null,
-        dismiss: false,
-        profile: phase.profile,
-        statusLabel: 'Draft',
-      };
-    case 'approved':
-      return {
-        fields,
-        banner: null,
-        sections: phase.profile.sections,
-        primary: null,
-        dismiss: false,
-        profile: phase.profile,
-        statusLabel: 'Approved',
-      };
-    case 'error':
-      return errorView(phase, fields);
-    default: {
-      const leftover: never = phase;
-      return leftover;
-    }
-  }
-}
-
-export function readAnswers(fields: AnswerDraft): ReadAnswers {
-  const age = wholeAge(fields.ageYears);
-  if (age === null) {
-    return {
-      ok: false,
-      draft: fields,
-      fieldErrors: [{ field: 'ageYears', message: AGE_MESSAGE }],
-    };
-  }
-  return {
-    ok: true,
-    draft: fields,
-    answers: {
-      preferredName: fields.preferredName,
-      ageYears: age,
-      sensoryNotes: fields.sensoryNotes,
-      supportNeeds: fields.supportNeeds,
-      whatHelps: fields.whatHelps,
-      whatToAvoid: fields.whatToAvoid,
-    },
-  };
-}
-
 export async function submitIntake(
   answers: IntakeAnswers,
-): Promise<Extract<PageEvent, { type: 'draft' | 'fail' }>> {
+): Promise<Extract<GateEvent, { type: 'draft' | 'fail' }>> {
   try {
     const response = await fetch('/v1/intake/profile', {
       method: 'POST',
@@ -373,7 +153,7 @@ export async function submitIntake(
 
 export async function approveProfile(
   profile: ShownProfile,
-): Promise<Extract<PageEvent, { type: 'approved' | 'fail' }>> {
+): Promise<Extract<GateEvent, { type: 'approved' | 'fail' }>> {
   try {
     const response = await fetch(`/v1/profiles/${encodeURIComponent(profile.id)}/approve`, {
       method: 'POST',
@@ -393,53 +173,6 @@ export async function approveProfile(
   } catch {
     return { type: 'fail', message: LOCAL_DEMO_DOWN };
   }
-}
-
-function fieldViews(answers: AnswerDraft, errors: readonly FieldError[]): DeskField[] {
-  return FIELDS.map((field) => ({
-    key: field.key,
-    label: field.label,
-    multiline: field.multiline,
-    value: answers[field.key],
-    error: errors.find((item) => item.field === field.key)?.message ?? null,
-  }));
-}
-
-function errorView(phase: Extract<PagePhase, { status: 'error' }>, fields: readonly DeskField[]): DeskView {
-  const banner = { text: phase.message, tone: 'error' as const };
-  switch (phase.retry) {
-    case 'submit':
-      return {
-        fields,
-        banner,
-        sections: [],
-        primary: null,
-        dismiss: true,
-        profile: null,
-        statusLabel: null,
-      };
-    case 'approve':
-      return {
-        fields,
-        banner,
-        sections: phase.profile.sections,
-        primary: null,
-        dismiss: true,
-        profile: phase.profile,
-        statusLabel: 'Draft',
-      };
-    default: {
-      const leftover: never = phase;
-      return leftover;
-    }
-  }
-}
-
-function wholeAge(token: string): number | null {
-  if (!/^(0|[1-9]\d*)$/.test(token)) return null;
-  const age = Number(token);
-  if (age > 18) return null;
-  return age;
 }
 
 function sentenceFor(code: string): string {
@@ -492,10 +225,8 @@ function profileText(value: unknown): ProfileText | null {
   };
 }
 
-function sectionsFrom(
-  profile: ProfileText & Record<Exclude<keyof ProfileText, ProfileSectionKey>, never>,
-): ProfileSection[] {
-  return PROFILE_SECTIONS.map(([key, heading]) => {
+function sectionsFrom(profile: ProfileText): ProfileSection[] {
+  return SECTION_HEADINGS.map(([key, heading]) => {
     const value = profile[key];
     const source = typeof value === 'string' ? [value] : value;
     return { heading, lines: source.map((line) => spaceSentences(line)) };

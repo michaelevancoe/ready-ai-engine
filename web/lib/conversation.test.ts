@@ -112,6 +112,11 @@ test('fix returns to that section and a blank reason does not', () => {
   const back = reduceConversation(intakeTree, done, { type: 'finishFix' });
   assert.equal(back.talk.mode, 'reviewWait');
   assert.equal(back.answers.sensory, waiting.answers.sensory);
+  const reopened = reduceConversation(intakeTree, back, { type: 'reopen' });
+  assert.equal(reopened.talk.mode, 'ask');
+  if (reopened.talk.mode !== 'ask') return;
+  assert.equal(reopened.talk.nodeId, 'sensory');
+  assert.equal(reopened.answers, back.answers);
   assert.equal(project(intakeTree, back).post.whatHelps, "Headphones. That's everything");
 });
 
