@@ -1,27 +1,282 @@
+:root {
+  --cream: #f3eee4;
+  --ink: #1c1917;
+  --muted: #3f3a34;
+  --card: #ffffff;
+  --line: #ddd4c6;
+  --terracotta: #9a3412;
+  --green: #166534;
+  --focus: #1d4ed8;
+  --portrait: #eadfcf;
+  --track: #e4dccf;
+  --loves: #e5f4ea;
+  --overwhelms: #f8ecdf;
+  --helps: #e6f0fa;
+  --alert: #7f1d1d;
+  --alert-bg: #fde8e6;
+  --disabled: #e6dfd2;
+  --disabled-ink: #3f3a34;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html {
+  background: var(--cream);
+  color: var(--ink);
   font-family: system-ui, sans-serif;
+  line-height: 1.45;
 }
 
 body {
-  max-width: 40rem;
-  margin: 1.5rem auto;
+  margin: 0;
+  background: var(--cream);
+  color: var(--ink);
+}
+
+.frame {
+  width: min(24rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.25rem 0 3rem;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0.35rem 0;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  margin-top: 1.4rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.15rem;
 }
 
 label,
-button,
-section {
+section,
+.field {
   display: block;
-  margin-top: 1rem;
+  margin-top: 0.9rem;
+}
+
+.fictional {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.role-nav {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.85rem 0 1.1rem;
+}
+
+.role-nav a {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.5rem 0.3rem;
+}
+
+.role-nav a[aria-current='page'] {
+  background: var(--terracotta);
+  border-color: var(--terracotta);
+  color: white;
 }
 
 input,
 textarea {
   display: block;
   width: 100%;
-  box-sizing: border-box;
+  margin-top: 0.3rem;
   font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 0.65rem 0.75rem;
 }
 
 button {
+  display: block;
+  width: 100%;
+  margin-top: 0.9rem;
   font: inherit;
+  border-radius: 999px;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--terracotta);
+  border-color: var(--terracotta);
+  color: white;
+}
+
+button.approve {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
+button:disabled {
+  background: var(--disabled);
+  border-color: var(--disabled);
+  color: var(--disabled-ink);
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.church-card,
+.roster li,
+.line,
+.story-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.church-card,
+.roster li {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+
+.church-card h2,
+.roster h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.roster {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.portrait {
+  width: 5rem;
+  height: 5rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--portrait);
+  color: var(--ink);
+  text-align: center;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  padding: 0.4rem;
+}
+
+.muted {
+  display: block;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.switch {
+  width: 100%;
+  margin-top: 0.7rem;
+  border-radius: 1rem;
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: left;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.switch-label,
+.hint {
+  display: block;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin-top: 0.15rem;
+}
+
+.track {
+  width: 3rem;
+  height: 1.75rem;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem;
+  border-radius: 999px;
+  background: var(--track);
+}
+
+.track.on {
+  justify-content: flex-end;
+  background: var(--green);
+}
+
+.knob {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid var(--line);
+}
+
+.line {
+  margin-top: 0.7rem;
+}
+
+.line[data-field='loves'] {
+  background: var(--loves);
+}
+
+.line[data-field='overwhelms'] {
+  background: var(--overwhelms);
+}
+
+.line[data-field='whatHelps'] {
+  background: var(--helps);
+}
+
+.draft-text {
+  white-space: pre-wrap;
+}
+
+[role='alert'] {
+  color: var(--alert);
+  background: var(--alert-bg);
+  padding: 0.75rem 1rem;
+  border-radius: 0.8rem;
 }

@@ -36,11 +36,21 @@ Tests mock the network. They do not need Cloudflare or Supabase credentials.
 
 ## Local demo
 
-Run one page on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The page has six fields. Submit the form to see a Draft view of the five sections. Approve that draft to see Approved.
+Run the demo on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The parent page has six fields. Submit the form to see a Draft view of the five sections. Approve that draft to see Approved.
 
 The demo process keeps the fictional church in memory and signs the Avery session on each request. The page posts to its own address. It forwards `/v1` to that process only when `READY_LOCAL_DEMO` is `1`. `npm run demo` does not set that variable.
 
 The demo uses the mock unless you set `READY_DEMO_MODEL` to `live`. Any other value, including an unset value, keeps the mock. The mock writes the draft from the six answers and does not call a model.
+
+### Three roles
+
+**Parent**, **Volunteer**, and **Leader** are links at the top. They share one visit in the browser. A refresh resets that visit. Mock mode stays the default.
+
+Avery Sampleton uses Parent to approve Rowan's profile and a Sunday brief. The brief keeps the visible fields that have text at the moment of approval. The medical field starts off. Avery must turn it on and approve again before the brief includes it.
+
+Theo Park uses Volunteer to read that brief and save notes after Sunday. Volunteer shows no profile text before the brief is approved.
+
+Devon Placeholder uses Leader to edit the church and adapt a fictional lesson. **Adapt lesson** stays off until the Sunday brief is approved. The lesson uses that approved brief.
 
 From the repo root, install, check, and test. Then start the demo process.
 

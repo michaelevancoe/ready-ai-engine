@@ -1,0 +1,99 @@
+import type { BriefLine, LessonAdaptation, SocialStory, SundayUpdate } from './visit';
+
+export type DraftResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly message: string };
+
+const FAILED = 'The draft could not be written. Try again.';
+const DOWN = 'The local demo is not running.';
+const CHECK = 'Check the answers and try again.';
+const REQUEST = 'The request failed.';
+
+export function postSocialStory(lines: readonly BriefLine[]): Promise<DraftResult<SocialStory>> {
+  return post('/v1/drafts/social-story', { lines: wireLines(lines) }, readStory);
+}
+
+export function postLesson(
+  lesson: string,
+  lines: readonly BriefLine[],
+): Promise<DraftResult<LessonAdaptation>> {
+  return post('/v1/drafts/lesson', { lesson, lines: wireLines(lines) }, readLesson);
+}
+
+export function postSundayUpdate(notes: string): Promise<DraftResult<SundayUpdate>> {
+  return post('/v1/drafts/sunday-update', { notes, childName: 'Rowan' }, readUpdate);
+}
+
+function wireLines(lines: readonly BriefLine[]): { field: BriefLine['field']; label: string; text: string }[] {
+  return lines.map((line) => ({ field: line.field, label: line.label, text: line.text }));
+}
+
+async function post<T>(path: string, body: unknown, parse: (value: unknown) => T | null): Promise<DraftResult<T>> {
+  try {
+    const response = await fetch(path, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) return { ok: false, message: messageFor(payload) };
+    const value = parse(payload);
+    if (value === null) return { ok: false, message: FAILED };
+    return { ok: true, value };
+  } catch {
+    return { ok: false, message: DOWN };
+  }
+}
+
+function messageFor(value: unknown): string {
+  if (!isRecord(value) || typeof value.error !== 'string') return REQUEST;
+  switch (value.error) {
+    case 'invalid_input':
+      return CHECK;
+    case 'generation_failed':
+      return FAILED;
+    case 'misconfigured':
+    case 'demo_off':
+      return DOWN;
+    default:
+      return REQUEST;
+  }
+}
+
+function readStory(value: unknown): SocialStory | null {
+  if (!isRecord(value) || !isBounded(value.title, 1, 120) || !isBounded(value.body, 1, 2000)) return null;
+  return { title: value.title, body: value.body };
+}
+
+function readLesson(value: unknown): LessonAdaptation | null {
+  if (!isRecord(value) || !isBounded(value.summary, 1, 600) || !Array.isArray(value.steps)) return null;
+  if (value.steps.length < 1 || value.steps.length > 8) return null;
+  const steps: string[] = [];
+  for (const step of value.steps) {
+    if (!isBounded(step, 1, 400)) return null;
+    steps.push(step);
+  }
+  return { summary: value.summary, steps };
+}
+
+function readUpdate(value: unknown): SundayUpdate | null {
+  if (!isRecord(value) || !isBounded(value.body, 1, 2000)) return null;
+  return { body: value.body };
+}
+
+function isBounded(value: unknown, min: number, max: number): value is string {
+  return typeof value === 'string' && value.length >= min && value.length <= max;
+}
+
+async function readPayload(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
