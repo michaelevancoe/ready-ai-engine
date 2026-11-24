@@ -246,6 +246,7 @@ function nodeOf(value: unknown): IntakeNode | null {
   const chips = value.chips === undefined ? undefined : stringList(value.chips);
   if (value.chips !== undefined && chips === null) return null;
   if (value.closeChip !== undefined && !isText(value.closeChip)) return null;
+  if (follow === null || chips === null) return null;
   return {
     id: value.id,
     sectionId: value.sectionId,

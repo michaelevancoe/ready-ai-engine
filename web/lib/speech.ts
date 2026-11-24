@@ -34,12 +34,12 @@ export function speechSupport(): 'ready' | 'missing' {
 }
 
 export function listen(onText: (text: string) => void, recognition?: Recognition): { stop(): void } {
-  const session = recognition ?? recognitionCtor()?.();
-  if (session === undefined) return { stop() {} };
+  const session = recognition ?? startRecognition();
+  if (session === null) return { stop() {} };
   session.continuous = true;
   session.interimResults = true;
   session.lang = 'en-US';
-  session.onresult = (event) => {
+  session.onresult = (event: RecognitionEvent) => {
     onText(transcriptOf(event));
   };
   session.onerror = null;
@@ -50,6 +50,12 @@ export function listen(onText: (text: string) => void, recognition?: Recognition
       session.stop();
     },
   };
+}
+
+function startRecognition(): Recognition | null {
+  const Factory = recognitionCtor();
+  if (Factory === null) return null;
+  return new Factory();
 }
 
 function recognitionCtor(): (new () => Recognition) | null {

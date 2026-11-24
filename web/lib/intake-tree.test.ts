@@ -28,7 +28,7 @@ test('a section node id and a node section id must exist, and node ids are uniqu
     sections: intakeTree.sections.map((item) => (item.id === 'sensory' ? { ...item, nodeId: 'missing-node' } : item)),
   });
   assert.equal(section.ok, false);
-  if (!section.ok) return;
+  if (section.ok) return;
   assert.equal(section.error, 'unknown-node:missing-node');
 
   const node = parseIntakeTree({
@@ -36,7 +36,7 @@ test('a section node id and a node section id must exist, and node ids are uniqu
     nodes: intakeTree.nodes.map((item) => (item.id === 'sensory' ? { ...item, sectionId: 'missing-section' } : item)),
   });
   assert.equal(node.ok, false);
-  if (!node.ok) return;
+  if (node.ok) return;
   assert.equal(node.error, 'unknown-section:missing-section');
 
   const duplicate = parseIntakeTree({
@@ -44,7 +44,7 @@ test('a section node id and a node section id must exist, and node ids are uniqu
     nodes: [...intakeTree.nodes, intakeTree.nodes[0]],
   });
   assert.equal(duplicate.ok, false);
-  if (!duplicate.ok) return;
+  if (duplicate.ok) return;
   assert.equal(duplicate.error, 'duplicate-node:about');
 });
 
