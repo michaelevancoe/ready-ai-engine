@@ -147,15 +147,13 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
         ...visit,
         card: event.card,
         cardTouched: true,
-        brief: { phase: 'open' },
-        story: { phase: 'idle' },
+        ...withdrawnBrief(),
       };
     case 'visibility':
       return {
         ...visit,
         visibility: { ...visit.visibility, [event.field]: event.on },
-        brief: { phase: 'open' },
-        story: { phase: 'idle' },
+        ...withdrawnBrief(),
       };
     case 'writeStory':
       if (visit.intake.status !== 'approved' || visit.story.phase === 'writing') return visit;
@@ -268,6 +266,14 @@ export function readyValue<T>(gate: DraftGate<T>): T | null {
       return leftover;
     }
   }
+}
+
+function withdrawnBrief(): Pick<Visit, 'brief' | 'story' | 'lesson'> {
+  return {
+    brief: { phase: 'open' },
+    story: { phase: 'idle' },
+    lesson: { phase: 'idle' },
+  };
 }
 
 function applyIntake(visit: Visit, event: PageEvent): Visit {

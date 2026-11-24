@@ -164,6 +164,34 @@ test('lesson and Sunday update stop when the draft is ready', () => {
   assert.equal(reduceVisit(idle, { type: 'updateFailed', message: 'nope' }), idle);
 });
 
+test('withdrawing the brief clears the lesson and keeps the typed lesson', () => {
+  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
+  visit = reduceVisit(visit, {
+    type: 'lessonReady',
+    value: { summary: 'Plan for Rowan', steps: ['TICK-LESSON-PLAN', 'TICK-MEDICAL'] },
+  });
+  visit = reduceVisit(visit, { type: 'visibility', field: 'medical', on: true });
+  assert.equal(checkInBrief(visit).status, 'withheld');
+  assert.equal(visit.lesson.phase, 'idle');
+  assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
+
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
+  visit = reduceVisit(visit, {
+    type: 'lessonReady',
+    value: { summary: 'Plan for Rowan', steps: ['TICK-LESSON-PLAN'] },
+  });
+  visit = reduceVisit(visit, {
+    type: 'saveCard',
+    card: { ...visit.card, sensory: 'A quieter room.' },
+  });
+  assert.equal(checkInBrief(visit).status, 'withheld');
+  assert.equal(visit.lesson.phase, 'idle');
+  assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
+});
+
 test('seeded intake lines gain a space between glued sentences', () => {
   const visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM', {
     whatToAvoid: 'Sudden loud noises.Surprise loud songs.',
