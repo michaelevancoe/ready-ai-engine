@@ -21,9 +21,20 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(steps.getByText('Brief', { exact: true })).toBeVisible();
   await expect(steps.getByText('Update', { exact: true })).toBeVisible();
 
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByLabel('Sensory notes').fill('TICK-QUIET-ROOM');
   await page.getByRole('button', { name: 'Submit' }).click();
   await expect(page.getByRole('heading', { name: 'Draft', exact: true })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const nav = await page.getByRole('navigation', { name: 'Role' }).boundingBox();
+      const draft = await page.getByRole('heading', { name: 'Draft', exact: true }).boundingBox();
+      const approve = await page.getByRole('button', { name: 'Approve', exact: true }).boundingBox();
+      if (nav === null || draft === null || approve === null) return false;
+      const gap = draft.y - (nav.y + nav.height);
+      return gap >= -4 && gap < 48 && approve.y + approve.height <= 800;
+    })
+    .toBe(true);
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Approved', exact: true })).toBeVisible();
   await expect

@@ -21,8 +21,8 @@ export default function LeaderPage() {
   const blocked = brief.status !== 'approved';
   const [initialLesson] = useState(visit.lessonSource);
   const [churchSaved, setChurchSaved] = useState(false);
-  useScrollWhen(visit.lesson.phase === 'writing', 'lesson-status', 'nearest');
-  useScrollWhen(visit.lesson.phase === 'ready', 'lesson-draft', 'nearest');
+  useScrollWhen(visit.lesson.phase === 'writing', 'lesson-status');
+  useScrollWhen(visit.lesson.phase === 'ready', 'lesson-draft');
 
   function onSaveChurch(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
