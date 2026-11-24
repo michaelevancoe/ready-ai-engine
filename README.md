@@ -144,7 +144,7 @@ curl -s "$DEMO_URL/robots.txt"
 
 Each response includes `x-robots-tag: noindex`. The robots body is `User-agent: *` and `Disallow: /`. Request one `/_next/static/` URL named by the page HTML. That response is 200, has a stylesheet or script content type, and includes `x-robots-tag: noindex`. The page shows `Demo: fictional data only. Please don't enter real child information.`
 
-On 2026-11-25, delete the Worker. Deleting the Worker deletes its secret.
+On 2026-12-31, delete the Worker. Deleting the Worker deletes its secret.
 
 ```bash
 cd web
