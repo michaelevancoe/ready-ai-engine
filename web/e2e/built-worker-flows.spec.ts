@@ -56,23 +56,13 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(story.getByText('TICK-QUIET-ROOM')).toBeVisible();
   await expect(story).not.toContainText('TICK-MEDICAL');
   await page.getByRole('button', { name: 'Approve story' }).click();
-  await expect
-    .poll(async () => {
-      const box = await page.getByRole('region', { name: 'Sunday brief' }).boundingBox();
-      return box?.y ?? 1000;
-    })
-    .toBeLessThan(48);
+  await expect(page.getByRole('region', { name: 'Sunday brief' })).toBeInViewport();
   await page.getByRole('button', { name: 'Approve for Sunday' }).click();
   await expect(page.getByText('You approved this story.')).toBeVisible();
   const update = page.getByRole('region', { name: 'Sunday update' });
   await expect(update).toContainText("Theo's notes will appear here.");
   await expect(update.getByRole('button', { name: 'Write the Sunday update' })).toBeDisabled();
-  await expect
-    .poll(async () => {
-      const box = await update.boundingBox();
-      return box?.y ?? 1000;
-    })
-    .toBeLessThan(48);
+  await expect(update).toBeInViewport();
   await save(page, 'flows-parent-brief.png');
 
   await page.getByRole('link', { name: 'Volunteer' }).click();

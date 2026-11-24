@@ -144,6 +144,10 @@ const SECTION_ORDER = [
 
 type ListedSection = (typeof SECTION_ORDER)[number][0];
 
+export function spaceSentences(value: string): string {
+  return value.replace(/([.!?])(\p{L})/gu, '$1 $2');
+}
+
 export function initialPhase(): PagePhase {
   return { status: 'ready', answers: { ...PREFILL }, fieldErrors: [] };
 }
@@ -449,8 +453,8 @@ function sectionsFrom(
 ): ProfileSection[] {
   return SECTION_ORDER.map(([key, heading]) => {
     const value = profile[key];
-    const lines = typeof value === 'string' ? [value] : [...value];
-    return { heading, lines };
+    const source = typeof value === 'string' ? [value] : value;
+    return { heading, lines: source.map((line) => spaceSentences(line)) };
   });
 }
 

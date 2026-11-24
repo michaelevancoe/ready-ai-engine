@@ -1,7 +1,7 @@
 'use client';
 
 import { Label } from '@radix-ui/react-label';
-import { useState, type Dispatch, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type FormEvent } from 'react';
 import { postSocialStory, postSundayUpdate } from '../lib/drafts';
 import {
   approveProfile,
@@ -16,6 +16,8 @@ import {
   BRIEF_FIELDS,
   BRIEF_LABELS,
   briefLines,
+  childHeading,
+  childPreferredName,
   readyValue,
   storyValue,
   type BriefField,
@@ -25,10 +27,22 @@ import {
 } from '../lib/visit';
 import { useVisit } from './visit-shell';
 
+function useScrollOnEnter(active: boolean, id: string): void {
+  const previous = useRef(active);
+  useEffect(() => {
+    if (!previous.current && active) {
+      document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    }
+    previous.current = active;
+  }, [active, id]);
+}
+
 export default function Page() {
   const { visit, dispatch } = useVisit();
   const phase = visit.intake;
   const view = viewOf(phase);
+  const heading = childHeading(childPreferredName(visit));
+  useScrollOnEnter(phase.status === 'approved', 'edit-profile');
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -60,8 +74,15 @@ export default function Page() {
         Feel welcome.
       </h1>
       <p>
-        Avery Sampleton reviews a Sunday brief for Rowan Sampleton before Theo Park or Devon Placeholder can see it.
+        Avery Sampleton reviews a Sunday brief for {heading} before Theo Park or Devon Placeholder can see it.
       </p>
+      <ol className="steps" aria-label="Sunday steps">
+        <li>Intake</li>
+        <li>Profile</li>
+        <li>Story</li>
+        <li>Brief</li>
+        <li>Update</li>
+      </ol>
       <p className="church-card">
         <span className="portrait">Placeholder photo</span>
         <span>
@@ -108,18 +129,41 @@ export default function Page() {
           Back
         </button>
       ) : null}
-      {phase.status === 'approved' ? <ApprovedJourney visit={visit} dispatch={dispatch} /> : null}
+      {phase.status === 'approved' ? (
+        <ApprovedJourney visit={visit} dispatch={dispatch} heading={heading} />
+      ) : null}
     </main>
   );
 }
 
-function ApprovedJourney({ visit, dispatch }: { visit: Visit; dispatch: Dispatch<VisitEvent> }) {
+function ApprovedJourney({
+  visit,
+  dispatch,
+  heading,
+}: {
+  visit: Visit;
+  dispatch: Dispatch<VisitEvent>;
+  heading: string;
+}) {
   const [cardSaved, setCardSaved] = useState(false);
   const lines = briefLines(visit.card, visit.visibility);
   const story = storyValue(visit.story);
   const update = readyValue(visit.update);
   const shared = visit.brief.phase === 'approved' ? visit.brief.lines : lines;
   const medicalShared = shared.some((line) => line.field === 'medical');
+  const name = childPreferredName(visit);
+  useScrollOnEnter(visit.story.phase === 'approved', 'sunday-brief');
+  useScrollOnEnter(visit.brief.phase === 'approved', 'sunday-update');
+
+  function readCard(): ProfileCard {
+    const form = document.getElementById('profile-card');
+    if (!(form instanceof HTMLFormElement)) return visit.card;
+    return cardFrom(new FormData(form));
+  }
+
+  function cardChanged(card: ProfileCard): boolean {
+    return BRIEF_FIELDS.some((field) => card[field] !== visit.card[field]);
+  }
 
   function onSaveCard(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -128,30 +172,37 @@ function ApprovedJourney({ visit, dispatch }: { visit: Visit; dispatch: Dispatch
   }
 
   async function onWriteStory(): Promise<void> {
-    if (lines.length === 0 || visit.story.phase === 'writing') return;
+    if (visit.story.phase === 'writing') return;
+    const card = readCard();
+    const nextLines = briefLines(card, visit.visibility);
+    if (nextLines.length === 0) return;
+    if (cardChanged(card)) dispatch({ type: 'saveCard', card });
     dispatch({ type: 'writeStory' });
-    const result = await postSocialStory(lines);
+    const result = await postSocialStory(nextLines, name);
     if (result.ok) dispatch({ type: 'storyReady', value: result.value });
     else dispatch({ type: 'storyFailed', message: result.message });
+  }
+
+  function onApproveBrief(): void {
+    const card = readCard();
+    if (cardChanged(card)) dispatch({ type: 'saveCard', card });
+    dispatch({ type: 'approveBrief' });
   }
 
   async function onWriteUpdate(): Promise<void> {
     if (visit.notes.trim() === '' || visit.update.phase === 'writing') return;
     dispatch({ type: 'writeUpdate' });
-    const result = await postSundayUpdate(visit.notes);
+    const result = await postSundayUpdate(visit.notes, name);
     if (result.ok) dispatch({ type: 'updateReady', value: result.value });
     else dispatch({ type: 'updateFailed', message: result.message });
   }
 
   return (
     <>
-      <section aria-label="Edit profile">
+      <section aria-label="Edit profile" id="edit-profile">
         <h2>Edit profile</h2>
         <p>Change anything that is not quite right. Saving keeps your words.</p>
-        <form
-          onSubmit={onSaveCard}
-          onInput={() => setCardSaved(false)}
-        >
+        <form id="profile-card" onSubmit={onSaveCard} onInput={() => setCardSaved(false)}>
           {BRIEF_FIELDS.map((field) => (
             <div className="field" key={field}>
               <label htmlFor={`card-${field}`}>{BRIEF_LABELS[field]}</label>
@@ -172,7 +223,7 @@ function ApprovedJourney({ visit, dispatch }: { visit: Visit; dispatch: Dispatch
       </section>
       <section aria-label="Who sees what">
         <h2>Who sees what</h2>
-        <p>Choose what Theo Park can see about Rowan. You can change this any time.</p>
+        <p>Choose what Theo Park can see about {heading}. You can change this any time.</p>
         {BRIEF_FIELDS.map((field) => (
           <ShareSwitch
             key={field}
@@ -215,7 +266,7 @@ function ApprovedJourney({ visit, dispatch }: { visit: Visit; dispatch: Dispatch
         ) : null}
         {visit.story.phase === 'approved' ? <p>You approved this story.</p> : null}
       </section>
-      <section aria-label="Sunday brief">
+      <section aria-label="Sunday brief" id="sunday-brief">
         <h2>Sunday brief</h2>
         <p>Theo Park sees only these lines after you approve them.</p>
         {shared.map((line) => (
@@ -225,18 +276,19 @@ function ApprovedJourney({ visit, dispatch }: { visit: Visit; dispatch: Dispatch
           </article>
         ))}
         {medicalShared ? null : <p>Medical / health notes are not in this brief.</p>}
-        <button type="button" className="approve" onClick={() => dispatch({ type: 'approveBrief' })}>
+        <button type="button" className="approve" onClick={onApproveBrief}>
           Approve for Sunday
         </button>
         {visit.brief.phase === 'approved' ? <p>You approved this brief for Sunday.</p> : null}
       </section>
-      {visit.notes.trim() === '' ? null : (
-        <section aria-label="Sunday update">
+      {visit.brief.phase === 'approved' ? (
+        <section aria-label="Sunday update" id="sunday-update">
           <h2>Sunday update</h2>
+          {visit.notes.trim() === '' ? <p>Theo's notes will appear here.</p> : null}
           <button
             type="button"
             className="primary"
-            disabled={visit.update.phase === 'writing'}
+            disabled={visit.notes.trim() === '' || visit.update.phase === 'writing'}
             onClick={() => void onWriteUpdate()}
           >
             Write the Sunday update
@@ -245,7 +297,7 @@ function ApprovedJourney({ visit, dispatch }: { visit: Visit; dispatch: Dispatch
           {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
           {update === null ? null : <p className="draft-text">{update.body}</p>}
         </section>
-      )}
+      ) : null}
     </>
   );
 }

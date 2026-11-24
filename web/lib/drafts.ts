@@ -9,19 +9,23 @@ const DOWN = 'The local demo is not running.';
 const CHECK = 'Check the answers and try again.';
 const REQUEST = 'The request failed.';
 
-export function postSocialStory(lines: readonly BriefLine[]): Promise<DraftResult<SocialStory>> {
-  return post('/v1/drafts/social-story', { lines: wireLines(lines) }, readStory);
+export function postSocialStory(
+  lines: readonly BriefLine[],
+  childName: string,
+): Promise<DraftResult<SocialStory>> {
+  return post('/v1/drafts/social-story', { lines: wireLines(lines), childName }, readStory);
 }
 
 export function postLesson(
   lesson: string,
   lines: readonly BriefLine[],
+  childName: string,
 ): Promise<DraftResult<LessonAdaptation>> {
-  return post('/v1/drafts/lesson', { lesson, lines: wireLines(lines) }, readLesson);
+  return post('/v1/drafts/lesson', { lesson, lines: wireLines(lines), childName }, readLesson);
 }
 
-export function postSundayUpdate(notes: string): Promise<DraftResult<SundayUpdate>> {
-  return post('/v1/drafts/sunday-update', { notes, childName: 'Rowan' }, readUpdate);
+export function postSundayUpdate(notes: string, childName: string): Promise<DraftResult<SundayUpdate>> {
+  return post('/v1/drafts/sunday-update', { notes, childName }, readUpdate);
 }
 
 function wireLines(lines: readonly BriefLine[]): { field: BriefLine['field']; label: string; text: string }[] {
