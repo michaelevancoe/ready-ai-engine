@@ -74,6 +74,29 @@ test('a blank answer stays on the question', () => {
   assert.equal(project(intakeTree, wiped).post.whatHelps, 'Headphones. A quiet corner');
 });
 
+test('a second short answer keeps the earlier follow-up when nothing new is added', () => {
+  const followed = say(say(atHelps(), 'Headphones.'), 'A quiet corner');
+  const fixing = reduceConversation(intakeTree, followed, {
+    type: 'fix',
+    sectionId: 'helps',
+    reason: 'Shorter.',
+  });
+  const shorter = say(fixing, 'Snack.');
+  const view = presentAsk(intakeTree, shorter);
+  assert.equal(view.kind, 'question');
+  if (view.kind !== 'question') return;
+  assert.equal(
+    view.lines.some((line) => line.from === 'parent' && line.text === 'A quiet corner'),
+    true,
+  );
+  const kept = reduceConversation(intakeTree, shorter, { type: 'skip' });
+  assert.equal(project(intakeTree, kept).post.whatHelps, 'Snack. A quiet corner');
+  assert.equal(kept.answers.loves, followed.answers.loves);
+  const first = say(atHelps(), 'Headphones.');
+  const cleared = reduceConversation(intakeTree, first, { type: 'skip' });
+  assert.equal(project(intakeTree, cleared).post.whatHelps, 'Headphones.');
+});
+
 test('going back does not ask medical again after it was decided', () => {
   const asking = reduceConversation(intakeTree, atOffer(), { type: 'acceptMedical' });
   const shared = say(asking, 'Carries an inhaler.');

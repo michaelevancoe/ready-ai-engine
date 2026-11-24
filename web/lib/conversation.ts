@@ -220,8 +220,12 @@ function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer
   const located = locate(tree, conversation);
   if (located === null || (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing')) return conversation;
   const { node, section } = located;
-  const followId = answer.kind === 'answered' ? openedFollow(tree, node, answer.text) : null;
-  const answers = dropClosedFollow({ ...conversation.answers, [node.id]: answer }, node, followId);
+  const stored = conversation.answers[node.id];
+  const followTarget = tree.nodes.some((other) => other.follow?.nodeId === node.id);
+  const committed =
+    answer.kind === 'skipped' && followTarget && stored?.kind === 'answered' ? stored : answer;
+  const followId = committed.kind === 'answered' ? openedFollow(tree, node, committed.text) : null;
+  const answers = dropClosedFollow({ ...conversation.answers, [node.id]: committed }, node, followId);
   const medical = section.kind === 'medical' && answer.kind === 'answered' ? 'open' : conversation.medical;
   if (conversation.talk.mode === 'fixing') {
     if (followId !== null) {
@@ -306,6 +310,10 @@ function questionLines(
     if (previous !== null) lines.push(...previous);
   }
   lines.push({ from: 'ready', text: fill(node.prompt, tree, conversation, node.id) });
+  if (fixing !== null && !fixing.done) {
+    const earlier = answeredText(conversation, node.id);
+    if (earlier !== null) lines.push({ from: 'parent', text: earlier });
+  }
   if (fixing?.done) {
     const spoken = answeredText(conversation, node.id);
     if (spoken !== null) lines.push({ from: 'parent', text: spoken });

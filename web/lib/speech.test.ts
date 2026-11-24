@@ -23,7 +23,13 @@ test('a fake recognition delivers the transcript and the module writes no audio'
   fake.emit('Head', false);
   fake.emit('Headphones.', true);
   assert.deepEqual(heard, ['Head', 'Headphones.']);
+  const late = fake.recognition.onresult;
   session.stop();
+  late?.({
+    resultIndex: 0,
+    results: { length: 1, 0: { isFinal: true, length: 1, 0: { transcript: 'He likes a quiet hello.' } } },
+  });
+  assert.deepEqual(heard, ['Head', 'Headphones.']);
   assert.equal(fake.stopped, true);
   assert.equal(fake.started, true);
   let stopped = 0;

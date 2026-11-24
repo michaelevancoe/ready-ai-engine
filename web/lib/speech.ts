@@ -43,14 +43,24 @@ export function listen(
   session.continuous = true;
   session.interimResults = true;
   session.lang = 'en-US';
+  let closed = false;
   session.onresult = (event: RecognitionEvent) => {
+    if (closed) return;
     onText(transcriptOf(event));
   };
-  session.onerror = () => onStop?.();
-  session.onend = () => onStop?.();
+  session.onerror = () => {
+    if (closed) return;
+    onStop?.();
+  };
+  session.onend = () => {
+    if (closed) return;
+    onStop?.();
+  };
   session.start();
   return {
     stop() {
+      closed = true;
+      session.onresult = null;
       session.onerror = null;
       session.onend = null;
       session.stop();
