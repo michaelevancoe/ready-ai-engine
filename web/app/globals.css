@@ -156,6 +156,24 @@ textarea {
   padding: 0.65rem 0.75rem;
 }
 
+fieldset {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.choice input {
+  width: auto;
+  margin-top: 0;
+}
+
 button {
   display: block;
   width: 100%;

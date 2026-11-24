@@ -45,6 +45,19 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
     })
     .toBe(true);
   expect(await tailGap(page)).toBeLessThan(400);
+  await page.getByRole('button', { name: 'No, fix this' }).click();
+  await page.getByRole('radio', { name: 'Sensory considerations' }).check();
+  await page.getByLabel('Reason').fill('The room should be quieter.');
+  await page.getByRole('button', { name: 'No, fix this' }).click();
+  const sensory = page.getByLabel('Sensory notes');
+  await expect(sensory).toBeFocused();
+  await expect(sensory).toHaveValue('TICK-QUIET-ROOM');
+  await expect(page.getByText('The room should be quieter.')).toBeVisible();
+  await save(page, 'flows-fix-profile.png');
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByRole('heading', { name: 'Draft', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'No, fix this' })).toBeVisible();
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Approved', exact: true })).toBeVisible();
   await expect

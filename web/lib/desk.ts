@@ -42,6 +42,8 @@ export type PagePhase =
       readonly status: 'ready';
       readonly answers: AnswerDraft;
       readonly fieldErrors: readonly FieldError[];
+      readonly focus: AnswerField | null;
+      readonly fixReason: string;
     }
   | { readonly status: 'submitting'; readonly answers: AnswerDraft }
   | { readonly status: 'draft'; readonly answers: AnswerDraft; readonly profile: ShownProfile }
@@ -69,6 +71,7 @@ export type PageEvent =
   | { readonly type: 'approve' }
   | { readonly type: 'approved'; readonly profile: ShownProfile }
   | { readonly type: 'fail'; readonly message: string }
+  | { readonly type: 'fix'; readonly section: ProfileSectionKey; readonly reason: string }
   | { readonly type: 'dismiss' };
 
 export type ReadAnswers =
@@ -134,7 +137,7 @@ interface ProfileText {
   volunteerGuidance: string;
 }
 
-const SECTION_ORDER = [
+export const PROFILE_SECTIONS = [
   ['summary', 'Summary'],
   ['sensoryConsiderations', 'Sensory considerations'],
   ['supportStrategies', 'Support strategies'],
@@ -142,21 +145,50 @@ const SECTION_ORDER = [
   ['volunteerGuidance', 'Volunteer guidance'],
 ] as const satisfies ReadonlyArray<readonly [keyof ProfileText, string]>;
 
-type ListedSection = (typeof SECTION_ORDER)[number][0];
+export type ProfileSectionKey = (typeof PROFILE_SECTIONS)[number][0];
 
 export function spaceSentences(value: string): string {
   return value.replace(/([.!?])(\p{L})/gu, '$1 $2');
 }
 
 export function initialPhase(): PagePhase {
-  return { status: 'ready', answers: { ...PREFILL }, fieldErrors: [] };
+  return { status: 'ready', answers: { ...PREFILL }, fieldErrors: [], focus: null, fixReason: '' };
+}
+
+export function isProfileSection(value: string): value is ProfileSectionKey {
+  return PROFILE_SECTIONS.some(([key]) => key === value);
+}
+
+function focusFor(section: ProfileSectionKey, answers: AnswerDraft): AnswerField {
+  switch (section) {
+    case 'summary':
+      return 'preferredName';
+    case 'sensoryConsiderations':
+      return 'sensoryNotes';
+    case 'supportStrategies':
+      return answers.whatHelps.length > 0 ? 'whatHelps' : 'supportNeeds';
+    case 'avoid':
+      return 'whatToAvoid';
+    case 'volunteerGuidance':
+      return 'whatHelps';
+    default: {
+      const leftover: never = section;
+      return leftover;
+    }
+  }
 }
 
 export function reducePage(phase: PagePhase, event: PageEvent): PagePhase {
   switch (event.type) {
     case 'invalid':
       if (phase.status === 'ready' || (phase.status === 'error' && phase.retry === 'submit')) {
-        return { status: 'ready', answers: event.answers, fieldErrors: event.fieldErrors };
+        return {
+          status: 'ready',
+          answers: event.answers,
+          fieldErrors: event.fieldErrors,
+          focus: null,
+          fixReason: '',
+        };
       }
       return phase;
     case 'submit':
@@ -199,9 +231,21 @@ export function reducePage(phase: PagePhase, event: PageEvent): PagePhase {
         };
       }
       return phase;
+    case 'fix': {
+      if (phase.status !== 'draft') return phase;
+      const reason = event.reason.trim();
+      if (reason.length === 0) return phase;
+      return {
+        status: 'ready',
+        answers: phase.answers,
+        fieldErrors: [],
+        focus: focusFor(event.section, phase.answers),
+        fixReason: reason,
+      };
+    }
     case 'dismiss':
       if (phase.status === 'error' && phase.retry === 'submit') {
-        return { status: 'ready', answers: phase.answers, fieldErrors: [] };
+        return { status: 'ready', answers: phase.answers, fieldErrors: [], focus: null, fixReason: '' };
       }
       if (phase.status === 'error' && phase.retry === 'approve') {
         return { status: 'draft', answers: phase.answers, profile: phase.profile };
@@ -449,9 +493,9 @@ function profileText(value: unknown): ProfileText | null {
 }
 
 function sectionsFrom(
-  profile: ProfileText & Record<Exclude<keyof ProfileText, ListedSection>, never>,
+  profile: ProfileText & Record<Exclude<keyof ProfileText, ProfileSectionKey>, never>,
 ): ProfileSection[] {
-  return SECTION_ORDER.map(([key, heading]) => {
+  return PROFILE_SECTIONS.map(([key, heading]) => {
     const value = profile[key];
     const source = typeof value === 'string' ? [value] : value;
     return { heading, lines: source.map((line) => spaceSentences(line)) };
