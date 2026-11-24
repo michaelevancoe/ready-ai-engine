@@ -17,6 +17,7 @@ function demoEnv(): Record<string, string> {
 
 export default defineConfig({
   testDir: 'e2e',
+  testIgnore: 'built-worker.spec.ts',
   timeout: 60_000,
   expect: { timeout: 30_000 },
   use: {

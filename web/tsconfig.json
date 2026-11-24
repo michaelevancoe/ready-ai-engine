@@ -36,6 +36,7 @@
     "lib/**/*.ts",
     "next.config.ts",
     "playwright.config.ts",
+    "playwright.built.config.ts",
     "e2e/**/*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"

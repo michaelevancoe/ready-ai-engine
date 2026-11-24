@@ -48,7 +48,17 @@ export class DemoContext {
     env: Readonly<Record<string, string | undefined>>,
     fetchImpl: typeof fetch = globalThis.fetch,
   ): DemoContext {
-    return new DemoContext(liveDemoBindings(env), fetchImpl);
+    const mode = demoModelMode(env.READY_DEMO_MODEL);
+    switch (mode) {
+      case 'mock':
+        return new DemoContext(testEnv, mockGateway);
+      case 'live':
+        return new DemoContext(liveDemoBindings(env), fetchImpl);
+      default: {
+        const unexpected: never = mode;
+        return unexpected;
+      }
+    }
   }
 
   static async open(envValue: string | undefined, options?: DemoOpenOptions): Promise<DemoContext> {
