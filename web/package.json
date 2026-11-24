@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "next build",
     "test:e2e": "playwright test",
+    "test:built": "playwright test -c playwright.built.config.ts",
     "dev:vinext": "vite dev --port 3001",
     "build:vinext": "vite build",
     "start:vinext": "vite preview",
