@@ -1,3 +1,5 @@
+import { handleAccess } from './access-http.ts';
+import { signInEnabled, type AccessWorld } from './access.ts';
 import type { WorkerBindings } from './bindings.ts';
 import { ConfigError, GenerateError, InputError, StoreError } from './errors.ts';
 import { generate } from './generate.ts';
@@ -16,6 +18,7 @@ export interface AppDeps {
   storeFactory: (accessToken: string) => ProfileStore;
   log: (event: SafeLog) => void;
   now?: () => number;
+  accessWorld?: AccessWorld;
 }
 
 interface Authenticated {
@@ -145,8 +148,13 @@ async function handleApprove(request: Request, deps: AppDeps, profileId: string)
 }
 
 async function route(request: Request, deps: AppDeps): Promise<Response> {
-  if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
   const url = new URL(request.url);
+  if (url.pathname.startsWith('/v1/access/')) {
+    if (!signInEnabled(deps.env.READY_SIGN_IN)) return json({ error: 'not_found' }, 404);
+    if (deps.accessWorld === undefined) throw new ConfigError();
+    return handleAccess(request, deps.accessWorld);
+  }
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
   if (url.pathname === '/v1/intake/profile') return handleIntake(request, deps);
   const approve = /^\/v1\/profiles\/([^/]+)\/approve$/.exec(url.pathname);
   const profileId = approve?.[1];
