@@ -2,7 +2,7 @@
 
 import { Label } from '@radix-ui/react-label';
 import { useState, type Dispatch, type FormEvent, type MouseEvent } from 'react';
-import { postSocialStory, postSundayUpdate } from '../lib/drafts';
+import { postSocialStory } from '../lib/drafts';
 import {
   approveProfile,
   readAnswers,
@@ -15,11 +15,11 @@ import {
 import {
   BRIEF_FIELDS,
   BRIEF_LABELS,
+  approvedValue,
   briefLines,
   childHeading,
   childPreferredName,
-  readyValue,
-  storyValue,
+  reviewValue,
   type BriefField,
   type ProfileCard,
   type Visit,
@@ -166,8 +166,8 @@ function ApprovedJourney({
 }) {
   const [cardSaved, setCardSaved] = useState(false);
   const lines = briefLines(visit.card, visit.visibility);
-  const story = storyValue(visit.story);
-  const update = readyValue(visit.update);
+  const story = reviewValue(visit.story);
+  const update = approvedValue(visit.update);
   const shared = visit.brief.phase === 'approved' ? visit.brief.lines : lines;
   const medicalShared = shared.some((line) => line.field === 'medical');
   const name = childPreferredName(visit);
@@ -175,8 +175,6 @@ function ApprovedJourney({
   useScrollWhen(visit.story.phase === 'ready', 'story-draft');
   useScrollWhen(visit.story.phase === 'approved', 'sunday-brief');
   useScrollWhen(visit.brief.phase === 'approved', 'sunday-update');
-  useScrollWhen(visit.update.phase === 'writing', 'update-status');
-  useScrollWhen(visit.update.phase === 'ready', 'update-draft');
 
   function readCard(): ProfileCard {
     const form = document.getElementById('profile-card');
@@ -210,14 +208,6 @@ function ApprovedJourney({
     const card = readCard();
     if (cardChanged(card)) dispatch({ type: 'saveCard', card });
     dispatch({ type: 'approveBrief' });
-  }
-
-  async function onWriteUpdate(): Promise<void> {
-    if (visit.notes.trim() === '' || visit.update.phase === 'writing') return;
-    dispatch({ type: 'writeUpdate' });
-    const result = await postSundayUpdate(visit.notes, name);
-    if (result.ok) dispatch({ type: 'updateReady', value: result.value });
-    else dispatch({ type: 'updateFailed', message: result.message });
   }
 
   return (
@@ -313,22 +303,9 @@ function ApprovedJourney({
       {visit.brief.phase === 'approved' ? (
         <section aria-label="Sunday update" id="sunday-update">
           <h2>Sunday update</h2>
-          {visit.notes.trim() === '' ? <p>Theo's notes will appear here.</p> : null}
-          <button
-            type="button"
-            className="primary"
-            disabled={visit.notes.trim() === '' || visit.update.phase === 'writing'}
-            onClick={() => void onWriteUpdate()}
-          >
-            Write the Sunday update
-          </button>
-          {visit.update.phase === 'writing' ? (
-            <p id="update-status" className="draft-status" role="status">
-              Writing the draft.
-            </p>
-          ) : null}
-          {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
-          {update === null ? null : (
+          {update === null ? (
+            <p>Waiting for an approved Sunday update.</p>
+          ) : (
             <p className="draft-text" id="update-draft">
               {update.body}
             </p>

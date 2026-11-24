@@ -31,7 +31,9 @@ export type DraftGate<T> =
   | { readonly phase: 'ready'; readonly value: T }
   | { readonly phase: 'failed'; readonly message: string };
 
-export type StoryGate = DraftGate<SocialStory> | { readonly phase: 'approved'; readonly value: SocialStory };
+export type ReviewGate<T> = DraftGate<T> | { readonly phase: 'approved'; readonly value: T };
+
+export type StoryGate = ReviewGate<SocialStory>;
 
 export interface SocialStory {
   readonly title: string;
@@ -65,10 +67,10 @@ export interface Visit {
   readonly story: StoryGate;
   readonly brief: BriefGate;
   readonly notes: string;
-  readonly update: DraftGate<SundayUpdate>;
+  readonly update: ReviewGate<SundayUpdate>;
   readonly church: ChurchSetup;
   readonly lessonSource: string;
-  readonly lesson: DraftGate<LessonAdaptation>;
+  readonly lesson: ReviewGate<LessonAdaptation>;
 }
 
 export type VisitEvent =
@@ -85,11 +87,13 @@ export type VisitEvent =
   | { readonly type: 'writeUpdate' }
   | { readonly type: 'updateReady'; readonly value: SundayUpdate }
   | { readonly type: 'updateFailed'; readonly message: string }
+  | { readonly type: 'approveUpdate'; readonly body: string }
   | { readonly type: 'saveChurch'; readonly church: ChurchSetup }
   | { readonly type: 'setLesson'; readonly source: string }
   | { readonly type: 'writeLesson'; readonly source: string }
   | { readonly type: 'lessonReady'; readonly value: LessonAdaptation }
-  | { readonly type: 'lessonFailed'; readonly message: string };
+  | { readonly type: 'lessonFailed'; readonly message: string }
+  | { readonly type: 'approveLesson' };
 
 export type CheckIn =
   | { readonly status: 'withheld' }
@@ -173,7 +177,7 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
     case 'saveNotes':
       return { ...visit, notes: event.notes };
     case 'writeUpdate':
-      if (visit.update.phase === 'writing') return visit;
+      if (visit.role !== 'leader' || visit.notes.trim() === '' || visit.update.phase === 'writing') return visit;
       return { ...visit, update: { phase: 'writing' } };
     case 'updateReady':
       if (visit.update.phase !== 'writing') return visit;
@@ -181,6 +185,12 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
     case 'updateFailed':
       if (visit.update.phase !== 'writing') return visit;
       return { ...visit, update: { phase: 'failed', message: event.message } };
+    case 'approveUpdate': {
+      if (visit.role !== 'leader' || visit.update.phase !== 'ready') return visit;
+      const body = event.body.trim();
+      if (body.length === 0) return visit;
+      return { ...visit, update: { phase: 'approved', value: { body } } };
+    }
     case 'saveChurch':
       return { ...visit, church: event.church };
     case 'setLesson':
@@ -195,6 +205,9 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
     case 'lessonFailed':
       if (visit.lesson.phase !== 'writing') return visit;
       return { ...visit, lesson: { phase: 'failed', message: event.message } };
+    case 'approveLesson':
+      if (visit.role !== 'leader' || visit.lesson.phase !== 'ready') return visit;
+      return { ...visit, lesson: { phase: 'approved', value: visit.lesson.value } };
     default: {
       const leftover: never = event;
       return leftover;
@@ -237,22 +250,6 @@ export function checkInBrief(visit: Visit): CheckIn {
   }
 }
 
-export function storyValue(story: StoryGate): SocialStory | null {
-  switch (story.phase) {
-    case 'idle':
-    case 'writing':
-    case 'failed':
-      return null;
-    case 'ready':
-    case 'approved':
-      return story.value;
-    default: {
-      const leftover: never = story;
-      return leftover;
-    }
-  }
-}
-
 export function readyValue<T>(gate: DraftGate<T>): T | null {
   switch (gate.phase) {
     case 'idle':
@@ -260,6 +257,38 @@ export function readyValue<T>(gate: DraftGate<T>): T | null {
     case 'failed':
       return null;
     case 'ready':
+      return gate.value;
+    default: {
+      const leftover: never = gate;
+      return leftover;
+    }
+  }
+}
+
+export function approvedValue<T>(gate: ReviewGate<T>): T | null {
+  switch (gate.phase) {
+    case 'idle':
+    case 'writing':
+    case 'failed':
+    case 'ready':
+      return null;
+    case 'approved':
+      return gate.value;
+    default: {
+      const leftover: never = gate;
+      return leftover;
+    }
+  }
+}
+
+export function reviewValue<T>(gate: ReviewGate<T>): T | null {
+  switch (gate.phase) {
+    case 'idle':
+    case 'writing':
+    case 'failed':
+      return null;
+    case 'ready':
+    case 'approved':
       return gate.value;
     default: {
       const leftover: never = gate;

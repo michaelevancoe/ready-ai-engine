@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ProfileId, ShownProfile } from '../web/lib/desk.ts';
 import {
+  approvedValue,
   checkInBrief,
   initialVisit,
+  readyValue,
   reduceVisit,
+  reviewValue,
   type ProfileCard,
   type Visit,
 } from '../web/lib/visit.ts';
@@ -146,11 +149,29 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
 test('lesson and Sunday update stop when the draft is ready', () => {
   let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
   assert.equal(reduceVisit(visit, { type: 'approveStory' }).story.phase, 'idle');
+  visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
+  assert.equal(reduceVisit(visit, { type: 'writeUpdate' }), visit);
+
+  const leader = reduceVisit(initialVisit(), { type: 'role', role: 'leader' });
+  assert.equal(reduceVisit(leader, { type: 'writeUpdate' }), leader);
+  const blank = reduceVisit(leader, { type: 'saveNotes', notes: '   ' });
+  assert.equal(reduceVisit(blank, { type: 'writeUpdate' }), blank);
+  const volunteer = reduceVisit(leader, { type: 'role', role: 'volunteer' });
+  const withNotes = reduceVisit(volunteer, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
+  assert.equal(reduceVisit(withNotes, { type: 'writeUpdate' }), withNotes);
+
+  visit = reduceVisit(visit, { type: 'role', role: 'leader' });
   visit = reduceVisit(visit, { type: 'writeUpdate' });
+  assert.equal(visit.update.phase, 'writing');
+  assert.equal(reduceVisit(visit, { type: 'writeUpdate' }), visit);
   visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Rowan waved.' } });
   assert.equal(visit.update.phase, 'ready');
   if (visit.update.phase !== 'ready') return;
   assert.equal(visit.update.value.body, 'Rowan waved.');
+  assert.equal(approvedValue(visit.update), null);
+  assert.equal(reviewValue(visit.update)?.body, 'Rowan waved.');
+  assert.equal(readyValue({ phase: 'idle' }), null);
+  assert.equal(readyValue({ phase: 'ready', value: { body: 'Rowan waved.' } })?.body, 'Rowan waved.');
 
   visit = reduceVisit(visit, { type: 'writeLesson', source: 'A short lesson.' });
   visit = reduceVisit(visit, {
@@ -158,10 +179,74 @@ test('lesson and Sunday update stop when the draft is ready', () => {
     value: { summary: 'A short lesson.', steps: ['A short lesson.'] },
   });
   assert.equal(visit.lesson.phase, 'ready');
+  assert.equal(approvedValue(visit.lesson), null);
+  assert.equal(reviewValue(visit.lesson)?.summary, 'A short lesson.');
   const idle = initialVisit();
   assert.equal(reduceVisit(idle, { type: 'storyFailed', message: 'nope' }), idle);
   assert.equal(reduceVisit(idle, { type: 'lessonFailed', message: 'nope' }), idle);
   assert.equal(reduceVisit(idle, { type: 'updateFailed', message: 'nope' }), idle);
+});
+
+test('a leader approves the edited parent note and the lesson', () => {
+  let visit = reduceVisit(initialVisit(), { type: 'role', role: 'leader' });
+  visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
+  assert.equal(reduceVisit(visit, { type: 'approveUpdate', body: 'Hello' }), visit);
+  assert.equal(reduceVisit(visit, { type: 'approveLesson' }), visit);
+
+  visit = reduceVisit(visit, { type: 'writeUpdate' });
+  visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Draft line.' } });
+  const parent = reduceVisit(visit, { type: 'role', role: 'parent' });
+  assert.equal(reduceVisit(parent, { type: 'approveUpdate', body: 'Hello there.' }), parent);
+  assert.equal(reduceVisit(parent, { type: 'approveLesson' }), parent);
+  const volunteer = reduceVisit(visit, { type: 'role', role: 'volunteer' });
+  const copied = reduceVisit(volunteer, {
+    type: 'approveUpdate',
+    body: '  Sunday went well. TICK-AFTER-SUNDAY  ',
+  });
+  assert.equal(copied, volunteer);
+  assert.equal(reduceVisit(visit, { type: 'approveUpdate', body: '   ' }), visit);
+
+  visit = reduceVisit(visit, {
+    type: 'approveUpdate',
+    body: '  Sunday went well. TICK-AFTER-SUNDAY  ',
+  });
+  assert.equal(approvedValue(visit.update)?.body, 'Sunday went well. TICK-AFTER-SUNDAY');
+  assert.equal(reduceVisit(visit, { type: 'approveUpdate', body: 'Again' }), visit);
+
+  visit = reduceVisit(visit, { type: 'writeLesson', source: 'A short lesson.' });
+  visit = reduceVisit(visit, {
+    type: 'lessonReady',
+    value: { summary: 'A short lesson.', steps: ['One step.'] },
+  });
+  const parentLesson = reduceVisit(visit, { type: 'role', role: 'parent' });
+  assert.equal(reduceVisit(parentLesson, { type: 'approveLesson' }).lesson.phase, 'ready');
+  visit = reduceVisit(visit, { type: 'approveLesson' });
+  assert.equal(visit.lesson.phase, 'approved');
+  assert.equal(approvedValue(visit.lesson)?.steps[0], 'One step.');
+  assert.equal(reduceVisit(visit, { type: 'approveLesson' }), visit);
+});
+
+test('withdrawing the brief clears an approved lesson and keeps the parent note', () => {
+  let visit = approveIntake(initialVisit(), 'TICK-QUIET-ROOM');
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  visit = reduceVisit(visit, { type: 'role', role: 'leader' });
+  visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
+  visit = reduceVisit(visit, { type: 'writeUpdate' });
+  visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Sunday went well for Rowan.' } });
+  visit = reduceVisit(visit, { type: 'approveUpdate', body: 'Sunday went well for Rowan.\nTheo Park' });
+  visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
+  visit = reduceVisit(visit, {
+    type: 'lessonReady',
+    value: { summary: 'Plan for Rowan', steps: ['TICK-LESSON-PLAN'] },
+  });
+  visit = reduceVisit(visit, { type: 'approveLesson' });
+  assert.equal(visit.lesson.phase, 'approved');
+
+  visit = reduceVisit(visit, { type: 'saveCard', card: { ...visit.card, sensory: 'A quieter room.' } });
+  assert.equal(checkInBrief(visit).status, 'withheld');
+  assert.equal(visit.lesson.phase, 'idle');
+  assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
+  assert.equal(approvedValue(visit.update)?.body, 'Sunday went well for Rowan.\nTheo Park');
 });
 
 test('withdrawing the brief clears the lesson and keeps the typed lesson', () => {

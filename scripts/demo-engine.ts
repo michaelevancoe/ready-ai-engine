@@ -393,10 +393,9 @@ function mockLesson(
   return { summary: clip(`${childName} ${lesson}`.trim(), 600), steps };
 }
 
-function mockSundayUpdate(childName: string, notes: string): { body: string } {
-  const lead = `Sunday went well for ${childName}.`;
+function mockSundayUpdate(childName: string, _notes: string): { body: string } {
   const signature = `\n${DEMO_VOLUNTEER_NAME}`;
-  const told = (notes.length === 0 ? lead : `${lead} ${notes}`).slice(0, 2000 - signature.length);
+  const told = `Sunday went well for ${childName}.`.slice(0, 2000 - signature.length);
   return { body: `${told}${signature}` };
 }
 
