@@ -64,7 +64,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await page.getByLabel('Fictional lesson').fill('TICK-LESSON-PLAN');
   await page.getByRole('button', { name: 'Adapt lesson' }).click();
   const lesson = page.getByRole('region', { name: 'Lesson adaptation' });
-  await expect(lesson.getByRole('listitem', { name: 'TICK-LESSON-PLAN' })).toBeVisible();
+  await expect(lesson.getByRole('list')).toContainText('TICK-LESSON-PLAN');
   await expect(lesson).not.toContainText('TICK-MEDICAL');
   await save(page, 'flows-leader-lesson.png');
 });
