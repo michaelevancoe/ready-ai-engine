@@ -1,6 +1,7 @@
 import type { WorkerBindings } from '../src/bindings.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import {
+  DEMO_VOLUNTEER_NAME,
   lessonMessages,
   lessonSchema,
   lessonSchemaName,
@@ -343,8 +344,9 @@ function readSocial(content: string): { childName: string; lines: { text: string
 
 function readSunday(content: string): { childName: string; notes: string } | null {
   const head = readChild(content);
-  if (head === null || !head.rest.startsWith('Notes:\n')) return null;
-  return { childName: head.childName, notes: head.rest.slice('Notes:\n'.length) };
+  const notesPrefix = `Volunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n`;
+  if (head === null || !head.rest.startsWith(notesPrefix)) return null;
+  return { childName: head.childName, notes: head.rest.slice(notesPrefix.length) };
 }
 
 function readLesson(
@@ -393,8 +395,9 @@ function mockLesson(
 
 function mockSundayUpdate(childName: string, notes: string): { body: string } {
   const lead = `Sunday went well for ${childName}.`;
-  const body = notes.length === 0 ? lead : `${lead} ${notes}`;
-  return { body: body.slice(0, 2000) };
+  const signature = `\n${DEMO_VOLUNTEER_NAME}`;
+  const told = (notes.length === 0 ? lead : `${lead} ${notes}`).slice(0, 2000 - signature.length);
+  return { body: `${told}${signature}` };
 }
 
 function answersFromGateway(payload: unknown): IntakeAnswers | null {

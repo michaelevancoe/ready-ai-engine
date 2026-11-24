@@ -29,6 +29,8 @@ html {
   color: var(--ink);
   font-family: system-ui, sans-serif;
   line-height: 1.45;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -82,9 +84,14 @@ section,
 }
 
 .role-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   gap: 0.4rem;
-  margin: 0.85rem 0 1.1rem;
+  margin: 0.35rem 0 1.1rem;
+  padding: 0.55rem 0 0.45rem;
+  background: var(--cream);
 }
 
 .role-nav a {
@@ -111,11 +118,29 @@ section,
   font-size: 0.92rem;
 }
 
+.steps a {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.draft-status {
+  font-weight: 600;
+}
+
+#intake,
+#profile,
 #edit-profile,
 #sunday-story,
 #sunday-brief,
-#sunday-update {
-  scroll-margin-top: 0.75rem;
+#sunday-update,
+#story-draft,
+#update-draft,
+#lesson-draft,
+#desk-status,
+#story-status,
+#update-status,
+#lesson-status {
+  scroll-margin-top: 5.25rem;
 }
 
 input,
