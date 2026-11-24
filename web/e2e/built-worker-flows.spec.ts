@@ -14,12 +14,24 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(page.getByText(fictional)).toHaveCount(1);
   const role = page.getByRole('navigation', { name: 'Role' });
   await expect(role.getByRole('link', { name: 'Parent' })).toHaveAttribute('aria-current', 'page');
+  const steps = page.getByRole('list', { name: 'Sunday steps' });
+  await expect(steps.getByText('Intake', { exact: true })).toBeVisible();
+  await expect(steps.getByText('Profile', { exact: true })).toBeVisible();
+  await expect(steps.getByText('Story', { exact: true })).toBeVisible();
+  await expect(steps.getByText('Brief', { exact: true })).toBeVisible();
+  await expect(steps.getByText('Update', { exact: true })).toBeVisible();
 
   await page.getByLabel('Sensory notes').fill('TICK-QUIET-ROOM');
   await page.getByRole('button', { name: 'Submit' }).click();
   await expect(page.getByRole('heading', { name: 'Draft', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Approved', exact: true })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await page.getByRole('region', { name: 'Edit profile' }).boundingBox();
+      return box?.y ?? 1000;
+    })
+    .toBeLessThan(48);
   await save(page, 'flows-parent-approved.png');
 
   await page.getByRole('link', { name: 'Volunteer' }).click();
@@ -44,7 +56,13 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(story.getByText('TICK-QUIET-ROOM')).toBeVisible();
   await expect(story).not.toContainText('TICK-MEDICAL');
   await page.getByRole('button', { name: 'Approve story' }).click();
+  await expect(page.getByRole('region', { name: 'Sunday brief' })).toBeInViewport();
   await page.getByRole('button', { name: 'Approve for Sunday' }).click();
+  await expect(page.getByText('You approved this story.')).toBeVisible();
+  const update = page.getByRole('region', { name: 'Sunday update' });
+  await expect(update).toContainText("Theo's notes will appear here.");
+  await expect(update.getByRole('button', { name: 'Write the Sunday update' })).toBeDisabled();
+  await expect(update).toBeInViewport();
   await save(page, 'flows-parent-brief.png');
 
   await page.getByRole('link', { name: 'Volunteer' }).click();

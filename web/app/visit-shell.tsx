@@ -25,6 +25,7 @@ export function VisitShell({ children }: { children: ReactNode }) {
   const role = roleFor(pathname);
   useEffect(() => {
     dispatch({ type: 'role', role });
+    window.scrollTo(0, 0);
   }, [role]);
 
   return (

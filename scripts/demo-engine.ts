@@ -16,9 +16,6 @@ import {
   sundayUpdateMessages,
   sundayUpdateSchema,
   sundayUpdateSchemaName,
-  type LessonRequest,
-  type SocialStoryRequest,
-  type SundayUpdateRequest,
 } from '../src/demo-drafts.ts';
 import { ConfigError, GenerateError } from '../src/errors.ts';
 import { generate } from '../src/generate.ts';
@@ -147,7 +144,7 @@ export class DemoContext {
       sundayUpdateMessages(parsed),
       sundayUpdateSchemaName,
       sundayUpdateSchema,
-      parseSundayUpdate,
+      (value) => parseSundayUpdate(value, parsed.notes, parsed.childName),
     );
   }
 
@@ -250,11 +247,11 @@ const mockGateway: typeof fetch = async (input, init) => {
     if (answers === null) return new Response(null, { status: 502 });
     return chatEnvelope(profileFromAnswers(answers));
   }
-  const user = userJson(payload);
-  if (user === null) return new Response(null, { status: 502 });
-  const content = mockDraft(name, user);
+  const content = userContent(payload);
   if (content === null) return new Response(null, { status: 502 });
-  return chatEnvelope(content);
+  const draft = mockDraft(name, content);
+  if (draft === null) return new Response(null, { status: 502 });
+  return chatEnvelope(draft);
 };
 
 function schemaName(payload: unknown): string | null {
@@ -266,7 +263,7 @@ function schemaName(payload: unknown): string | null {
   return spec.name;
 }
 
-function userJson(payload: unknown): unknown | null {
+function userContent(payload: unknown): string | null {
   if (!isRecord(payload) || !Array.isArray(payload.messages)) return null;
   let content: string | null = null;
   for (const message of payload.messages) {
@@ -274,6 +271,11 @@ function userJson(payload: unknown): unknown | null {
       content = message.content;
     }
   }
+  return content;
+}
+
+function userJson(payload: unknown): unknown | null {
+  const content = userContent(payload);
   if (content === null) return null;
   try {
     return JSON.parse(content) as unknown;
@@ -282,49 +284,117 @@ function userJson(payload: unknown): unknown | null {
   }
 }
 
-function mockDraft(name: string, user: unknown): unknown | null {
+function mockDraft(name: string, content: string): unknown | null {
   switch (name) {
     case socialStorySchemaName: {
-      const parsed = parseSocialStoryRequest(user);
+      const parsed = readSocial(content);
       if (parsed === null) return null;
-      return mockSocialStory(parsed);
+      return mockSocialStory(parsed.childName, parsed.lines);
     }
     case lessonSchemaName: {
-      const parsed = parseLessonRequest(user);
+      const parsed = readLesson(content);
       if (parsed === null) return null;
-      return mockLesson(parsed);
+      return mockLesson(parsed.childName, parsed.lesson, parsed.lines);
     }
     case sundayUpdateSchemaName: {
-      const parsed = parseSundayUpdateRequest(user);
+      const parsed = readSunday(content);
       if (parsed === null) return null;
-      return mockSundayUpdate(parsed);
+      return mockSundayUpdate(parsed.childName, parsed.notes);
     }
     default:
       return null;
   }
 }
 
-function mockSocialStory(input: SocialStoryRequest): { title: string; body: string } {
-  return {
-    title: 'Sunday with Rowan',
-    body: input.lines.map((line) => line.text).join('\n').slice(0, 2000),
-  };
+function readChild(content: string): { childName: string; rest: string } | null {
+  const breakAt = content.indexOf('\n');
+  if (breakAt < 0) return null;
+  const line = content.slice(0, breakAt);
+  const prefix = 'Child: ';
+  if (!line.startsWith(prefix)) return null;
+  const childName = line.slice(prefix.length);
+  if (childName.length < 1 || childName.length > 80) return null;
+  return { childName, rest: content.slice(breakAt + 1) };
 }
 
-function mockLesson(input: LessonRequest): { summary: string; steps: string[] } {
-  const steps = [input.lesson.slice(0, 400)];
-  for (const line of input.lines) {
-    if (steps.length >= 8) break;
-    steps.push(line.text.slice(0, 400));
+function readLabeled(text: string): { text: string }[] | null {
+  if (text.length === 0) return [];
+  const lines: { text: string }[] = [];
+  for (const row of text.split('\n')) {
+    const at = row.indexOf(': ');
+    if (at < 1) {
+      const last = lines[lines.length - 1];
+      if (last === undefined) return null;
+      last.text = `${last.text}\n${row}`;
+      continue;
+    }
+    lines.push({ text: row.slice(at + 2) });
   }
-  return { summary: input.lesson.slice(0, 600), steps };
+  return lines;
 }
 
-function mockSundayUpdate(input: SundayUpdateRequest): { body: string } {
-  const name = input.childName;
-  const room = 2000 - name.length - 1;
-  const notes = room > 0 ? input.notes.slice(0, room) : '';
-  return { body: notes.length === 0 ? name.slice(0, 2000) : `${notes}\n${name}` };
+function readSocial(content: string): { childName: string; lines: { text: string }[] } | null {
+  const head = readChild(content);
+  if (head === null) return null;
+  const lines = readLabeled(head.rest);
+  if (lines === null || lines.length < 1) return null;
+  return { childName: head.childName, lines };
+}
+
+function readSunday(content: string): { childName: string; notes: string } | null {
+  const head = readChild(content);
+  if (head === null || !head.rest.startsWith('Notes:\n')) return null;
+  return { childName: head.childName, notes: head.rest.slice('Notes:\n'.length) };
+}
+
+function readLesson(
+  content: string,
+): { childName: string; lesson: string; lines: { text: string }[] } | null {
+  const head = readChild(content);
+  if (head === null || !head.rest.startsWith('Lesson:\n')) return null;
+  const after = head.rest.slice('Lesson:\n'.length);
+  const marker = '\nApproved needs:\n';
+  const at = after.indexOf(marker);
+  if (at < 0) return null;
+  const lesson = after.slice(0, at);
+  if (lesson.length < 1) return null;
+  const lines = readLabeled(after.slice(at + marker.length));
+  if (lines === null) return null;
+  return { childName: head.childName, lesson, lines };
+}
+
+function clip(value: string, max: number): string {
+  return value.slice(0, max);
+}
+
+function mockSocialStory(childName: string, lines: { text: string }[]): { title: string; body: string } {
+  const told = lines.map((line) => line.text).join(' ');
+  const body = `${childName} arrives and finds a quiet place in the room. ${told}`.slice(0, 2000);
+  return { title: `Sunday with ${childName}`.slice(0, 120), body };
+}
+
+function mockLesson(
+  childName: string,
+  lesson: string,
+  lines: { text: string }[],
+): { summary: string; steps: string[] } {
+  const steps: string[] = [];
+  for (const line of lesson.split('\n')) {
+    if (line.trim().length === 0 || steps.length >= 8) continue;
+    steps.push(clip(`${childName} ${line}`, 400));
+  }
+  for (const line of lines) {
+    if (steps.length >= 8) break;
+    steps.push(clip(`${childName} ${line.text}`, 400));
+  }
+  if (steps.length === 0) steps.push(clip(childName, 400));
+  return { summary: clip(`${childName} ${lesson}`.trim(), 600), steps };
+}
+
+function mockSundayUpdate(childName: string, notes: string): { body: string } {
+  const lead = `Sunday went well for ${childName}.`;
+  const body = notes.length === 0 ? lead : `${lead} ${notes}`;
+  return { body: body.slice(0, 2000) };
 }
 
 function answersFromGateway(payload: unknown): IntakeAnswers | null {

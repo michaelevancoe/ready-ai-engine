@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { checkInBrief } from '../../lib/visit';
+import { checkInBrief, childHeading, childPreferredName } from '../../lib/visit';
 import { useVisit } from '../visit-shell';
 
 export default function VolunteerPage() {
@@ -25,7 +25,7 @@ export default function VolunteerPage() {
         <li>
           <span className="portrait">Placeholder photo</span>
           <div>
-            <h2>Rowan Sampleton</h2>
+            <h2>{childHeading(childPreferredName(visit))}</h2>
             <p className="muted">{brief.status === 'approved' ? 'Brief ready' : 'No brief yet'}</p>
           </div>
         </li>

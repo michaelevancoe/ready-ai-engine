@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { postLesson } from '../../lib/drafts';
-import { checkInBrief, readyValue, type ChurchSetup } from '../../lib/visit';
+import { checkInBrief, childPreferredName, readyValue, type ChurchSetup } from '../../lib/visit';
 import { useVisit } from '../visit-shell';
 
 const CHURCH_FIELDS = [
@@ -46,7 +46,7 @@ export default function LeaderPage() {
     const source = typeof value === 'string' ? value.trim() : '';
     if (source.length === 0) return;
     dispatch({ type: 'writeLesson', source });
-    const result = await postLesson(source, brief.lines);
+    const result = await postLesson(source, brief.lines, childPreferredName(visit));
     if (result.ok) dispatch({ type: 'lessonReady', value: result.value });
     else dispatch({ type: 'lessonFailed', message: result.message });
   }

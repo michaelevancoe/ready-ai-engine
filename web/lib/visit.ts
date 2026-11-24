@@ -1,4 +1,4 @@
-import { initialPhase, reducePage, type PageEvent, type PagePhase } from './desk.ts';
+import { initialPhase, reducePage, spaceSentences, type PageEvent, type PagePhase } from './desk.ts';
 
 export const BRIEF_FIELDS = [
   'loves',
@@ -104,9 +104,6 @@ export const BRIEF_LABELS: Record<BriefField, string> = {
   medical: 'Medical / health notes',
 };
 
-const LOVES_SEED = 'Soft music and helping with snack cups.';
-const COMMUNICATION_SEED = 'A short warning before a change.';
-
 export function initialVisit(): Visit {
   return {
     role: 'parent',
@@ -150,15 +147,13 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
         ...visit,
         card: event.card,
         cardTouched: true,
-        brief: { phase: 'open' },
-        story: { phase: 'idle' },
+        ...withdrawnBrief(),
       };
     case 'visibility':
       return {
         ...visit,
         visibility: { ...visit.visibility, [event.field]: event.on },
-        brief: { phase: 'open' },
-        story: { phase: 'idle' },
+        ...withdrawnBrief(),
       };
     case 'writeStory':
       if (visit.intake.status !== 'approved' || visit.story.phase === 'writing') return visit;
@@ -218,6 +213,17 @@ export function briefLines(card: ProfileCard, visibility: Visibility): BriefLine
   return lines;
 }
 
+export function childPreferredName(visit: Visit): string {
+  const name = visit.intake.answers.preferredName.trim();
+  if (name.length === 0) return 'Rowan';
+  return name;
+}
+
+export function childHeading(name: string): string {
+  if (name === 'Rowan') return 'Rowan Sampleton';
+  return name;
+}
+
 export function checkInBrief(visit: Visit): CheckIn {
   switch (visit.brief.phase) {
     case 'open':
@@ -262,6 +268,14 @@ export function readyValue<T>(gate: DraftGate<T>): T | null {
   }
 }
 
+function withdrawnBrief(): Pick<Visit, 'brief' | 'story' | 'lesson'> {
+  return {
+    brief: { phase: 'open' },
+    story: { phase: 'idle' },
+    lesson: { phase: 'idle' },
+  };
+}
+
 function applyIntake(visit: Visit, event: PageEvent): Visit {
   const intake = reducePage(visit.intake, event);
   if (intake === visit.intake) return visit;
@@ -273,11 +287,11 @@ function applyIntake(visit: Visit, event: PageEvent): Visit {
 
 function seedCard(phase: Extract<PagePhase, { status: 'approved' }>): ProfileCard {
   return {
-    loves: LOVES_SEED,
-    overwhelms: phase.answers.whatToAvoid,
-    whatHelps: phase.answers.whatHelps,
-    communication: COMMUNICATION_SEED,
-    sensory: phase.answers.sensoryNotes,
+    loves: '',
+    overwhelms: spaceSentences(phase.answers.whatToAvoid),
+    whatHelps: spaceSentences(phase.answers.whatHelps),
+    communication: spaceSentences(phase.answers.supportNeeds),
+    sensory: spaceSentences(phase.answers.sensoryNotes),
     medical: '',
   };
 }
