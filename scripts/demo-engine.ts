@@ -18,7 +18,7 @@ import {
   sundayUpdateSchema,
   sundayUpdateSchemaName,
 } from '../src/demo-drafts.ts';
-import { ConfigError, GenerateError } from '../src/errors.ts';
+import { ConfigError, GenerateError, SchemaRejected } from '../src/errors.ts';
 import { generate } from '../src/generate.ts';
 import { json } from '../src/http.ts';
 import { parseIntake, type IntakeAnswers } from '../src/intake.ts';
@@ -123,6 +123,9 @@ export class DemoContext {
     if (request.method === 'POST' && url.pathname === '/v1/drafts/sunday-update') {
       return this.handleSundayUpdate(request);
     }
+    if (request.method === 'POST' && url.pathname === '/v1/drafts/acknowledgement') {
+      return this.handleAcknowledgement(request);
+    }
     return json({ error: 'not_found' }, 404);
   }
 
@@ -136,6 +139,17 @@ export class DemoContext {
     const parsed = await parsedBody(request, parseLessonRequest);
     if (parsed instanceof Response) return parsed;
     return this.completeDraft(lessonMessages(parsed), lessonSchemaName, lessonSchema, parseLesson);
+  }
+
+  private async handleAcknowledgement(request: Request): Promise<Response> {
+    const parsed = await parsedBody(request, parseAcknowledgementRequest);
+    if (parsed instanceof Response) return parsed;
+    return this.completeDraft(
+      acknowledgementMessages(parsed),
+      intakeAcknowledgementSchemaName,
+      acknowledgementSchema,
+      parseAcknowledgement,
+    );
   }
 
   private async handleSundayUpdate(request: Request): Promise<Response> {
@@ -302,6 +316,8 @@ function mockDraft(name: string, content: string): unknown | null {
       if (parsed === null) return null;
       return mockSundayUpdate(parsed.childName, parsed.notes);
     }
+    case intakeAcknowledgementSchemaName:
+      return { line: 'Thanks for telling me.' };
     default:
       return null;
   }
@@ -363,6 +379,47 @@ function readLesson(
   const lines = readLabeled(after.slice(at + marker.length));
   if (lines === null) return null;
   return { childName: head.childName, lesson, lines };
+}
+
+const intakeAcknowledgementSchemaName = 'intake_acknowledgement';
+
+const acknowledgementSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['line'],
+  properties: {
+    line: { type: 'string', minLength: 1, maxLength: 160 },
+  },
+} satisfies JsonSchema;
+
+function parseAcknowledgementRequest(value: unknown): { answer: string; sectionTitle: string } | null {
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.length !== 2 || !Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'sectionTitle')) return null;
+  if (typeof value.answer !== 'string' || value.answer.trim().length === 0) return null;
+  if (typeof value.sectionTitle !== 'string' || value.sectionTitle.trim().length === 0) return null;
+  return { answer: value.answer, sectionTitle: value.sectionTitle };
+}
+
+function acknowledgementMessages(request: { answer: string; sectionTitle: string }): {
+  role: 'system' | 'user';
+  content: string;
+}[] {
+  return [
+    {
+      role: 'system',
+      content:
+        'The data is fictional. Do not invent medical facts. Write one sentence. Do not ask a question. Do not rewrite the next question.',
+    },
+    { role: 'user', content: `Answer: ${request.answer}\nSection: ${request.sectionTitle}` },
+  ];
+}
+
+function parseAcknowledgement(value: unknown): { line: string } {
+  if (!isRecord(value) || typeof value.line !== 'string' || value.line.length < 1 || value.line.length > 160) {
+    throw new SchemaRejected();
+  }
+  return { line: value.line };
 }
 
 function clip(value: string, max: number): string {
