@@ -12,7 +12,8 @@ import {
   type ReactNode,
 } from 'react';
 import { FICTIONAL_DATA_LABEL } from '../lib/fictional-label';
-import { DemoStore, type ReadyStore } from '../lib/ready-store';
+import type { ReadyStore } from '../lib/ready-store';
+import { selectReadyStore, type StoreBoot } from '../lib/select-store';
 import type { DemoRole, Visit, VisitEvent } from '../lib/visit';
 
 interface VisitState {
@@ -65,9 +66,9 @@ export function useScrollWhen(active: boolean, id: string, block: ScrollLogicalP
   }, [active, block, id]);
 }
 
-export function VisitShell({ children }: { children: ReactNode }) {
-  const storeRef = useRef<DemoStore | null>(null);
-  if (storeRef.current === null) storeRef.current = new DemoStore();
+export function VisitShell({ boot, children }: { boot: StoreBoot; children: ReactNode }) {
+  const storeRef = useRef<ReadyStore | null>(null);
+  if (storeRef.current === null) storeRef.current = selectReadyStore(boot);
   const store = storeRef.current;
   const pathname = usePathname();
   const role = roleFor(pathname);
