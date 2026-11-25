@@ -461,7 +461,7 @@ function parseAcknowledgementRequest(value: unknown): AckRequest | null {
 }
 
 const ACKNOWLEDGEMENT_PROMPT = [
-  "Ready helps parents of children with special needs prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
+  "Ready helps parents of children who need extra support prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
   'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
@@ -469,6 +469,7 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Do not restate or quote the answer.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
+  'Do not label the child.',
   'Do not use a pronoun for the child in line or clarifyingPrompt.',
   "Use the child's name only if the answer includes it.",
   'line must not ask a question and must not preview another question.',
@@ -642,7 +643,34 @@ function named(sectionId: SectionId, name: string): string {
   }
 }
 
+const UNCERTAIN_OR_NO = new Set([
+  'not sure',
+  'unsure',
+  'i dont know',
+  'idk',
+  'dont know yet',
+  'none',
+  'no',
+  'nope',
+  'not really',
+  'no not really',
+  'nothing',
+  'nothing special',
+  'n a',
+  'not that i know of',
+]);
+
+function uncertainOrNo(answer: string): boolean {
+  const normalized = answer
+    .toLowerCase()
+    .replace(/['\u2018\u2019]/gu, '')
+    .replace(/[^a-z0-9]+/gu, ' ')
+    .trim();
+  return UNCERTAIN_OR_NO.has(normalized);
+}
+
 function judgeRelevance(answer: string): boolean {
+  if (uncertainOrNo(answer)) return true;
   const tokens = answer.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   if (tokens.some((token) => token === 'tick' || token.startsWith('tick'))) return true;
   const content = tokens.filter((token) => !STOPWORDS.has(token));
@@ -724,7 +752,7 @@ function parseAcknowledgement(
   }
   const line = oneLine(value.line);
   if (line.length < 1) throw new SchemaRejected();
-  const relevant = value.relevant || careSignal(request.answer);
+  const relevant = value.relevant || careSignal(request.answer) || uncertainOrNo(request.answer);
   const prompt = oneLine(value.clarifyingPrompt);
   return {
     relevant,
@@ -744,7 +772,11 @@ function lineAccepted(line: string, answer: string): boolean {
 }
 
 function promptAccepted(prompt: string, answer: string): boolean {
-  return surfaceAccepted(prompt, answer);
+  if (!surfaceAccepted(prompt, answer)) return false;
+  const lower = prompt.toLowerCase();
+  if (lower.includes('special need')) return false;
+  if (lower.includes('special-needs')) return false;
+  return !/\b(?:special|needs)\b/u.test(lower);
 }
 
 function surfaceAccepted(text: string, answer: string): boolean {
