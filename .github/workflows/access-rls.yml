@@ -112,11 +112,13 @@ jobs:
           anon="$(value ANON_KEY)"
           export READY_LOCAL_API_URL="$api"
           export READY_LOCAL_ANON_KEY="$anon"
-          export READY_LOCAL_DB_URL="$(value DB_URL)"
+          db="$(value DB_URL)"
+          export READY_LOCAL_DB_URL="$db"
           sessions="$(node --experimental-strip-types scripts/account-e2e-sessions.ts)"
           {
             printf 'READY_LOCAL_API_URL=%s\n' "$api"
             printf 'READY_LOCAL_ANON_KEY=%s\n' "$anon"
+            printf 'READY_LOCAL_DB_URL=%s\n' "$db"
             printf 'READY_ACCOUNT_SESSIONS<<ACCOUNT_SESSIONS\n'
             printf '%s\n' "$sessions"
             printf 'ACCOUNT_SESSIONS\n'

@@ -29,7 +29,7 @@ test('the account job stays on local supabase and ci stays keyless', () => {
   const job = workflow.slice(start);
   assert.equal(job.includes('SERVICE_ROLE'), false);
   assert.equal(job.includes('supabase start'), true);
-  assert.equal(job.includes('READY_LOCAL_DB_URL'), true);
+  assert.equal(job.includes("printf 'READY_LOCAL_DB_URL=%s\\n'"), true);
   assert.equal(job.includes('test:e2e:account'), true);
   const ci = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
   assert.equal(ci.includes('supabase'), false);
