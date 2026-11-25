@@ -27,6 +27,7 @@ import { emitSafe } from '../src/log.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
 import { chatEnvelope, churchStore, ids, testEnv, type MemoryStore } from '../test/fixtures.ts';
+import { ACK_FALLBACK } from '../web/lib/acknowledgement.ts';
 import { SECTION_IDS } from '../web/lib/intake-tree.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
 import { liveDemoBindings, mergeDemoEnv, parseDevVars } from './live-env.ts';
@@ -395,7 +396,7 @@ const acknowledgementSchema = {
   additionalProperties: false,
   required: ['line'],
   properties: {
-    line: { type: 'string', minLength: 1, maxLength: 160 },
+    line: { type: 'string', minLength: 1, maxLength: 120 },
   },
 } satisfies JsonSchema;
 
@@ -414,16 +415,31 @@ function isAcknowledgementSection(value: unknown): value is (typeof SECTION_IDS)
   return typeof value === 'string' && SECTION_IDS.some((id) => id === value);
 }
 
+const ACKNOWLEDGEMENT_PROMPT = [
+  'The data is fictional. Do not invent medical facts.',
+  'Write one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
+  'Do not restate or quote the answer.',
+  'Do not generalise about individuals.',
+  'Never mention a condition, diagnosis, or disability.',
+  'Do not use a pronoun for the child.',
+  "Use the child's name only if the answer includes it.",
+  'Do not ask a question.',
+  'Do not preview the next question.',
+  'Examples:',
+  "Thank you, that's really useful to know.",
+  'Got it, that will help the volunteers.',
+  'Thanks, that gives us a clearer picture.',
+  "That's really helpful.",
+].join('\n');
+
+const ACK_BLOCKED = ['autism', 'aphasia', 'diagnos', 'disorder', 'disabilit', 'impair', 'individuals'];
+
 function acknowledgementMessages(request: { answer: string; sectionId: (typeof SECTION_IDS)[number] }): {
   role: 'system' | 'user';
   content: string;
 }[] {
   return [
-    {
-      role: 'system',
-      content:
-        'The data is fictional. Do not invent medical facts. Write one sentence. Do not ask a question. Do not rewrite the next question.',
-    },
+    { role: 'system', content: ACKNOWLEDGEMENT_PROMPT },
     { role: 'user', content: `Answer: ${request.answer}\nSection: ${request.sectionId}` },
   ];
 }
@@ -439,12 +455,19 @@ function acknowledgementAnswer(content: string): string | null {
 }
 
 function parseAcknowledgement(value: unknown): { line: string } {
-  if (!isRecord(value) || typeof value.line !== 'string' || value.line.length < 1 || value.line.length > 160) {
-    throw new SchemaRejected();
-  }
+  if (!isRecord(value) || typeof value.line !== 'string') throw new SchemaRejected();
   const line = value.line.replace(/[\r\n]+/gu, ' ').replace(/ {2,}/gu, ' ').trim();
   if (line.length < 1) throw new SchemaRejected();
-  return { line };
+  return { line: acknowledgementAccepted(line) ? line : ACK_FALLBACK };
+}
+
+function acknowledgementAccepted(line: string): boolean {
+  if (line.length > 120) return false;
+  if (!line.endsWith('.') && !line.endsWith('!')) return false;
+  if (line.includes('?')) return false;
+  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(line)) return false;
+  const lower = line.toLowerCase();
+  return !ACK_BLOCKED.some((word) => lower.includes(word));
 }
 
 function clip(value: string, max: number): string {
