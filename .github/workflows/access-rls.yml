@@ -31,3 +31,42 @@ jobs:
           set -euo pipefail
           db_url="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
           READY_LOCAL_SUPABASE=1 READY_LOCAL_DB_URL="$db_url" node --experimental-strip-types --test test/access-rls.live.test.ts
+
+  contract:
+    name: contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install the Supabase CLI
+        uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13
+        with:
+          version: 2.75.0
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Start local Supabase
+        run: supabase start -x studio,imgproxy,mailpit,realtime,storage,edge-runtime,logflare,vector,supavisor
+
+      - name: Run the adapter contract
+        run: |
+          set -euo pipefail
+          status="$(supabase status -o env)"
+          value() { printf '%s\n' "$status" | sed -n "s/^$1=//p" | tr -d '"'; }
+          export READY_LOCAL_SUPABASE=1
+          export READY_LOCAL_API_URL="$(value API_URL)"
+          export READY_LOCAL_ANON_KEY="$(value ANON_KEY)"
+          export READY_LOCAL_SERVICE_ROLE_KEY="$(value SERVICE_ROLE_KEY)"
+          export READY_LOCAL_DB_URL="$(value DB_URL)"
+          node --experimental-strip-types --test test/adapter-contract.test.ts

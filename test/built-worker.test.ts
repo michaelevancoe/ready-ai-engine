@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -22,8 +23,31 @@ function assetPath(html: string, pattern: RegExp): string {
   return path;
 }
 
+function filesUnder(directory: string): string[] {
+  const found: string[] = [];
+  for (const name of readdirSync(directory)) {
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) found.push(...filesUnder(path));
+    else found.push(path);
+  }
+  return found;
+}
+
+function assertBundleHasNoSupabaseKeys(): void {
+  const bundleRoot = join(repoRoot, 'web/.cloudflare/output/v0/workers/default');
+  const hosted = ['supabase', 'co'].join('.');
+  const banned = [hosted, 'eyJ', 'service_role', ['sb', 'secret'].join('_'), ['sb', 'publishable'].join('_')];
+  const files = filesUnder(bundleRoot).filter((path) => !path.endsWith('.map'));
+  assert.ok(files.length > 0);
+  for (const path of files) {
+    const text = readFileSync(path, 'utf8');
+    for (const needle of banned) assert.equal(text.includes(needle), false, `${path} contains ${needle}`);
+  }
+}
+
 test('the built worker serves static assets, robots, and the engine', async () => {
   buildWeb();
+  assertBundleHasNoSupabaseKeys();
   const demo = await openBuiltDemo(0);
   try {
     const root = await fetch(demo.url + '/');

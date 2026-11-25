@@ -6,7 +6,6 @@ import { generate } from './generate.ts';
 import { json, readJson } from './http.ts';
 import { isUuid } from './ids.ts';
 import { intakeMessages, parseIntake } from './intake.ts';
-import { verifyHs256 } from './jwt.ts';
 import type { SafeLog } from './log.ts';
 import { authorize } from './policy.ts';
 import { childProfileSchema, childProfileSchemaName, parseChildProfile } from './profile.ts';
@@ -30,13 +29,7 @@ interface Authenticated {
 }
 
 function requireSupabase(env: WorkerBindings): void {
-  if (
-    env.SUPABASE_URL.trim() === '' ||
-    env.SUPABASE_ANON_KEY.trim() === '' ||
-    env.SUPABASE_JWT_SECRET.trim() === ''
-  ) {
-    throw new ConfigError();
-  }
+  if (env.SUPABASE_URL.trim() === '' || env.SUPABASE_ANON_KEY.trim() === '') throw new ConfigError();
 }
 
 function present(record: ProfileRecord): {
@@ -61,10 +54,10 @@ async function authenticate(request: Request, deps: AppDeps): Promise<Authentica
   const header = request.headers.get('authorization');
   const match = header === null ? null : /^Bearer (\S+)$/.exec(header);
   const token = match?.[1];
-  if (token === undefined) return json({ error: 'unauthorized' }, 401);
-  const claims = await verifyHs256(token, deps.env.SUPABASE_JWT_SECRET, deps.now?.() ?? Date.now());
-  if (claims === null) return json({ error: 'unauthorized' }, 401);
-  return { userId: claims.sub, accessToken: token };
+  if (token === undefined || deps.auth === undefined) return json({ error: 'unauthorized' }, 401);
+  const user = await deps.auth.verify(token);
+  if (user === null) return json({ error: 'unauthorized' }, 401);
+  return { userId: user.userId, accessToken: token };
 }
 
 async function handleIntake(request: Request, deps: AppDeps): Promise<Response> {

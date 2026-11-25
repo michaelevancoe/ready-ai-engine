@@ -1,4 +1,5 @@
 import type { ExportedHandler } from '@cloudflare/workers-types';
+import { assertAdapterAllowed } from './adapter.ts';
 import { handleRequest } from './app.ts';
 import { emitSafe } from './log.ts';
 import { supabaseAccessSource } from './supabase-access.ts';
@@ -7,6 +8,7 @@ import { SupabaseStore } from './supabase-store.ts';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    assertAdapterAllowed(env, 'supabase');
     return handleRequest(request, {
       env,
       fetch: globalThis.fetch,

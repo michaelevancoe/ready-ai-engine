@@ -11,4 +11,5 @@ export interface WorkerBindings {
   INTAKE_PROFILE_FALLBACK_PROVIDER: string;
   INTAKE_PROFILE_FALLBACK_MODEL: string;
   READY_SIGN_IN?: string;
+  READY_MODE?: string;
 }

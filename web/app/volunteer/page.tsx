@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { approvedValue, checkInBrief, childHeading, childPreferredName } from '../../lib/visit';
-import { useVisit } from '../visit-shell';
+import { useReadyStore } from '../visit-shell';
 
 export default function VolunteerPage() {
-  const { visit, dispatch } = useVisit();
+  const store = useReadyStore();
+  const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const { dispatch } = store;
   const brief = checkInBrief(visit);
   const lesson = approvedValue(visit.lesson);
   const [initialNotes] = useState(visit.notes);

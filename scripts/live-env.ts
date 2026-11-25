@@ -1,7 +1,7 @@
 import type { WorkerBindings } from '../src/bindings.ts';
 import { ConfigError } from '../src/errors.ts';
 import { assertTargets, gatewayChatCompletionsUrl, modelTargets } from '../src/gateway.ts';
-import { testEnv } from '../test/fixtures.ts';
+import { fictionalDemoEnv } from '../src/demo-env.ts';
 
 export function parseDevVars(text: string): Record<string, string> {
   const values: Record<string, string> = {};
@@ -45,9 +45,9 @@ function required(env: Readonly<Record<string, string | undefined>>, key: string
 
 function fictionalDemoSession(): FictionalDemoSession {
   return {
-    SUPABASE_URL: testEnv.SUPABASE_URL,
-    SUPABASE_ANON_KEY: testEnv.SUPABASE_ANON_KEY,
-    SUPABASE_JWT_SECRET: testEnv.SUPABASE_JWT_SECRET,
+    SUPABASE_URL: fictionalDemoEnv.SUPABASE_URL,
+    SUPABASE_ANON_KEY: fictionalDemoEnv.SUPABASE_ANON_KEY,
+    SUPABASE_JWT_SECRET: fictionalDemoEnv.SUPABASE_JWT_SECRET,
   };
 }
 

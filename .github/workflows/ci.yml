@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: engine
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npm ci --prefix web
+
+      - name: Typecheck
+        run: npm run typecheck && npm run typecheck --prefix web
+
+      - name: Test
+        run: npm test
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npm ci --prefix web
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Built worker
+        run: npm run test:built
+        working-directory: web
+
+      - name: End to end
+        run: npm run test:e2e
+        working-directory: web

@@ -6,25 +6,32 @@ import {
   createContext,
   useContext,
   useEffect,
-  useReducer,
   useRef,
+  useSyncExternalStore,
   type Dispatch,
   type ReactNode,
 } from 'react';
 import { FICTIONAL_DATA_LABEL } from '../lib/fictional-label';
-import { initialVisit, reduceVisit, type DemoRole, type Visit, type VisitEvent } from '../lib/visit';
+import { DemoStore, type ReadyStore } from '../lib/ready-store';
+import type { DemoRole, Visit, VisitEvent } from '../lib/visit';
 
 interface VisitState {
   visit: Visit;
   dispatch: Dispatch<VisitEvent>;
 }
 
-const VisitContext = createContext<VisitState | null>(null);
+const VisitContext = createContext<ReadyStore | null>(null);
+
+export function useReadyStore(): ReadyStore {
+  const store = useContext(VisitContext);
+  if (store === null) throw new Error('Visit state is missing.');
+  return store;
+}
 
 export function useVisit(): VisitState {
-  const state = useContext(VisitContext);
-  if (state === null) throw new Error('Visit state is missing.');
-  return state;
+  const store = useReadyStore();
+  const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  return { visit, dispatch: store.dispatch };
 }
 
 let scrolledId: string | null = null;
@@ -59,15 +66,17 @@ export function useScrollWhen(active: boolean, id: string, block: ScrollLogicalP
 }
 
 export function VisitShell({ children }: { children: ReactNode }) {
-  const [visit, dispatch] = useReducer(reduceVisit, initialVisit());
+  const storeRef = useRef<DemoStore | null>(null);
+  if (storeRef.current === null) storeRef.current = new DemoStore();
+  const store = storeRef.current;
   const pathname = usePathname();
   const role = roleFor(pathname);
   useEffect(() => {
     scrolledId = null;
     clearScrollRoom();
-    dispatch({ type: 'role', role });
+    store.dispatch({ type: 'role', role });
     window.scrollTo(0, 0);
-  }, [role]);
+  }, [role, store]);
   useEffect(() => {
     const frame = document.querySelector('.frame');
     const spacer = document.getElementById('scroll-room');
@@ -86,7 +95,7 @@ export function VisitShell({ children }: { children: ReactNode }) {
   }, [role]);
 
   return (
-    <VisitContext.Provider value={{ visit, dispatch }}>
+    <VisitContext.Provider value={store}>
       <div className="frame">
         <p className="fictional">{FICTIONAL_DATA_LABEL}</p>
         <nav aria-label="Role" className="role-nav">
