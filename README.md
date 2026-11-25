@@ -16,7 +16,7 @@ Account-specific values come from the environment. Provider and model names for 
 | `AI_GATEWAY_TOKEN` | secret | `cf-aig-authorization` bearer token |
 | `SUPABASE_URL` | secret | Supabase project URL |
 | `SUPABASE_ANON_KEY` | secret | Supabase anon key. The Worker forwards the user JWT so RLS applies. The sign-in adapter also sends this value as `apikey` when it checks a session |
-| `SUPABASE_JWT_SECRET` | secret | Kept on the existing worker binding. Request auth does not verify it. Intake and access both check the caller with `GET /auth/v1/user`. |
+| `SUPABASE_JWT_SECRET` | secret | Worker secret |
 | `INTAKE_PROFILE_PROVIDER` | var | Primary provider slug |
 | `INTAKE_PROFILE_MODEL` | var | Primary model id |
 | `INTAKE_PROFILE_FALLBACK_PROVIDER` | var | Fallback provider slug |
@@ -175,7 +175,7 @@ The sign-in migration, once applied, replaces that wide approved-profile select 
 
 Leave `READY_SIGN_IN` unset and leave `READY_MODE` unset. The demo keeps the memory adapter, intake stays as it is, and `/v1/access/` answers `404`.
 
-Set `READY_SIGN_IN=on` or `READY_MODE=account` only with the Supabase adapter. The memory adapter refuses to start in that mode. The process reads `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Intake and access both check the caller's bearer token with `GET /auth/v1/user`, then access reads and writes memberships, children, briefs, invites, and medical grants with that same token so row-level security applies. It ignores Auth role claims. It does not read a service-role key. The in-memory access source is for the demo and tests. Stage 9 had removed it.
+Set `READY_SIGN_IN=on` or `READY_MODE=account` only with the Supabase adapter. The memory adapter refuses to start in that mode. The process reads `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Intake and access both check the caller's bearer token with `GET /auth/v1/user`, then access reads and writes memberships, children, briefs, invites, and medical grants with that same token so row-level security applies. It ignores Auth role claims. It does not read a service-role key. The in-memory access source is for the demo and tests.
 
 Tests use a fake Auth response for that check. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
 
