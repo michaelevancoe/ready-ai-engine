@@ -560,7 +560,7 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
   }
 });
 
-test('mock drafts echo supplied lines and ignore fetch', async () => {
+test('mock drafts stay on the church story and ignore fetch', async () => {
   const opened = await DemoContext.open('1', {
     fetchImpl: async () => {
       throw new Error('mock must not fetch');
@@ -958,6 +958,19 @@ test('storySafety rejects the recorded live excerpts', () => {
   for (const [input, body] of excerpts) {
     assert.equal(storySafety({ title: 'Sunday', body }, input), false, body);
   }
+});
+
+test('a story request with no care lines still returns a church story', async () => {
+  const demo = await DemoContext.open('1');
+  const response = await demo.handle(socialStory({ lines: [], childName: 'Rowan' }));
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { title: string; body: string; source: string };
+  assert.equal(body.source, 'model');
+  assert.equal(body.body.includes('Example Harbor Fellowship'), true);
+  assert.equal(
+    storySafety(body, { childName: 'Rowan', church: harbor, lines: [] }),
+    true,
+  );
 });
 
 test('socialStoryMessages drops allergies and medical and names the church', () => {

@@ -234,7 +234,7 @@ function parseLines(value: unknown, min: number, max: number): DraftLine[] | nul
 
 export function parseSocialStoryRequest(value: unknown): SocialStoryRequest | null {
   if (!isRecord(value) || !exactKeys(value, ['lines', 'childName', 'church'])) return null;
-  const lines = parseLines(value.lines, 1, BRIEF_FIELDS.length);
+  const lines = parseLines(value.lines, 0, BRIEF_FIELDS.length);
   const church = parseChurch(value.church);
   if (lines === null || church === null || !isBounded(value.childName, 1, 80)) return null;
   return { lines: lines.filter((line) => isStoryField(line.field)), childName: value.childName, church };
