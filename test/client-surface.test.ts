@@ -11,6 +11,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const clientFiles = [
   'web/app/page.tsx',
   'web/app/layout.tsx',
+  'web/app/sign-in-flow.tsx',
   'web/app/visit-shell.tsx',
   'web/app/volunteer/page.tsx',
   'web/app/leader/page.tsx',
@@ -24,6 +25,7 @@ const clientFiles = [
   'web/lib/persist-visit.ts',
   'web/lib/ready-store.ts',
   'web/lib/select-store.ts',
+  'web/lib/sign-in.ts',
   'web/lib/speech.ts',
   'web/lib/visit-sync.ts',
   'web/lib/visit.ts',

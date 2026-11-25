@@ -22,6 +22,11 @@ interface VisitState {
 }
 
 const VisitContext = createContext<ReadyStore | null>(null);
+const AccountChurchContext = createContext<string | null>(null);
+
+export function useAccountChurch(): string | null {
+  return useContext(AccountChurchContext);
+}
 
 export function useReadyStore(): ReadyStore {
   const store = useContext(VisitContext);
@@ -66,7 +71,17 @@ export function useScrollWhen(active: boolean, id: string, block: ScrollLogicalP
   }, [active, block, id]);
 }
 
-export function VisitShell({ boot, children }: { boot: StoreBoot; children: ReactNode }) {
+export function VisitShell({
+  boot,
+  children,
+  bar,
+  churchName = null,
+}: {
+  boot: StoreBoot;
+  children: ReactNode;
+  bar?: ReactNode;
+  churchName?: string | null;
+}) {
   const storeRef = useRef<ReadyStore | null>(null);
   if (storeRef.current === null) storeRef.current = selectReadyStore(boot);
   const store = storeRef.current;
@@ -97,22 +112,27 @@ export function VisitShell({ boot, children }: { boot: StoreBoot; children: Reac
 
   return (
     <VisitContext.Provider value={store}>
+      <AccountChurchContext.Provider value={churchName}>
       <div className="frame">
-        <p className="fictional">{FICTIONAL_DATA_LABEL}</p>
-        <nav aria-label="Role" className="role-nav">
-          <Link href="/" aria-current={role === 'parent' ? 'page' : undefined}>
-            Parent
-          </Link>
-          <Link href="/volunteer" aria-current={role === 'volunteer' ? 'page' : undefined}>
-            Volunteer
-          </Link>
-          <Link href="/leader" aria-current={role === 'leader' ? 'page' : undefined}>
-            Leader
-          </Link>
-        </nav>
+        {bar ? null : <p className="fictional">{FICTIONAL_DATA_LABEL}</p>}
+        {bar ?? (
+          <nav aria-label="Role" className="role-nav">
+            <Link href="/" aria-current={role === 'parent' ? 'page' : undefined}>
+              Parent
+            </Link>
+            <Link href="/volunteer" aria-current={role === 'volunteer' ? 'page' : undefined}>
+              Volunteer
+            </Link>
+            <Link href="/leader" aria-current={role === 'leader' ? 'page' : undefined}>
+              Leader
+            </Link>
+          </nav>
+        )}
         {children}
+        {bar ? <p className="fictional">{FICTIONAL_DATA_LABEL}</p> : null}
         <div id="scroll-room" />
       </div>
+      </AccountChurchContext.Provider>
     </VisitContext.Provider>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type Dispatch } from 'react';
+import { useAccountChurch } from './visit-shell';
 import { decideAck, type AckResult } from '../lib/acknowledgement';
 import { joinSpoken, presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
@@ -189,10 +190,15 @@ function StartScreen({
   onBegin: () => void;
   onExample: (id: Extract<AskView, { kind: 'start' }>['examples'][number]['id']) => void;
 }) {
+  const church = useAccountChurch();
   return (
     <section aria-label="Start">
       <h1>Who are we getting ready for?</h1>
-      <p>Start a new child with Ready&apos;s guided questions, or open a finished example to see the whole flow.</p>
+      <p>
+        {church === null
+          ? "Start a new child with Ready's guided questions, or open a finished example to see the whole flow."
+          : `Signed in to ${church}. Only your family's children show here.`}
+      </p>
       <button type="button" className="primary" onClick={onBegin}>
         Start with a new child
       </button>

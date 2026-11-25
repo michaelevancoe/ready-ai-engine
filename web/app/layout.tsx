@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { readStoreBoot } from '../server/account-boot';
+import { signInOpen } from '../server/sign-in-gate';
+import { SignInGate } from './sign-in-flow';
 import { VisitShell } from './visit-shell';
 import './globals.css';
 
@@ -13,7 +15,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <VisitShell boot={boot}>{children}</VisitShell>
+        {signInOpen() ? <SignInGate boot={boot}>{children}</SignInGate> : <VisitShell boot={boot}>{children}</VisitShell>}
       </body>
     </html>
   );
