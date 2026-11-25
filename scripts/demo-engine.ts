@@ -773,10 +773,7 @@ function lineAccepted(line: string, answer: string): boolean {
 
 function promptAccepted(prompt: string, answer: string): boolean {
   if (!surfaceAccepted(prompt, answer)) return false;
-  const lower = prompt.toLowerCase();
-  if (lower.includes('special need')) return false;
-  if (lower.includes('special-needs')) return false;
-  return !/\b(?:special|needs)\b/u.test(lower);
+  return !/\b(?:special|needs)\b/u.test(prompt.toLowerCase());
 }
 
 function surfaceAccepted(text: string, answer: string): boolean {

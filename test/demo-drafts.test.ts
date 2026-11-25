@@ -376,36 +376,36 @@ test('lol idk pizza stays not relevant and keeps an unlabeled clarifying prompt'
     post('/v1/drafts/acknowledgement', { answer: 'lol idk pizza', nodeId: 'helps' }),
   );
   assert.equal(response.status, 200);
-  const body = (await response.json()) as { relevant: boolean; line: string; clarifyingPrompt: string };
-  assert.deepEqual(body, {
+  assert.deepEqual(await response.json(), {
     relevant: false,
     line: 'Thanks. That helps.',
     clarifyingPrompt,
   });
-  const lower = body.clarifyingPrompt.toLowerCase();
-  assert.equal(lower.includes('special need'), false);
-  assert.equal(lower.includes('special-needs'), false);
-  assert.equal(/\b(?:special|needs)\b/u.test(lower), false);
 });
 
-test('a special-needs clarifying prompt falls back to the canned helps question', async () => {
-  const demo = DemoContext.fromBindings(liveShell(), async () =>
-    chatEnvelope({
-      relevant: false,
-      line: 'Thanks. That helps.',
-      clarifyingPrompt: 'Does Rowan have any special needs?',
-    }),
-  );
-  const response = await demo.handle(
-    post('/v1/drafts/acknowledgement', { answer: 'pizza rocket sandwich', nodeId: 'helps' }),
-  );
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    relevant: false,
-    line: 'Thanks. That helps.',
-    clarifyingPrompt:
-      'I want to make sure I understand. What usually helps Rowan settle when things feel like too much?',
-  });
+test('a labeled clarifying prompt falls back to the canned helps question', async () => {
+  const canned =
+    'I want to make sure I understand. What usually helps Rowan settle when things feel like too much?';
+  const prompts = [
+    'Does Rowan have any special needs?',
+    'Any special-needs on Sunday?',
+    'Anything unique or special?',
+    'What sensory needs should a volunteer know?',
+  ];
+  for (const clarifyingPrompt of prompts) {
+    const demo = DemoContext.fromBindings(liveShell(), async () =>
+      chatEnvelope({ relevant: false, line: 'Thanks. That helps.', clarifyingPrompt }),
+    );
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: 'pizza rocket sandwich', nodeId: 'helps' }),
+    );
+    assert.equal(response.status, 200, clarifyingPrompt);
+    assert.deepEqual(
+      await response.json(),
+      { relevant: false, line: 'Thanks. That helps.', clarifyingPrompt: canned },
+      clarifyingPrompt,
+    );
+  }
 });
 
 test('a clarifying prompt that says especially or needed is kept', async () => {
