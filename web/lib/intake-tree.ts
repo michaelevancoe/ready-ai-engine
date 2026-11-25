@@ -133,7 +133,7 @@ const RAW = {
       id: 'helps-more',
       sectionId: 'helps',
       prompt:
-        'Thanks, that helps. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
+        'Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
       placeholder: 'Add a little more...',
       chips: ['A quiet corner', 'A heads-up before changes'],
       closeChip: "That's everything",

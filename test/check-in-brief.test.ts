@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ProfileId, ShownProfile } from '../web/lib/desk.ts';
+import { exampleBrief, type ExampleId } from '../web/lib/example-briefs.ts';
 import {
   approvedValue,
   checkInBrief,
+  childAgeYears,
+  childPreferredName,
+  exampleLines,
   initialVisit,
   readyValue,
   reduceVisit,
@@ -262,6 +266,19 @@ test('a leader approves the edited parent note and the lesson', () => {
   assert.equal(visit.lesson.phase, 'approved');
   assert.equal(approvedValue(visit.lesson)?.steps[0], 'One step.');
   assert.equal(reduceVisit(visit, { type: 'approveLesson' }), visit);
+
+  let edited = reduceVisit(initialVisit(), { type: 'role', role: 'leader' });
+  edited = reduceVisit(edited, { type: 'writeLesson', source: 'A short lesson.' });
+  edited = reduceVisit(edited, {
+    type: 'lessonReady',
+    value: { summary: 'A short lesson.', steps: ['One step.'] },
+  });
+  edited = reduceVisit(edited, {
+    type: 'approveLesson',
+    value: { summary: 'Edited for Rowan.', steps: ['Sit quietly.', 'Sing one song.'] },
+  });
+  assert.equal(approvedValue(edited.lesson)?.summary, 'Edited for Rowan.');
+  assert.deepEqual(approvedValue(edited.lesson)?.steps, ['Sit quietly.', 'Sing one song.']);
 });
 
 test('withdrawing the brief clears an approved lesson and keeps the parent note', () => {
@@ -374,6 +391,73 @@ test('approving again replaces the loves line from the new answer', () => {
     second.lines.some((line) => line.text.includes('Trains.')),
     false,
   );
+});
+
+test('noteStory ignores a story that is still being written', () => {
+  let visit = approveIntake(initialVisit());
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  const lines = checkInBrief(visit);
+  visit = reduceVisit(visit, { type: 'writeStory' });
+  const writing = visit;
+  assert.equal(writing.story.phase, 'writing');
+  assert.equal(
+    reduceVisit(writing, {
+      type: 'noteStory',
+      value: { title: 'Sunday with Rowan', body: 'A quiet room.' },
+    }),
+    writing,
+  );
+  visit = reduceVisit(writing, { type: 'storyFailed', message: 'The draft could not be written. Try again.' });
+  visit = reduceVisit(visit, {
+    type: 'noteStory',
+    value: { title: 'Sunday with Rowan', body: 'A quiet room.' },
+  });
+  assert.equal(visit.story.phase, 'ready');
+  assert.deepEqual(checkInBrief(visit), lines);
+});
+
+test('opening an example approves that child and leaving withdraws the brief', () => {
+  const ids = ['rowan', 'maya', 'jonah'] as const satisfies readonly ExampleId[];
+  for (const id of ids) {
+    const visit = reduceVisit(initialVisit(), { type: 'conversation', event: { type: 'openExample', id } });
+    assert.equal(visit.conversation.talk.mode, 'approved');
+    assert.equal(visit.cardTouched, false);
+    assert.equal(childPreferredName(visit), exampleBrief(id).name);
+    assert.equal(childAgeYears(visit), exampleBrief(id).ageYears);
+    const brief = checkInBrief(visit);
+    assert.equal(brief.status, 'approved');
+    if (brief.status !== 'approved') return;
+    assert.deepEqual(brief.lines, exampleLines(id, visit.visibility));
+    assert.equal(
+      brief.lines.some((line) => line.field === 'medical'),
+      false,
+    );
+    assert.equal(brief.lines.find((line) => line.field === 'whatHelps')?.label, 'What helps');
+    assert.equal(brief.lines.find((line) => line.field === 'calming')?.label, 'Safety & calming');
+    const again = reduceVisit(visit, { type: 'conversation', event: { type: 'viewBrief' } });
+    const republished = reduceVisit(again, { type: 'conversation', event: { type: 'approve' } });
+    assert.deepEqual(checkInBrief(republished), brief);
+    const left = reduceVisit(republished, { type: 'conversation', event: { type: 'leaveExample' } });
+    assert.equal(checkInBrief(left).status, 'withheld');
+    assert.equal(left.card.loves, '');
+    assert.equal(left.card.medical, '');
+    assert.equal(left.cardTouched, false);
+    assert.equal(left.story.phase, 'idle');
+    assert.equal(left.lesson.phase, 'idle');
+    assert.equal(childPreferredName(left), 'Rowan');
+    assert.equal(childAgeYears(left), 7);
+    assert.equal(reduceVisit(visit, { type: 'conversation', event: { type: 'openExample', id } }), visit);
+  }
+
+  const intake = reduceVisit(approveIntake(initialVisit()), { type: 'approveBrief' });
+  const shown = checkInBrief(intake);
+  assert.equal(shown.status, 'approved');
+  if (shown.status !== 'approved') return;
+  assert.equal(
+    shown.lines.some((line) => line.field === 'medical'),
+    false,
+  );
+  assert.equal(shown.lines.some((line) => line.text === HELPS), true);
 });
 
 test('approveBrief uses the conversation answer, not an edited card', () => {

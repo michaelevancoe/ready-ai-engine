@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, type Dispatch } from 'react';
-import { acknowledgementLine, type AckResult } from '../lib/acknowledgement';
+import { decideAck, type AckResult } from '../lib/acknowledgement';
 import { joinSpoken, presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
-import { postAcknowledgement, type AckPost } from '../lib/drafts';
+import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
 import { approveProfile, submitIntake } from '../lib/desk';
-import { intakeTree, isSectionId, type SectionId } from '../lib/intake-tree';
+import { intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
-import { approvedValue, type Visit, type VisitEvent } from '../lib/visit';
+import { initialReader, reduceReader, type Reader } from '../lib/story-reader';
+import { approvedValue, checkInBrief, childPreferredName, type SocialStory, type Visit, type VisitEvent } from '../lib/visit';
 import { useVisit } from './visit-shell';
 
 const BEAT_MS = 1200;
@@ -24,45 +25,73 @@ export default function Page() {
   const { visit, dispatch } = useVisit();
   const view = presentAsk(intakeTree, visit.conversation);
   const [reading, setReading] = useState<Reading>({ phase: 'idle' });
-  const [held, setHeld] = useState<{ progress: string; index: number } | null>(null);
   const [spoken, setSpoken] = useState<string | null>(null);
   const [savedTitle, setSavedTitle] = useState<string | null>(null);
+  const [reask, setReask] = useState<{ nodeId: string; prompt: string; epoch: number } | null>(null);
   const token = useRef(0);
   const nonce = useRef(0);
   const busy = useRef(false);
+  const settling = useRef(false);
+  const attempts = useRef<Record<string, number>>({});
   const readyLine = reading.phase === 'shown' && view.kind === 'question' && !view.fixing ? reading.line : null;
-  const locked = reading.phase === 'reading' && view.kind === 'question' && !view.fixing;
+  const locked = reading.phase === 'reading' && view.kind === 'question';
   const pending = visit.intake.status === 'submitting' || visit.intake.status === 'approving';
 
   function onAnswer(text: string): void {
+    if (settling.current) return;
     const current = visit.conversation;
     if (current.talk.mode !== 'ask' && current.talk.mode !== 'fix') return;
-    const next = reduceConversation(intakeTree, current, { type: 'answer', text });
-    if (next === current) return;
-    const title = sectionTitle(current);
-    const sectionId = sectionKey(current);
-    const beat = current.talk.mode === 'ask' && next.talk.mode === 'ask' && sectionId !== null;
-    if (beat) setSpoken(text.trim());
-    setHeld(beat && view.kind === 'question' ? { progress: view.progress, index: view.index } : null);
-    if (current.talk.mode === 'fix' && next.talk.mode === 'brief' && title !== null) setSavedTitle(title);
-    dispatch({ type: 'conversation', event: { type: 'answer', text } });
-    if (!beat || sectionId === null) {
-      setReading({ phase: 'idle' });
-      return;
-    }
+    const answer = text.trim();
+    if (answer.length === 0) return;
+    const nodeId = current.talk.nodeId;
+    const fixing = current.talk.mode === 'fix';
+    if (!fixing) setSpoken(answer);
+    settling.current = true;
     const tokenId = token.current + 1;
     token.current = tokenId;
     setReading({ phase: 'reading', token: tokenId });
-    void settle(tokenId, text.trim(), sectionId);
+    void settleAnswer(tokenId, current, answer, nodeId, fixing);
   }
 
-  async function settle(tokenId: number, answer: string, sectionId: string): Promise<void> {
-    const raced = await Promise.all([
-      Promise.race([postAcknowledgement(answer, sectionId), delayResult(ACK_LIMIT_MS)]),
-      delay(BEAT_MS),
-    ]);
-    if (token.current !== tokenId) return;
-    setReading({ phase: 'shown', token: tokenId, line: acknowledgementLine(ackResult(raced[0])) });
+  async function settleAnswer(
+    tokenId: number,
+    current: Conversation,
+    answer: string,
+    nodeId: string,
+    fixing: boolean,
+  ): Promise<void> {
+    const attempt = attempts.current[nodeId] ?? 0;
+    try {
+      const raced = await Promise.all([
+        Promise.race([postAcknowledgement(answer, nodeId), delayResult(ACK_LIMIT_MS)]),
+        delay(BEAT_MS),
+      ]);
+      if (token.current !== tokenId) return;
+      const decision = decideAck(attempt, ackResult(raced[0]));
+      if (decision.action === 'reask') {
+        attempts.current[nodeId] = attempt + 1;
+        setReask((previous) => ({ nodeId, prompt: decision.prompt, epoch: (previous?.epoch ?? 0) + 1 }));
+        setReading({ phase: 'idle' });
+        return;
+      }
+      const next = reduceConversation(intakeTree, current, { type: 'answer', text: answer });
+      if (next === current) {
+        setReading({ phase: 'idle' });
+        return;
+      }
+      delete attempts.current[nodeId];
+      setReask(null);
+      const title = sectionTitle(current);
+      if (fixing && next.talk.mode === 'brief' && title !== null) setSavedTitle(title);
+      dispatch({ type: 'conversation', event: { type: 'answer', text: answer } });
+      if (fixing || next.talk.mode !== 'ask') {
+        setReading({ phase: 'idle' });
+        return;
+      }
+      setReading({ phase: 'shown', token: tokenId, line: decision.line });
+    } finally {
+      if (token.current === tokenId) settling.current = false;
+    }
   }
 
   async function onApprove(): Promise<void> {
@@ -119,8 +148,9 @@ export default function Page() {
         <QuestionScreen
           ask={view}
           locked={locked}
-          held={locked ? held : null}
           readyLine={readyLine}
+          reaskPrompt={reask !== null && reask.nodeId === view.nodeId ? reask.prompt : null}
+          clearEpoch={reask?.epoch ?? 0}
           spoken={spoken}
           onAnswer={onAnswer}
           dispatch={dispatch}
@@ -181,16 +211,18 @@ function StartScreen({
 function QuestionScreen({
   ask,
   locked,
-  held,
   readyLine,
+  reaskPrompt,
+  clearEpoch,
   spoken,
   onAnswer,
   dispatch,
 }: {
   ask: Extract<AskView, { kind: 'question' }>;
   locked: boolean;
-  held: { progress: string; index: number } | null;
   readyLine: string | null;
+  reaskPrompt: string | null;
+  clearEpoch: number;
   spoken: string | null;
   onAnswer: (text: string) => void;
   dispatch: Dispatch<VisitEvent>;
@@ -200,17 +232,25 @@ function QuestionScreen({
   const [now, setNow] = useState(0);
   const [speech, setSpeech] = useState<'ready' | 'missing'>('missing');
   const session = useRef<{ stop(): void } | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const seenEpoch = useRef(0);
 
   useEffect(() => {
     setSpeech(speechSupport());
   }, []);
 
   useEffect(() => {
-    setDraft(ask.priorAnswer ?? '');
     session.current?.stop();
     session.current = null;
     setMic({ phase: 'off' });
-  }, [ask.fixing, ask.nodeId, ask.priorAnswer]);
+    if (clearEpoch > seenEpoch.current) {
+      seenEpoch.current = clearEpoch;
+      setDraft('');
+      field.current?.focus();
+      return;
+    }
+    setDraft(ask.priorAnswer ?? '');
+  }, [ask.fixing, ask.nodeId, ask.priorAnswer, clearEpoch]);
 
   useEffect(() => {
     if (mic.phase !== 'live') return;
@@ -272,12 +312,12 @@ function QuestionScreen({
         <>
           <p className="guided">Guided by Ready</p>
           <p className="progress-label">
-            <span>{held === null ? ask.progress : held.progress}</span>
+            <span>{ask.progress}</span>
             <span>Every question required</span>
           </p>
           <div className="bars" aria-hidden="true">
             {Array.from({ length: ask.total }, (_, index) => (
-              <span className={index < (held === null ? ask.index : held.index) ? 'on' : undefined} key={index} />
+              <span className={index < ask.index ? 'on' : undefined} key={index} />
             ))}
           </div>
         </>
@@ -297,16 +337,17 @@ function QuestionScreen({
             Ready is reading your answer...
           </span>
         </p>
-      ) : (
-        <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
-          {readyLine === null ? null : <p className="bubble ready">{readyLine}</p>}
-          <article className="question-card">
-            <p className="eyebrow">{ask.mark}</p>
-            <h2 id="current-question">{ask.prompt}</h2>
-            {ask.followAnswer === null ? null : <p>{ask.followAnswer}</p>}
-          </article>
-        </div>
-      )}
+      ) : null}
+      <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
+        {readyLine === null && reaskPrompt === null ? null : (
+          <p className="bubble ready">{readyLine ?? reaskPrompt}</p>
+        )}
+        <article className="question-card">
+          <p className="eyebrow">{ask.mark}</p>
+          <h2 id="current-question">{ask.prompt}</h2>
+          {ask.followAnswer === null ? null : <p>{ask.followAnswer}</p>}
+        </article>
+      </div>
       {locked || ask.chips.length === 0 ? null : (
         <div className="chips">
           {ask.chips.map((chip) => (
@@ -331,6 +372,7 @@ function QuestionScreen({
         </label>
         <textarea
           id="answer"
+          ref={field}
           rows={3}
           value={draft}
           placeholder={locked ? 'Ready is reading your answer...' : ask.placeholder}
@@ -547,6 +589,81 @@ function ApprovedScreen({
   dispatch: Dispatch<VisitEvent>;
 }) {
   const update = approvedValue(visit.update);
+  const [reader, setReader] = useState<Reader>(initialReader());
+  const request = useRef(0);
+  const brief = checkInBrief(visit);
+
+  async function requestStory(): Promise<void> {
+    if (brief.status !== 'approved') return;
+    const id = request.current + 1;
+    request.current = id;
+    setReader({ phase: 'writing' });
+    const result = await postSocialStory(brief.lines, childPreferredName(visit));
+    if (request.current !== id) return;
+    if (!result.ok) {
+      setReader(reduceReader({ phase: 'writing' }, { type: 'fail' }));
+      return;
+    }
+    dispatch({ type: 'noteStory', value: result.value });
+    setReader(reduceReader({ phase: 'writing' }, { type: 'loaded', value: result.value }));
+  }
+
+  function onRead(): void {
+    if (reader.phase !== 'closed') return;
+    const saved = savedStory(visit);
+    if (saved !== null) {
+      setReader(reduceReader(reader, { type: 'open', saved }));
+      return;
+    }
+    void requestStory();
+  }
+
+  function onBack(): void {
+    request.current += 1;
+    setReader(reduceReader(reader, { type: 'back' }));
+  }
+
+  if (reader.phase !== 'closed') {
+    return (
+      <section aria-label="Sunday story">
+        <div className="top-bar">
+          <button type="button" className="back" onClick={onBack}>
+            ← {view.name} is ready for Sunday
+          </button>
+        </div>
+        {reader.phase === 'writing' ? (
+          <>
+            <h1>A Sunday story for {view.name}</h1>
+            <p role="status">Writing {view.name}&apos;s story.</p>
+          </>
+        ) : null}
+        {reader.phase === 'failed' ? (
+          <>
+            <h1>The story isn&apos;t ready yet</h1>
+            <p>
+              Ready couldn&apos;t write {view.name}&apos;s story just now. Nothing is lost, and {view.name}&apos;s brief
+              is still approved. You can try again in a moment.
+            </p>
+            <button type="button" className="primary" onClick={() => void requestStory()}>
+              Try again
+            </button>
+          </>
+        ) : null}
+        {reader.phase === 'shown' ? (
+          <>
+            <p className="eyebrow">A Sunday story for {view.name}</p>
+            <h1>{reader.title}</h1>
+            <p className="hint">Written by Ready, from the approved brief.</p>
+            {reader.paragraphs.map((paragraph, index) => (
+              <p key={`${index}-${paragraph}`}>{paragraph}</p>
+            ))}
+            <p className="hint">Read it together before you go.</p>
+          </>
+        ) : null}
+      </section>
+    );
+  }
+
   return (
     <section aria-label="Ready">
       <div className="identity">
@@ -567,10 +684,10 @@ function ApprovedScreen({
       </ol>
       <article className="story-card" id="sunday-story">
         <h2>A Sunday story for {view.name}</h2>
-        <p>A short picture story about what Sunday will look like. Read it together before you go.</p>
-        <a className="text-link" href="#sunday-story">
+        <p>A short Sunday story about what Sunday will look like.</p>
+        <button type="button" className="text" onClick={onRead}>
           Read {view.name}&apos;s story
-        </a>
+        </button>
       </article>
       <section aria-label="Sunday update" id="sunday-update">
         <h2>Sunday update</h2>
@@ -590,6 +707,22 @@ function ApprovedScreen({
   );
 }
 
+function savedStory(visit: Visit): SocialStory | null {
+  switch (visit.story.phase) {
+    case 'ready':
+    case 'approved':
+      return visit.story.value;
+    case 'idle':
+    case 'writing':
+    case 'failed':
+      return null;
+    default: {
+      const leftover: never = visit.story;
+      return leftover;
+    }
+  }
+}
+
 function MicIcon() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -599,14 +732,6 @@ function MicIcon() {
       />
     </svg>
   );
-}
-
-function sectionKey(conversation: Conversation): SectionId | null {
-  const talk = conversation.talk;
-  if (talk.mode !== 'ask' && talk.mode !== 'fix') return null;
-  const node = intakeTree.nodes.find((item) => item.id === talk.nodeId);
-  if (node === undefined || !isSectionId(node.sectionId)) return null;
-  return node.sectionId;
 }
 
 function sectionTitle(conversation: Conversation): string | null {
@@ -654,7 +779,12 @@ function delayResult(ms: number): Promise<{ kind: 'timeout' }> {
 function ackResult(outcome: AckPost | { kind: 'timeout' }): AckResult {
   switch (outcome.kind) {
     case 'line':
-      return { kind: 'line', text: outcome.text };
+      return {
+        kind: 'line',
+        relevant: outcome.relevant,
+        line: outcome.line,
+        clarifyingPrompt: outcome.clarifyingPrompt,
+      };
     case 'error':
       return { kind: 'error' };
     case 'timeout':

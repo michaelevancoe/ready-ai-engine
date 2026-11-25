@@ -108,6 +108,56 @@ export function exampleList(): readonly ExampleBrief[] {
   return [ROWAN, MAYA, JONAH];
 }
 
+export interface ExampleProfile {
+  readonly loves: string;
+  readonly overwhelms: string;
+  readonly whatHelps: string;
+  readonly communication: string;
+  readonly sensory: string;
+  readonly toileting: string;
+  readonly allergies: string;
+  readonly calming: string;
+  readonly medical: string;
+}
+
+export function exampleProfile(id: ExampleId): ExampleProfile {
+  const profile: { -readonly [Key in keyof ExampleProfile]: ExampleProfile[Key] } = {
+    loves: '',
+    overwhelms: '',
+    whatHelps: '',
+    communication: '',
+    sensory: '',
+    toileting: '',
+    allergies: '',
+    calming: '',
+    medical: '',
+  };
+  for (const card of exampleBrief(id).cards) {
+    profile[profileField(card.sectionId)] = card.text;
+  }
+  return profile;
+}
+
+function profileField(sectionId: (typeof CARD_IDS)[number]): keyof ExampleProfile {
+  switch (sectionId) {
+    case 'helps':
+      return 'whatHelps';
+    case 'behavior':
+      return 'calming';
+    case 'loves':
+    case 'overwhelms':
+    case 'communication':
+    case 'sensory':
+    case 'toileting':
+    case 'allergies':
+      return sectionId;
+    default: {
+      const leftover: never = sectionId;
+      return leftover;
+    }
+  }
+}
+
 function brief(
   id: ExampleId,
   name: string,

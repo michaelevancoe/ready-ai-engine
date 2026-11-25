@@ -16,7 +16,7 @@ const LONG_HELPS = 'A quiet corner and a heads-up before the next song.';
 const BEHAVIOR =
   'When Rowan is very upset, does he ever hurt himself or others, or run off? If so, what helps in that moment?';
 const HELPS_FOLLOW =
-  'Thanks, that helps. Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?';
+  'Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?';
 const ABOUT = 'To start: how would you describe Rowan in a sentence or two?';
 
 test('the first question is the tree prompt and the walk is nine sections', () => {

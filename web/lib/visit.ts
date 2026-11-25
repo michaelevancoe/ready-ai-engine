@@ -1,5 +1,6 @@
 import { initialConversation, project, reduceConversation, type Conversation, type ConversationEvent } from './conversation.ts';
 import { initialGate, reduceGate, type GateEvent, type IntakeGate } from './desk.ts';
+import { exampleBrief, exampleProfile, type ExampleId } from './example-briefs.ts';
 import { intakeTree } from './intake-tree.ts';
 
 export const BRIEF_FIELDS = [
@@ -86,6 +87,7 @@ export type VisitEvent =
   | { readonly type: 'saveCard'; readonly card: ProfileCard }
   | { readonly type: 'visibility'; readonly field: BriefField; readonly on: boolean }
   | { readonly type: 'writeStory' }
+  | { readonly type: 'noteStory'; readonly value: SocialStory }
   | { readonly type: 'storyReady'; readonly value: SocialStory }
   | { readonly type: 'storyFailed'; readonly message: string }
   | { readonly type: 'approveStory' }
@@ -100,7 +102,7 @@ export type VisitEvent =
   | { readonly type: 'writeLesson'; readonly source: string }
   | { readonly type: 'lessonReady'; readonly value: LessonAdaptation }
   | { readonly type: 'lessonFailed'; readonly message: string }
-  | { readonly type: 'approveLesson' };
+  | { readonly type: 'approveLesson'; readonly value?: LessonAdaptation };
 
 export type CheckIn =
   | { readonly status: 'withheld' }
@@ -178,6 +180,9 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
     case 'writeStory':
       if (visit.intake.status !== 'approved' || visit.story.phase === 'writing') return visit;
       return { ...visit, story: { phase: 'writing' } };
+    case 'noteStory':
+      if (visit.story.phase === 'writing' || visit.brief.phase !== 'approved') return visit;
+      return { ...visit, story: { phase: 'ready', value: event.value } };
     case 'storyReady':
       if (visit.story.phase !== 'writing') return visit;
       return { ...visit, story: { phase: 'ready', value: event.value } };
@@ -225,7 +230,7 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
       return { ...visit, lesson: { phase: 'failed', message: event.message } };
     case 'approveLesson':
       if (visit.role !== 'leader' || visit.lesson.phase !== 'ready') return visit;
-      return { ...visit, lesson: { phase: 'approved', value: visit.lesson.value } };
+      return { ...visit, lesson: { phase: 'approved', value: event.value ?? visit.lesson.value } };
     default: {
       const leftover: never = event;
       return leftover;
@@ -244,17 +249,20 @@ export function briefLines(card: ProfileCard, visibility: Visibility): BriefLine
   return lines;
 }
 
+export function exampleLines(id: ExampleId, visibility: Visibility): BriefLine[] {
+  return briefLines(exampleProfile(id), visibility);
+}
+
 export function childPreferredName(visit: Visit): string {
-  switch (visit.role) {
-    case 'parent':
-    case 'volunteer':
-    case 'leader':
-      return intakeTree.child.preferredName;
-    default: {
-      const leftover: never = visit.role;
-      return leftover;
-    }
-  }
+  const example = talkExample(visit.conversation);
+  if (example !== null) return exampleBrief(example).name;
+  return intakeTree.child.preferredName;
+}
+
+export function childAgeYears(visit: Visit): number {
+  const example = talkExample(visit.conversation);
+  if (example !== null) return exampleBrief(example).ageYears;
+  return intakeTree.child.ageYears;
 }
 
 export function childHeading(name: string): string {
@@ -342,7 +350,43 @@ function applyIntake(visit: Visit, event: GateEvent): Visit {
 function applyConversation(visit: Visit, event: ConversationEvent): Visit {
   const conversation = reduceConversation(intakeTree, visit.conversation, event);
   if (conversation === visit.conversation) return visit;
+  const nextExample = talkExample(conversation);
+  if (nextExample !== null) {
+    const card = exampleProfile(nextExample);
+    return {
+      ...visit,
+      conversation,
+      card,
+      cardTouched: false,
+      brief: { phase: 'approved', lines: briefLines(card, visit.visibility) },
+    };
+  }
+  if (talkExample(visit.conversation) !== null) {
+    return {
+      ...visit,
+      conversation,
+      card: blankCard(),
+      cardTouched: false,
+      ...withdrawnBrief(),
+    };
+  }
   return { ...visit, conversation };
+}
+
+function talkExample(conversation: Conversation): ExampleId | null {
+  switch (conversation.talk.mode) {
+    case 'brief':
+    case 'approved':
+      return conversation.talk.source.type === 'example' ? conversation.talk.source.id : null;
+    case 'start':
+    case 'ask':
+    case 'fix':
+      return null;
+    default: {
+      const leftover: never = conversation.talk;
+      return leftover;
+    }
+  }
 }
 
 function blankCard(): ProfileCard {
