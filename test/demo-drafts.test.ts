@@ -31,7 +31,7 @@ test('mock acknowledgement returns a line and does not fetch', async () => {
   );
   assert.equal(calls, 0);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { line: 'Thanks for telling me.' });
+  assert.deepEqual(await response.json(), { line: 'Thanks for telling me. Picture cards.' });
 });
 
 test('a live acknowledgement records the intake schema and leaves out the next question', async () => {

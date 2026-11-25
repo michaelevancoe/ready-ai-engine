@@ -312,7 +312,9 @@ function questionView(tree: IntakeTree, conversation: Conversation): AskView {
     followAnswer: node.follow === undefined ? null : answerText(conversation, node.follow.nodeId),
     fixing,
     sectionTitle: section.title,
-    sections: tree.sections.map((item) => ({ id: item.id, label: item.title })),
+    sections: tree.sections.flatMap((item) =>
+      item.id === 'about' ? [] : [{ id: item.id, label: item.reviewLabel }],
+    ),
   };
 }
 

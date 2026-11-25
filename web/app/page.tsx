@@ -24,6 +24,7 @@ export default function Page() {
   const { visit, dispatch } = useVisit();
   const view = presentAsk(intakeTree, visit.conversation);
   const [reading, setReading] = useState<Reading>({ phase: 'idle' });
+  const [spoken, setSpoken] = useState<string | null>(null);
   const [savedTitle, setSavedTitle] = useState<string | null>(null);
   const token = useRef(0);
   const nonce = useRef(0);
@@ -39,6 +40,7 @@ export default function Page() {
     if (next === current) return;
     const title = sectionTitle(current);
     const beat = current.talk.mode === 'ask' && next.talk.mode === 'ask' && title !== null;
+    if (beat) setSpoken(text.trim());
     if (current.talk.mode === 'fix' && next.talk.mode === 'brief' && title !== null) setSavedTitle(title);
     dispatch({ type: 'conversation', event: { type: 'answer', text } });
     if (!beat || title === null) {
@@ -111,7 +113,14 @@ export default function Page() {
         />
       ) : null}
       {view.kind === 'question' ? (
-        <QuestionScreen ask={view} locked={locked} readyLine={readyLine} onAnswer={onAnswer} dispatch={dispatch} />
+        <QuestionScreen
+          ask={view}
+          locked={locked}
+          readyLine={readyLine}
+          spoken={spoken}
+          onAnswer={onAnswer}
+          dispatch={dispatch}
+        />
       ) : null}
       {view.kind === 'brief' ? (
         <BriefScreen
@@ -169,12 +178,14 @@ function QuestionScreen({
   ask,
   locked,
   readyLine,
+  spoken,
   onAnswer,
   dispatch,
 }: {
   ask: Extract<AskView, { kind: 'question' }>;
   locked: boolean;
   readyLine: string | null;
+  spoken: string | null;
   onAnswer: (text: string) => void;
   dispatch: Dispatch<VisitEvent>;
 }) {
@@ -252,9 +263,19 @@ function QuestionScreen({
           </div>
         </>
       ) : (
-        <p className="progress-label">{ask.progress}</p>
+        <>
+          <p className="progress-label">
+            <span>{ask.progress}</span>
+            <span>Every question required</span>
+          </p>
+          <div className="bars" aria-hidden="true">
+            {Array.from({ length: ask.total }, (_, index) => (
+              <span className={index < ask.index ? 'on' : undefined} key={index} />
+            ))}
+          </div>
+        </>
       )}
-      <p className="placeholder-note">{intakeTree.placeholderNote}</p>
+      {spoken === null || ask.fixing ? null : <p className="bubble parent">{spoken}</p>}
       {locked ? (
         <p className="draft-status" role="status">
           Reading your answer...
@@ -307,18 +328,23 @@ function QuestionScreen({
           disabled={locked}
           onChange={(event) => setDraft(event.target.value)}
         />
-        {speech === 'ready' ? (
-          <button
-            type="button"
-            className={mic.phase === 'live' ? 'mic live' : 'mic'}
-            aria-label={mic.phase === 'live' ? 'Mic is on' : 'Start voice answer'}
-            disabled={locked}
-            onClick={() => (mic.phase === 'live' ? stopMic() : startMic())}
-          >
-            {mic.phase === 'live' ? <span className="mic-ring" aria-hidden="true" /> : null}
-            <MicIcon />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={mic.phase === 'live' ? 'mic live' : 'mic'}
+          aria-label={mic.phase === 'live' ? 'Mic is on' : 'Mic is off'}
+          disabled={locked}
+          onClick={() => {
+            if (mic.phase === 'live') {
+              stopMic();
+              return;
+            }
+            if (speech !== 'ready') return;
+            startMic();
+          }}
+        >
+          {mic.phase === 'live' ? <span className="mic-ring" aria-hidden="true" /> : null}
+          <MicIcon />
+        </button>
       </div>
       {mic.phase === 'live' ? (
         <p className="draft-status" role="status">
@@ -403,17 +429,19 @@ function BriefScreen({
           </button>
           {picking ? (
             <div className="chips">
-              {intakeTree.sections.map((section) => (
-                <button
-                  type="button"
-                  key={section.id}
-                  onClick={() =>
-                    dispatch({ type: 'conversation', event: { type: 'chooseSection', sectionId: section.id } })
-                  }
-                >
-                  {section.title}
-                </button>
-              ))}
+              {intakeTree.sections.flatMap((section) =>
+                section.id === 'about' ? [] : (
+                  <button
+                    type="button"
+                    key={section.id}
+                    onClick={() =>
+                      dispatch({ type: 'conversation', event: { type: 'chooseSection', sectionId: section.id } })
+                    }
+                  >
+                    {section.reviewLabel}
+                  </button>
+                ),
+              )}
             </div>
           ) : null}
         </>

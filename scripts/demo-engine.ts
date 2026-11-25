@@ -316,8 +316,11 @@ function mockDraft(name: string, content: string): unknown | null {
       if (parsed === null) return null;
       return mockSundayUpdate(parsed.childName, parsed.notes);
     }
-    case intakeAcknowledgementSchemaName:
-      return { line: 'Thanks for telling me.' };
+    case intakeAcknowledgementSchemaName: {
+      const answer = acknowledgementAnswer(content);
+      if (answer === null) return null;
+      return { line: reflectedLine(answer) };
+    }
     default:
       return null;
   }
@@ -413,6 +416,22 @@ function acknowledgementMessages(request: { answer: string; sectionTitle: string
     },
     { role: 'user', content: `Answer: ${request.answer}\nSection: ${request.sectionTitle}` },
   ];
+}
+
+function acknowledgementAnswer(content: string): string | null {
+  const marker = 'Answer: ';
+  const section = '\nSection: ';
+  if (!content.startsWith(marker)) return null;
+  const at = content.indexOf(section);
+  if (at < marker.length) return null;
+  const answer = content.slice(marker.length, at).trim();
+  return answer.length === 0 ? null : answer;
+}
+
+function reflectedLine(answer: string): string {
+  const clipped = answer.replace(/\s+/g, ' ').trim().slice(0, 120);
+  const line = `Thanks for telling me. ${clipped}`;
+  return line.length > 160 ? line.slice(0, 160) : line;
 }
 
 function parseAcknowledgement(value: unknown): { line: string } {
