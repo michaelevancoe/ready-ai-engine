@@ -87,7 +87,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await answerTree(page, 'TICK-QUIET-ROOM');
-  await expect(page.getByRole('heading', { name: "Rowan's brief" })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "Rowan's brief", exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: "Who sees Rowan's brief" })).toBeVisible();
   await expect(
     page.getByText("Ms. Dana and this Sunday's volunteers at Example Harbor Fellowship. No one else."),

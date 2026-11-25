@@ -1,5 +1,6 @@
 import { SchemaRejected } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
+import { sundayStorySentences } from './sunday-story-text.ts';
 
 const BRIEF_FIELDS = [
   'loves',
@@ -21,10 +22,21 @@ export interface DraftLine {
   text: string;
 }
 
-export interface SocialStoryRequest {
-  lines: DraftLine[];
-  childName: string;
+export interface StoryChurch {
+  readonly name: string;
+  readonly service: string;
+  readonly room: string;
+  readonly leader: string;
+  readonly plan: string;
 }
+
+export interface SocialStoryRequest {
+  readonly lines: DraftLine[];
+  readonly childName: string;
+  readonly church: StoryChurch;
+}
+
+export type StorySource = 'model' | 'fallback';
 
 export interface LessonRequest {
   lesson: string;
@@ -38,8 +50,8 @@ export interface SundayUpdateRequest {
 }
 
 export interface SocialStoryDraft {
-  title: string;
-  body: string;
+  readonly title: string;
+  readonly body: string;
 }
 
 export interface LessonDraft {
@@ -58,13 +70,29 @@ export interface DraftMessage {
 
 const LINE_KEYS = ['field', 'label', 'text'] as const;
 
+const STORY_FIELDS = [
+  'loves',
+  'overwhelms',
+  'whatHelps',
+  'communication',
+  'sensory',
+  'toileting',
+  'calming',
+] as const;
+
+const CHURCH_KEYS = ['name', 'service', 'room', 'leader', 'plan'] as const;
+
+type StoryField = (typeof STORY_FIELDS)[number];
+
 const SOCIAL_STORY_RULES = [
   'The data is fictional. Do not invent medical facts.',
-  'Write a short warm story a child could hear before church, in the first person or the second person.',
-  'Open naturally, as in "You arrive at church" or "I arrive at church".',
-  'Do not set the child\'s name off with commas, and do not write "you, Name,".',
-  'Use a few short sentences about arriving, the room, what might happen, and what helps.',
-  "Use only the approved lines and the child's preferred name.",
+  "Write in the third person, using the child's preferred name.",
+  'Use only the church plan and the given lines.',
+  'Be calm and positive.',
+  'A hard moment is described gently, for example "Sometimes songs are loud."',
+  'No labels or medical words.',
+  'Never suggest leaving the room or the group.',
+  'Use only names that appear in the input.',
   'Return JSON with title and body, and write the body as prose rather than a dict.',
 ].join(' ');
 
@@ -164,6 +192,27 @@ function isBriefField(value: unknown): value is BriefField {
   return false;
 }
 
+function isStoryField(field: BriefField): field is StoryField {
+  for (const storyField of STORY_FIELDS) {
+    if (storyField === field) return true;
+  }
+  return false;
+}
+
+function parseChurch(value: unknown): StoryChurch | null {
+  if (!isRecord(value) || !exactKeys(value, CHURCH_KEYS)) return null;
+  if (!isBounded(value.name, 0, 200) || !isBounded(value.service, 0, 200)) return null;
+  if (!isBounded(value.room, 0, 200) || !isBounded(value.leader, 0, 200)) return null;
+  if (!isBounded(value.plan, 0, 2000)) return null;
+  return {
+    name: value.name,
+    service: value.service,
+    room: value.room,
+    leader: value.leader,
+    plan: value.plan,
+  };
+}
+
 function parseLine(value: unknown): DraftLine | null {
   if (!isRecord(value) || !exactKeys(value, LINE_KEYS)) return null;
   if (!isBriefField(value.field) || !isBounded(value.label, 1, 120) || !isBounded(value.text, 1, 2000)) {
@@ -184,10 +233,11 @@ function parseLines(value: unknown, min: number, max: number): DraftLine[] | nul
 }
 
 export function parseSocialStoryRequest(value: unknown): SocialStoryRequest | null {
-  if (!isRecord(value) || !exactKeys(value, ['lines', 'childName'])) return null;
+  if (!isRecord(value) || !exactKeys(value, ['lines', 'childName', 'church'])) return null;
   const lines = parseLines(value.lines, 1, BRIEF_FIELDS.length);
-  if (lines === null || !isBounded(value.childName, 1, 80)) return null;
-  return { lines, childName: value.childName };
+  const church = parseChurch(value.church);
+  if (lines === null || church === null || !isBounded(value.childName, 1, 80)) return null;
+  return { lines: lines.filter((line) => isStoryField(line.field)), childName: value.childName, church };
 }
 
 export function parseLessonRequest(value: unknown): LessonRequest | null {
@@ -209,9 +259,18 @@ function labeledLines(lines: readonly DraftLine[]): string {
 }
 
 export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[] {
+  const rows = [
+    `Child: ${request.childName}`,
+    `Church: ${request.church.name}`,
+    `Service: ${request.church.service}`,
+    `Room: ${request.church.room}`,
+    `Leader: ${request.church.leader}`,
+    `Plan: ${request.church.plan}`,
+    ...request.lines.map((line) => `${line.label}: ${line.text}`),
+  ];
   return [
     { role: 'system', content: SOCIAL_STORY_RULES },
-    { role: 'user', content: `Child: ${request.childName}\n${labeledLines(request.lines)}` },
+    { role: 'user', content: rows.join('\n') },
   ];
 }
 
@@ -233,6 +292,177 @@ export function sundayUpdateMessages(request: SundayUpdateRequest): DraftMessage
       content: `Child: ${request.childName}\nVolunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n${request.notes}`,
     },
   ];
+}
+
+export const STORY_LABEL_WORDS = [
+  'special needs',
+  'special',
+  'autism',
+  'autistic',
+  'ADHD',
+  'disorder',
+  'condition',
+  'diagnosis',
+  'diagnosed',
+  'disability',
+  'disabled',
+  'syndrome',
+  'allergy',
+  'allergies',
+  'allergic',
+  'peanut',
+  'asthma',
+  'inhaler',
+  'EpiPen',
+  'seizure',
+  'medicine',
+  'medication',
+  'medical',
+  'therapy',
+  'therapist',
+  'nonverbal',
+  'meltdown',
+  'tantrum',
+  'behavior',
+  'behaviour',
+] as const;
+
+export const STORY_TONE_WORDS = [
+  'overwhelm',
+  'scary',
+  'scared',
+  'afraid',
+  'hurt',
+  'wrong',
+  'bad',
+  "don't worry",
+  'don’t worry',
+  'dont worry',
+] as const;
+
+export const STORY_LEAVING_PHRASES = [
+  'step outside',
+  'go outside',
+  'leave the room',
+  'run off',
+  'run away',
+  'wander',
+] as const;
+
+const STORY_STARTERS = [
+  'i',
+  'you',
+  'on',
+  'at',
+  'first',
+  'then',
+  'next',
+  'after',
+  'when',
+  'if',
+  'sometimes',
+  'there',
+  'it',
+  'everyone',
+  'the',
+  'a',
+  'sunday',
+  'god',
+  'jesus',
+] as const;
+
+const DEMO_CHILD_NAMES = ['Rowan', 'Maya', 'Jonah', 'Quinn'] as const;
+
+const MALE_PRONOUNS = ['he', 'him', 'his'] as const;
+
+const FEMALE_PRONOUNS = ['she', 'her', 'hers'] as const;
+
+export function storySafety(
+  story: { readonly title: string; readonly body: string },
+  input: {
+    readonly childName: string;
+    readonly church: StoryChurch;
+    readonly lines: readonly { readonly text: string }[];
+  },
+): boolean {
+  const text = `${story.title}\n${story.body}`;
+  if (listed(text, STORY_LABEL_WORDS) || listed(text, STORY_TONE_WORDS) || listed(text, STORY_LEAVING_PHRASES)) {
+    return false;
+  }
+  if (!properNounsAllowed(text, input)) return false;
+  if (!text.toLowerCase().includes(input.childName.toLowerCase())) return false;
+  if (otherChildNamed(text, input.childName)) return false;
+  return pronounsAllowed(text, input.lines);
+}
+
+function listed(text: string, words: readonly string[]): boolean {
+  for (const word of words) {
+    if (word === 'overwhelm') {
+      if (hasPrefix(text, word)) return true;
+      continue;
+    }
+    if (hasTerm(text, word)) return true;
+  }
+  return false;
+}
+
+function hasTerm(text: string, term: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term)}(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+function hasPrefix(text: string, prefix: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(prefix)}`, 'iu').test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function properNounsAllowed(
+  text: string,
+  input: {
+    readonly childName: string;
+    readonly church: StoryChurch;
+    readonly lines: readonly { readonly text: string }[];
+  },
+): boolean {
+  const allowed = new Set<string>(STORY_STARTERS);
+  const sources = [
+    input.childName,
+    input.church.name,
+    input.church.service,
+    input.church.room,
+    input.church.leader,
+    input.church.plan,
+  ];
+  for (const line of input.lines) sources.push(line.text);
+  for (const source of sources) {
+    for (const word of source.match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) allowed.add(word.toLowerCase());
+  }
+  for (const token of text.match(/\p{Lu}[\p{L}\p{N}]*/gu) ?? []) {
+    if (!allowed.has(token.toLowerCase())) return false;
+  }
+  return true;
+}
+
+function otherChildNamed(text: string, childName: string): boolean {
+  const current = childName.toLowerCase();
+  for (const name of DEMO_CHILD_NAMES) {
+    if (name.toLowerCase() === current) continue;
+    if (hasTerm(text, name)) return true;
+  }
+  return false;
+}
+
+function pronounsAllowed(text: string, lines: readonly { readonly text: string }[]): boolean {
+  const lineText = lines.map((line) => line.text).join('\n');
+  if (usesAny(text, MALE_PRONOUNS) && !usesAny(lineText, MALE_PRONOUNS)) return false;
+  if (usesAny(text, FEMALE_PRONOUNS) && !usesAny(lineText, FEMALE_PRONOUNS)) return false;
+  return true;
+}
+
+function usesAny(text: string, words: readonly string[]): boolean {
+  return words.some((word) => hasTerm(text, word));
 }
 
 export function storyBodyAccepted(body: string): boolean {
@@ -282,11 +512,31 @@ function stringList(value: unknown): string[] | null {
   return value;
 }
 
-export function parseSocialStory(value: unknown): SocialStoryDraft {
+export function parseSocialStory(
+  value: unknown,
+  input: {
+    readonly childName: string;
+    readonly church: StoryChurch;
+    readonly lines: readonly { readonly text: string }[];
+  },
+): SocialStoryDraft {
   if (!validateJson(socialStorySchema, value) || !isRecord(value)) throw new SchemaRejected();
   if (typeof value.title !== 'string' || typeof value.body !== 'string') throw new SchemaRejected();
   if (!storyBodyAccepted(value.body)) throw new SchemaRejected();
+  if (!storySafety({ title: value.title, body: value.body }, input)) throw new SchemaRejected();
   return { title: value.title, body: value.body };
+}
+
+export function fallbackSocialStory(request: SocialStoryRequest): {
+  readonly title: string;
+  readonly body: string;
+  readonly source: 'fallback';
+} {
+  return {
+    title: `Sunday with ${request.childName}`.slice(0, 120),
+    body: sundayStorySentences(request.church).join('\n\n').slice(0, 2000),
+    source: 'fallback',
+  };
 }
 
 export function parseLesson(value: unknown): LessonDraft {

@@ -4,6 +4,7 @@ import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, 
 import { isChurchPhotoFile } from '../../lib/church-photo-file';
 import { postLesson, postSundayUpdate } from '../../lib/drafts';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
+import { leaderLessonPrivacy } from '../../lib/privacy-note';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
 import {
   checkInBrief,
@@ -14,6 +15,7 @@ import {
   type LessonAdaptation,
   type Visit,
 } from '../../lib/visit';
+import { PrivacyNote } from '../privacy-note';
 import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
 import { readChurchPhoto } from './read-church-photo';
 
@@ -303,6 +305,7 @@ function LessonScreen({
           ))}
         </ul>
       </article>
+      <PrivacyNote variant="line" text={leaderLessonPrivacy(name)} />
       <label htmlFor="fictional-lesson">Lesson (fictional)</label>
       <textarea
         id="fictional-lesson"

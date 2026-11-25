@@ -44,6 +44,7 @@ export type StoryGate = ReviewGate<SocialStory>;
 export interface SocialStory {
   readonly title: string;
   readonly body: string;
+  readonly source: 'model' | 'fallback';
 }
 
 export interface LessonAdaptation {
