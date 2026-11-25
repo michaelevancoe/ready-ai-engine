@@ -77,6 +77,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await page.setViewportSize({ width: 1280, height: 800 });
   await answerTree(page, 'TICK-QUIET-ROOM');
   await expect(page.getByRole('heading', { name: "Rowan's brief" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   expect(await tailGap(page)).toBeLessThan(400);
 
   await page.getByRole('link', { name: 'Volunteer' }).click();
@@ -100,6 +101,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-fix-profile.png');
   await page.getByRole('button', { name: 'Save fix and see the brief' }).click();
   await expect(page.getByText('Saved. Sensory is updated.')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByText('Updated', { exact: true })).toBeVisible();
   await expect(page.getByText('TICK-SOFTER-SEAT')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fix something else' })).toBeVisible();

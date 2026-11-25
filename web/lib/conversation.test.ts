@@ -137,6 +137,22 @@ test('fixing communication returns to the brief and marks that card', () => {
   assert.equal(brief.cards.find((card) => card.sectionId === 'behavior')?.label, 'Safety & calming');
 });
 
+test('back to questions keeps every answer and opens the first question', () => {
+  const finished = finish(begin());
+  const answers = finished.answers;
+  const reopened = reduceConversation(intakeTree, finished, { type: 'reopenQuestions' });
+  assert.equal(reopened.talk.mode, 'ask');
+  if (reopened.talk.mode !== 'ask') return;
+  assert.equal(reopened.talk.nodeId, 'about');
+  assert.equal(reopened.answers, answers);
+  assert.equal(reopened.answers.loves?.text, 'Trains.');
+  const view = presentAsk(intakeTree, reopened);
+  assert.equal(view.kind, 'question');
+  if (view.kind !== 'question') return;
+  assert.equal(view.priorAnswer, 'He likes a quiet hello.');
+  assert.equal(reduceConversation(intakeTree, reopened, { type: 'approve' }), reopened);
+});
+
 test('joinSpoken puts a full stop between a typed answer and a chip', () => {
   assert.equal(joinSpoken('Soft voice', 'A quiet corner'), 'Soft voice. A quiet corner.');
   assert.equal(joinSpoken('Soft voice.', 'A quiet corner'), 'Soft voice. A quiet corner.');

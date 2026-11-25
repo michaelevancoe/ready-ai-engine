@@ -525,10 +525,68 @@ button.example-card .hint {
   padding: 0.15rem 0.5rem;
 }
 
+.top-bar button.back {
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+}
+
+.drafted {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--helps);
+  color: var(--focus);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.lede {
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
+.section-label {
+  margin: 1.15rem 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .photos {
   display: flex;
   gap: 0.6rem;
-  margin-top: 0.8rem;
+  margin-top: 0.2rem;
+}
+
+.photos figure {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+}
+
+.photo-tile {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 0.9rem;
+  background: var(--portrait);
+  color: var(--muted);
+}
+
+.photos figcaption {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.brief-card.sectioned {
+  border-left: 0.28rem solid var(--terracotta);
 }
 
 .banner {

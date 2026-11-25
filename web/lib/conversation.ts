@@ -36,7 +36,8 @@ export type ConversationEvent =
   | { readonly type: 'answer'; readonly text: string }
   | { readonly type: 'chooseSection'; readonly sectionId: string }
   | { readonly type: 'approve' }
-  | { readonly type: 'viewBrief' };
+  | { readonly type: 'viewBrief' }
+  | { readonly type: 'reopenQuestions' };
 
 export interface BriefCard {
   readonly sectionId: SectionId;
@@ -133,6 +134,8 @@ export function reduceConversation(tree: IntakeTree, conversation: Conversation,
       return approve(conversation);
     case 'viewBrief':
       return viewBrief(conversation);
+    case 'reopenQuestions':
+      return reopenQuestions(tree, conversation);
     default: {
       const leftover: never = event;
       return leftover;
@@ -244,6 +247,13 @@ function approve(conversation: Conversation): Conversation {
 function viewBrief(conversation: Conversation): Conversation {
   if (conversation.talk.mode !== 'approved') return conversation;
   return { ...conversation, talk: { mode: 'brief', source: conversation.talk.source } };
+}
+
+function reopenQuestions(tree: IntakeTree, conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'brief' || conversation.talk.source.type !== 'intake') return conversation;
+  const first = tree.sections[0];
+  if (first === undefined) return conversation;
+  return { ...conversation, talk: { mode: 'ask', nodeId: first.nodeId } };
 }
 
 function chooseSection(tree: IntakeTree, conversation: Conversation, sectionId: string): Conversation {

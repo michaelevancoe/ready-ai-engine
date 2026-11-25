@@ -442,7 +442,9 @@ function parseAcknowledgement(value: unknown): { line: string } {
   if (!isRecord(value) || typeof value.line !== 'string' || value.line.length < 1 || value.line.length > 160) {
     throw new SchemaRejected();
   }
-  return { line: value.line };
+  const line = value.line.replace(/[\r\n]+/gu, ' ').replace(/ {2,}/gu, ' ').trim();
+  if (line.length < 1) throw new SchemaRejected();
+  return { line };
 }
 
 function clip(value: string, max: number): string {

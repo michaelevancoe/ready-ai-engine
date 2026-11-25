@@ -87,6 +87,15 @@ test('an acknowledgement with an extra key is rejected before fetch', async () =
   assert.equal(result.calls, 0);
 });
 
+test('an acknowledgement with a newline comes back as one line', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () => chatEnvelope({ line: 'Thanks.\nThat helps.' }));
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
+});
+
 test('a live acknowledgement asks for sixty tokens and leaves the next question out', async () => {
   const calls: GatewayCall[] = [];
   const logs: string[] = [];

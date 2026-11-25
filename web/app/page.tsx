@@ -410,10 +410,31 @@ function BriefScreen({
 }) {
   const [picking, setPicking] = useState(false);
   const brief = view.brief;
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
   return (
     <section aria-label="Brief">
-      <p className="guided">Ready drafted this</p>
+      <div className="top-bar">
+        {view.actions === 'intake' ? (
+          <button
+            type="button"
+            className="back"
+            onClick={() => dispatch({ type: 'conversation', event: { type: 'reopenQuestions' } })}
+          >
+            Back to questions
+          </button>
+        ) : (
+          <span />
+        )}
+        <p className="drafted">
+          <Spark /> Ready drafted this
+        </p>
+      </div>
       <h1>{brief.name}&apos;s brief</h1>
+      <p className="lede">
+        This is what {brief.name}&apos;s volunteers will read. Approve it, or tell Ready what to fix.
+      </p>
       <article className="brief-card identity">
         <span className="portrait" aria-hidden="true">
           {brief.name.slice(0, 1)}
@@ -425,18 +446,25 @@ function BriefScreen({
           <p>{brief.summary}</p>
         </div>
       </article>
+      <p className="section-label">Photos</p>
       <div className="photos">
-        <span className="portrait">{brief.name}</span>
-        <span className="portrait">Headphones</span>
-        <span className="portrait">Quiet corner</span>
+        {[brief.name, 'His headphones', 'Quiet corner'].map((label) => (
+          <figure key={label}>
+            <span className="photo-tile" aria-hidden="true">
+              <PhotoMark />
+            </span>
+            <figcaption>{label}</figcaption>
+          </figure>
+        ))}
       </div>
+      <p className="section-label">{brief.name}&apos;s brief</p>
       {savedTitle === null ? null : (
         <p className="banner" role="status">
           Saved. {savedTitle} is updated.
         </p>
       )}
       {brief.cards.map((card) => (
-        <article className="brief-card" key={card.sectionId}>
+        <article className="brief-card sectioned" key={card.sectionId}>
           <h2>
             {card.label}
             {card.updated ? <span className="badge">Updated</span> : null}
@@ -480,7 +508,32 @@ function BriefScreen({
           Back to the start
         </button>
       )}
+      {view.actions === 'intake' ? (
+        <p className="hint">Approve or fix is the only choice here. Nothing is shared until you approve.</p>
+      ) : null}
     </section>
+  );
+}
+
+function Spark() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8 1.2 9.1 6 13.8 8 9.1 10 8 14.8 6.9 10 2.2 8 6.9 6 8 1.2Z"
+      />
+    </svg>
+  );
+}
+
+function PhotoMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm1 2v8l3.2-3.2a1 1 0 0 1 1.4 0L14 15.2l1.3-1.3a1 1 0 0 1 1.4 0L19 16V7H6Zm3 1.5A1.5 1.5 0 1 1 7.5 10 1.5 1.5 0 0 1 9 8.5Z"
+      />
+    </svg>
   );
 }
 
