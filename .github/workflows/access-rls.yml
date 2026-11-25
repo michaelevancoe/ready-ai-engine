@@ -71,3 +71,57 @@ jobs:
           export READY_LOCAL_SERVICE_ROLE_KEY="$(value SERVICE_ROLE_KEY)"
           export READY_LOCAL_DB_URL="$(value DB_URL)"
           node --experimental-strip-types --test test/adapter-contract.test.ts
+
+  account-e2e:
+    name: account-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npm ci --prefix web
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Install the Supabase CLI
+        uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13
+        with:
+          version: 2.75.0
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Start local Supabase
+        run: supabase start -x studio,imgproxy,mailpit,realtime,storage,edge-runtime,logflare,vector,supavisor
+
+      - name: Create local account sessions
+        run: |
+          set -euo pipefail
+          status="$(supabase status -o env)"
+          value() { printf '%s\n' "$status" | sed -n "s/^$1=//p" | tr -d '"'; }
+          api="$(value API_URL)"
+          anon="$(value ANON_KEY)"
+          export READY_LOCAL_API_URL="$api"
+          export READY_LOCAL_ANON_KEY="$anon"
+          export READY_LOCAL_DB_URL="$(value DB_URL)"
+          sessions="$(node --experimental-strip-types scripts/account-e2e-sessions.ts)"
+          {
+            printf 'READY_LOCAL_API_URL=%s\n' "$api"
+            printf 'READY_LOCAL_ANON_KEY=%s\n' "$anon"
+            printf 'READY_ACCOUNT_SESSIONS<<ACCOUNT_SESSIONS\n'
+            printf '%s\n' "$sessions"
+            printf 'ACCOUNT_SESSIONS\n'
+          } >> "$GITHUB_ENV"
+
+      - name: Run the account screens
+        run: npm run test:e2e:account
+        working-directory: web
