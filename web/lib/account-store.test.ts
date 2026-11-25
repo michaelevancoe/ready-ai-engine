@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AccountStore, type AccountSession, type VisitGateway } from './account-store.ts';
-import type { AccountScope, PersistPlan } from './persist-visit.ts';
-import { initialVisit } from './visit.ts';
+import { persistDispatch, type AccountScope, type PersistPlan } from './persist-visit.ts';
+import { initialVisit, reduceVisit } from './visit.ts';
 
 const scope: AccountScope = {
   organizationId: '10000000-0000-4000-8000-000000000001',
@@ -40,6 +40,30 @@ test('a no-op does not write and notes use the volunteer session', () => {
   store.dispatch({ type: 'saveNotes', notes: 'A quiet corner.' });
   assert.equal(saved.length, 1);
   assert.equal(store.getState().notes, 'A quiet corner.');
+});
+
+test('a church photo stays in the tab and never enters a persist plan', () => {
+  const saved: PersistPlan[] = [];
+  const gateway: VisitGateway = {
+    save(_session, _scope, plan) {
+      saved.push(plan);
+    },
+  };
+  const store = new AccountStore([parent, volunteer, leader], scope, gateway, initialVisit(), 0);
+  const url = 'blob:http://127.0.0.1/classroom-photo';
+  store.setChurchPhoto('classroom', url);
+  assert.equal(saved.length, 0);
+  assert.equal(store.getChurchPhotos().classroom, url);
+  const start = store.getState();
+  assert.deepEqual(Object.keys(start.church).sort(), ['ages', 'leader', 'name', 'plan', 'room', 'service']);
+  for (const value of Object.values(start.church)) assert.equal(typeof value, 'string');
+  const next = reduceVisit(start, {
+    type: 'saveChurch',
+    church: { ...start.church, room: 'North room' },
+  });
+  assert.equal(JSON.stringify(persistDispatch(start, next, scope)).includes(url), false);
+  store.dispatch({ type: 'saveChurch', church: next.church });
+  assert.equal(JSON.stringify(saved).includes(url), false);
 });
 
 test('a visit still updates when the owning session is absent', () => {

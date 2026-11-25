@@ -440,7 +440,7 @@ function seedDatabase(dbUrl: string, ids: Actors): void {
     insert into public.shared_briefs (id, organization_id, child_id, room_id, sunday_id, shared, lines) values
       (${quote(ids.brief)}, ${quote(ids.org)}, ${quote(ids.child)}, ${quote(ids.room)}, ${quote(ids.sunday)}, true, '${lines}'::jsonb);
     insert into public.church_setup (organization_id, name, service, room, leader_label, ages, plan) values
-      (${quote(ids.org)}, '${CHURCH_NAME}', 'Sunday 9:30', 'Harbor Room', 'Devon Placeholder', 'Ages 5-12', 'A short welcome.');
+      (${quote(ids.org)}, '${CHURCH_NAME}', 'Sunday 9:30', 'Harbor Room', 'Ms. Dana', 'Ages 5-12', 'A short welcome.');
     insert into public.lessons (id, organization_id, title) values
       (${quote(ids.lesson)}, ${quote(ids.org)}, '${LESSON_TITLE}');
     insert into public.medical_notes (child_id, organization_id, note) values

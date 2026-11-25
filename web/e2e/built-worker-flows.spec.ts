@@ -166,7 +166,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-parent-note.png');
 
   await page.getByRole('link', { name: 'Leader' }).click();
-  await expect(page.getByRole('heading', { name: 'Good morning, Devon Placeholder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Good morning, Ms. Dana' })).toBeVisible();
   await page.getByRole('button', { name: /Lesson for Rowan/ }).click();
   await page.getByLabel('Lesson (fictional)').fill('TICK-LESSON-PLAN');
   await page.getByRole('button', { name: 'Adapt for Rowan' }).click();
@@ -292,6 +292,78 @@ test('leader settings save, and back without saving keeps the church', async ({ 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await expect(page.getByText('North room · Sunday 9:30')).toBeVisible();
+});
+
+test('a parent prints one page per step and a classroom photo replaces the sample', async ({ page }) => {
+  await page.addInitScript(() => {
+    const host = window as Window & { __printCount?: number };
+    host.__printCount = 0;
+    window.print = () => {
+      host.__printCount = (host.__printCount ?? 0) + 1;
+    };
+  });
+  const social: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/v1/drafts/social-story')) social.push(request.url());
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Rowan, 7/ }).click();
+  await expect(page.getByText('A short Sunday story about what Sunday will look like.')).toBeVisible();
+  await expect(page.getByText('picture story')).toHaveCount(0);
+  const print = page.getByRole('button', { name: "Print Rowan's Sunday story" });
+  await expect(print).toBeVisible();
+  await print.click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __printCount?: number }).__printCount ?? 0)).toBe(1);
+  expect(social).toEqual([]);
+
+  await page.emulateMedia({ media: 'screen' });
+  await expect(page.locator('.sunday-print')).toBeHidden();
+  const pages = page.locator('article.sunday-print-page');
+  await expect(pages).toHaveCount(8);
+  for (const article of await pages.all()) await expect(article).toBeHidden();
+
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('nav.role-nav')).toBeHidden();
+  await expect(page.locator('.fictional')).toBeHidden();
+  await expect(page.locator('#sunday-story button')).toHaveCount(2);
+  for (const button of await page.locator('#sunday-story button').all()) await expect(button).toBeHidden();
+  await expect(pages).toHaveCount(8);
+  const marks = ['Cover', '1', '2', '3', '4', '5', '6', '7'];
+  for (let index = 0; index < marks.length; index += 1) {
+    const article = pages.nth(index);
+    await expect(article).toBeVisible();
+    await expect(article.locator('.sunday-print-mark')).toHaveText(marks[index] ?? '');
+    const images = article.locator('img');
+    const drawings = article.locator('svg');
+    const imageCount = await images.count();
+    const drawingCount = await drawings.count();
+    expect(imageCount + drawingCount).toBeGreaterThan(0);
+    if (imageCount > 0) await expect(images.first()).toHaveAttribute('alt', /.+/);
+    else await expect(drawings.first()).toHaveAttribute('aria-label', /.+/);
+  }
+
+  await page.emulateMedia({ media: 'screen' });
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: 'Church settings' }).click();
+  const classroom = page.getByRole('region', { name: 'Classroom' });
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await classroom.locator('input[type="file"]').setInputFiles({ name: 'room.png', mimeType: 'image/png', buffer: png });
+  await expect(classroom.getByRole('button', { name: 'Clear' })).toBeVisible();
+  await expect(classroom.locator('img')).toHaveAttribute('src', /^blob:/);
+  await page.getByRole('link', { name: 'Parent' }).click();
+  await page.emulateMedia({ media: 'print' });
+  await expect(pages.nth(4).locator('img')).toHaveAttribute('src', /^blob:/);
+
+  await page.emulateMedia({ media: 'screen' });
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: 'Church settings' }).click();
+  await page.getByRole('region', { name: 'Classroom' }).getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('link', { name: 'Parent' }).click();
+  await page.emulateMedia({ media: 'print' });
+  await expect(pages.nth(4).locator('img')).toHaveAttribute('src', '/sunday-story/classroom.jpg');
 });
 
 test('a nonsense helps answer stays on the question until a real one', async ({ page }) => {
