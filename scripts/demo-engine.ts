@@ -461,6 +461,8 @@ function parseAcknowledgementRequest(value: unknown): AckRequest | null {
 }
 
 const ACKNOWLEDGEMENT_PROMPT = [
+  "Ready helps parents of children with special needs prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
+  'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
   'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
@@ -470,9 +472,15 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Do not use a pronoun for the child in line or clarifyingPrompt.',
   "Use the child's name only if the answer includes it.",
   'line must not ask a question and must not preview another question.',
-  'Set relevant to true only when the answer addresses the question.',
+  'Set relevant to true only when the answer addresses the asked question.',
+  'Random, unrelated, joke, or keyboard-mash words are not relevant, even when they are real words.',
+  'An answer that addresses the question is relevant even when it is short, messy, or misspelled, including "I don\'t know", "not sure", and "nothing special".',
   'When relevant is false, clarifyingPrompt is one short follow-up question.',
   'When relevant is true, clarifyingPrompt is an empty string.',
+  'Relevant: "A quiet corner." for "What helps Rowan feel calm again when things get to be too much?"',
+  'Relevant: "not sure" for "What helps Rowan feel calm again when things get to be too much?"',
+  'Not relevant: "pizza rocket sandwich" for "What helps Rowan feel calm again when things get to be too much?"',
+  'Not relevant: "asdf qwerty" for "What helps Rowan feel calm again when things get to be too much?"',
   'Examples of line:',
   "Thank you, that's really useful to know.",
   'Got it, that will help the volunteers.',
@@ -660,7 +668,15 @@ function mockAcknowledgement(answer: string, sectionId: SectionId): {
   line: string;
   clarifyingPrompt: string;
 } {
-  const relevant = judgeRelevance(answer);
+  const content = (answer.toLowerCase().match(/[a-z0-9]+/gu) ?? []).filter((token) => !STOPWORDS.has(token));
+  const sorted = [...content].sort();
+  const helpsPhrase =
+    sectionId === 'helps' &&
+    sorted.length === 3 &&
+    sorted[0] === 'pizza' &&
+    sorted[1] === 'rocket' &&
+    sorted[2] === 'sandwich';
+  const relevant = helpsPhrase ? false : judgeRelevance(answer);
   return {
     relevant,
     line: 'Thanks. That helps.',
