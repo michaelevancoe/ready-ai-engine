@@ -166,7 +166,7 @@ test('an acknowledgement with a newline comes back as one line', async () => {
 const PARENT_FALLBACK = "That's really helpful.";
 
 const ACKNOWLEDGEMENT_PROMPT = [
-  "Ready helps parents of children with special needs prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
+  "Ready helps parents of children who need extra support prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
   'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
@@ -174,6 +174,7 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Do not restate or quote the answer.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
+  'Do not label the child.',
   'Do not use a pronoun for the child in line or clarifyingPrompt.',
   "Use the child's name only if the answer includes it.",
   'line must not ask a question and must not preview another question.',
@@ -324,6 +325,108 @@ test('a live quiet corner and cheese muffin answer overrides a model not-relevan
     line: 'Thanks. That helps.',
     clarifyingPrompt: '',
   });
+});
+
+test('short uncertain or no answers override a model not-relevant verdict', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({
+      relevant: false,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt: 'I want to make sure I understand. What does that have to do with Sunday?',
+    }),
+  );
+  const cases = [
+    ['behavior', 'no, not really'],
+    ['allergies', 'not sure'],
+    ['behavior', 'unsure'],
+    ['behavior', 'i dont know'],
+    ['behavior', 'idk'],
+    ['behavior', 'dont know yet'],
+    ['behavior', 'none'],
+    ['behavior', 'no'],
+    ['behavior', 'nope'],
+    ['behavior', 'not really'],
+    ['behavior', 'no not really'],
+    ['behavior', 'nothing'],
+    ['behavior', 'nothing special'],
+    ['behavior', 'n a'],
+    ['behavior', 'not that i know of'],
+    ['allergies', 'NOT SURE!'],
+    ['behavior', 'No, not really.'],
+    ['allergies', 'N/A'],
+    ['behavior', "I don't know"],
+  ] as const;
+  for (const [nodeId, answer] of cases) {
+    const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId }));
+    assert.equal(response.status, 200, answer);
+    assert.deepEqual(
+      await response.json(),
+      { relevant: true, line: 'Thanks. That helps.', clarifyingPrompt: '' },
+      answer,
+    );
+  }
+});
+
+test('lol idk pizza stays not relevant and keeps an unlabeled clarifying prompt', async () => {
+  const clarifyingPrompt = 'I want to make sure I understand. What does that have to do with Sunday?';
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({ relevant: false, line: 'Thanks. That helps.', clarifyingPrompt }),
+  );
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'lol idk pizza', nodeId: 'helps' }),
+  );
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { relevant: boolean; line: string; clarifyingPrompt: string };
+  assert.deepEqual(body, {
+    relevant: false,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt,
+  });
+  const lower = body.clarifyingPrompt.toLowerCase();
+  assert.equal(lower.includes('special need'), false);
+  assert.equal(lower.includes('special-needs'), false);
+  assert.equal(/\b(?:special|needs)\b/u.test(lower), false);
+});
+
+test('a special-needs clarifying prompt falls back to the canned helps question', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({
+      relevant: false,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt: 'Does Rowan have any special needs?',
+    }),
+  );
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'pizza rocket sandwich', nodeId: 'helps' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    relevant: false,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt:
+      'I want to make sure I understand. What usually helps Rowan settle when things feel like too much?',
+  });
+});
+
+test('a clarifying prompt that says especially or needed is kept', async () => {
+  const prompts = [
+    'What usually helps Rowan, especially on a loud Sunday?',
+    'What is needed when Sunday feels like too much?',
+  ];
+  for (const clarifyingPrompt of prompts) {
+    const demo = DemoContext.fromBindings(liveShell(), async () =>
+      chatEnvelope({ relevant: false, line: 'Thanks. That helps.', clarifyingPrompt }),
+    );
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: 'pizza rocket sandwich', nodeId: 'helps' }),
+    );
+    assert.equal(response.status, 200, clarifyingPrompt);
+    assert.deepEqual(await response.json(), {
+      relevant: false,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt,
+    });
+  }
 });
 
 test('a live answer with a number keeps the model relevant verdict', async () => {
