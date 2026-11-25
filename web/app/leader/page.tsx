@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
-import { isChurchPhotoFile, readChurchPhoto } from '../../lib/church-photo-file';
+import { isChurchPhotoFile } from '../../lib/church-photo-file';
 import { postLesson, postSundayUpdate } from '../../lib/drafts';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
@@ -15,6 +15,7 @@ import {
   type Visit,
 } from '../../lib/visit';
 import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
+import { readChurchPhoto } from './read-church-photo';
 
 const CHURCH_FIELDS = [
   ['name', 'Church name'],
