@@ -23,8 +23,15 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
   return value;
 }
 
-async function commandFor(request: Request, pathname: string): Promise<AccessCommand | null> {
-  if (request.method === 'GET' && pathname === '/v1/access/membership') return { type: 'membership' };
+async function commandFor(request: Request, url: URL): Promise<AccessCommand | null> {
+  const pathname = url.pathname;
+  if (request.method === 'GET' && pathname === '/v1/access/membership') {
+    const requested = url.searchParams.get('organizationId');
+    return {
+      type: 'membership',
+      organizationId: requested === null || requested.length === 0 ? null : requested,
+    };
+  }
   const child = /^\/v1\/access\/children\/([^/]+)$/.exec(pathname);
   if (request.method === 'GET' && child?.[1] !== undefined) return { type: 'child', childId: child[1] };
   const brief = /^\/v1\/access\/briefs\/([^/]+)$/.exec(pathname);
@@ -71,7 +78,7 @@ export async function handleAccessSource(
   verifier: AuthVerifier,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const command = await commandFor(request, url.pathname);
+  const command = await commandFor(request, url);
   if (command === null) return json({ error: 'not_found' }, 404);
   const token = sessionId(request);
   if (token === null) return json({ error: 'unauthorized' }, 401);

@@ -111,7 +111,7 @@ test('flag off does not call Auth or the tables when a source is configured', as
 test('a membership read sends the anon key and the user bearer token', async () => {
   const calls: Call[] = [];
   const response = await send(
-    router({ '/rest/v1/memberships': [{ role: 'parent' }] }, calls),
+    router({ '/rest/v1/memberships': [{ organization_id: orgId, role: 'parent' }] }, calls),
     'GET',
     '/v1/access/membership',
   );
@@ -124,6 +124,31 @@ test('a membership read sends the anon key and the user bearer token', async () 
   assert.equal(table.redirect, 'manual');
   assert.equal(table.url.includes(`user_id=eq.${userId}`), true);
   assert.equal(calls.some((call) => call.url.endsWith('/auth/v1/user')), true);
+});
+
+test('two churches require an organization id and one named church returns that role', async () => {
+  const other = '10000000-0000-4000-8000-0000000000a2';
+  const rows = [
+    { organization_id: orgId, role: 'parent' },
+    { organization_id: other, role: 'leader' },
+  ];
+  const open = await send(router({ '/rest/v1/memberships': rows }, []), 'GET', '/v1/access/membership');
+  assert.equal(open.status, 409);
+  assert.deepEqual(await open.json(), { error: 'church_required' });
+  const chosen = await send(
+    router({ '/rest/v1/memberships': rows }, []),
+    'GET',
+    `/v1/access/membership?organizationId=${orgId}`,
+  );
+  assert.equal(chosen.status, 200);
+  assert.deepEqual(await chosen.json(), { role: 'parent' });
+  const missing = await send(
+    router({ '/rest/v1/memberships': rows }, []),
+    'GET',
+    '/v1/access/membership?organizationId=10000000-0000-4000-8000-0000000000aa',
+  );
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { error: 'not_found' });
 });
 
 test('an empty child read is not found and a brief takes medical from medical notes', async () => {
