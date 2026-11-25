@@ -25,6 +25,7 @@ function parseRole(value: unknown): Role {
     case 'admin':
     case 'parent':
     case 'volunteer':
+    case 'leader':
       return value;
     default:
       throw new StoreError(502);

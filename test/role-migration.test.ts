@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -46,7 +46,6 @@ test('the sign-in migration is a file only and scripts do not apply it', () => {
     'coverage',
     'playwright-report',
     'test-results',
-    '.audit',
   ]);
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
@@ -56,6 +55,8 @@ test('the sign-in migration is a file only and scripts do not apply it', () => {
         walk(path);
         continue;
       }
+      const rel = relative(root, path);
+      if (rel.startsWith(`.audit${sep}`) && rel.endsWith('.tsv')) continue;
       if (path.endsWith(migrationName) || path.endsWith('test/role-migration.test.ts')) continue;
       if (readFileSync(path, 'utf8').includes(migrationName)) hits.push(path);
     }

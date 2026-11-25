@@ -44,6 +44,8 @@ test('the account worker stays on the supabase user check', () => {
   const app = readFileSync(join(root, 'src/app.ts'), 'utf8');
   const demo = readFileSync(join(root, 'scripts/demo-engine.ts'), 'utf8');
   assert.equal(index.includes('supabaseAuthVerifier'), true);
+  assert.equal(index.includes('sessionAuthVerifier'), false);
+  assert.equal(index.includes('session-auth'), false);
   assert.equal(index.includes('memoryAccessSource'), false);
   assert.equal(index.includes('verifyHs256'), false);
   assert.equal(app.includes('verifyHs256'), false);

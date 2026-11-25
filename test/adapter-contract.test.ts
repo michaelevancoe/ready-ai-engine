@@ -112,13 +112,12 @@ function memoryStore(world: MemoryAccessWorld): MemoryStore {
     switch (membership.role) {
       case 'parent':
       case 'volunteer':
+      case 'leader':
         store.memberships.push({
           organizationId: membership.organizationId,
           userId: membership.userId,
           role: membership.role,
         });
-        break;
-      case 'leader':
         break;
       default: {
         const leftover: never = membership.role;
@@ -156,6 +155,10 @@ async function runContract(harness: Harness): Promise<void> {
   assert.deepEqual(await call(parent, ids.parent, { type: 'membership' }), {
     status: 200,
     body: { role: 'parent' satisfies ChurchRole },
+  });
+  assert.deepEqual(await call(leader, ids.leader, { type: 'membership' }), {
+    status: 200,
+    body: { role: 'leader' satisfies ChurchRole },
   });
   assert.deepEqual(await call(outsider, ids.outsider, { type: 'membership' }), {
     status: 404,
@@ -248,6 +251,8 @@ async function runContract(harness: Harness): Promise<void> {
   assert.equal(await parentStore.approveProfile({ profileId: draft.id, approvedBy: ids.parent }), null);
   const volunteerStore = harness.store(ids.volunteer);
   assert.equal((await volunteerStore.getMembership(ids.volunteer, ids.org))?.role, 'volunteer');
+  const leaderStore = harness.store(ids.leader);
+  assert.equal((await leaderStore.getMembership(ids.leader, ids.org))?.role, 'leader');
 }
 
 test('the memory adapter passes the store contract', async () => {
