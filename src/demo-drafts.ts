@@ -87,6 +87,7 @@ type StoryField = (typeof STORY_FIELDS)[number];
 const SOCIAL_STORY_RULES = [
   'The data is fictional. Do not invent medical facts.',
   "Write in the third person, using the child's preferred name.",
+  "When the given lines do not use he or she, use the child's name instead of he or she.",
   'Use only the church plan and the given lines.',
   'Be calm and positive.',
   'A hard moment is described gently, for example "Sometimes songs are loud."',
@@ -266,10 +267,10 @@ export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[]
     `Room: ${request.church.room}`,
     `Leader: ${request.church.leader}`,
     `Plan: ${request.church.plan}`,
-    ...request.lines.map((line) => `${line.label}: ${line.text}`),
+    ...linesForStoryModel(request.lines).map((line) => `${line.label}: ${line.text}`),
   ];
   return [
-    { role: 'system', content: SOCIAL_STORY_RULES },
+    { role: 'system', content: socialStorySystem() },
     { role: 'user', content: rows.join('\n') },
   ];
 }
@@ -350,6 +351,15 @@ export const STORY_LEAVING_PHRASES = [
   'wander',
 ] as const;
 
+function linesForStoryModel(lines: readonly DraftLine[]): readonly DraftLine[] {
+  return lines.filter((line) => !listed(line.text, STORY_TONE_WORDS) && !listed(line.text, STORY_LEAVING_PHRASES));
+}
+
+function socialStorySystem(): string {
+  const banned = [...STORY_LABEL_WORDS, ...STORY_TONE_WORDS, ...STORY_LEAVING_PHRASES].join(', ');
+  return `${SOCIAL_STORY_RULES} Never use these words: ${banned}.`;
+}
+
 const STORY_STARTERS = [
   'i',
   'you',
@@ -372,6 +382,29 @@ const STORY_STARTERS = [
   'jesus',
 ] as const;
 
+const STORY_COMMON_CAPITALS = [
+  'he',
+  'she',
+  'they',
+  'his',
+  'her',
+  'today',
+  'inside',
+  'soon',
+  'later',
+  'afterward',
+  'finally',
+  'now',
+  'here',
+  'this',
+  'that',
+  'everything',
+  'music',
+  'church',
+] as const;
+
+const NAME_ABBREVIATIONS = new Set(['mr', 'mrs', 'ms', 'dr', 'st', 'jr', 'sr']);
+
 const DEMO_CHILD_NAMES = ['Rowan', 'Maya', 'Jonah', 'Quinn'] as const;
 
 const MALE_PRONOUNS = ['he', 'him', 'his', 'himself'] as const;
@@ -390,7 +423,7 @@ export function storySafety(
   if (listed(text, STORY_LABEL_WORDS) || listed(text, STORY_TONE_WORDS) || listed(text, STORY_LEAVING_PHRASES)) {
     return false;
   }
-  if (!properNounsAllowed(text, input)) return false;
+  if (!properNounsAllowed(story.title, story.body, input)) return false;
   if (!preferredNameAppears(text, input.childName)) return false;
   if (otherChildNamed(text, input.childName)) return false;
   return pronounsAllowed(text, input.lines);
@@ -442,14 +475,15 @@ function escapeRegExp(value: string): string {
 }
 
 function properNounsAllowed(
-  text: string,
+  title: string,
+  body: string,
   input: {
     readonly childName: string;
     readonly church: StoryChurch;
     readonly lines: readonly { readonly text: string }[];
   },
 ): boolean {
-  const allowed = new Set<string>(STORY_STARTERS);
+  const allowed = new Set<string>([...STORY_STARTERS, ...STORY_COMMON_CAPITALS]);
   const sources = [
     input.childName,
     input.church.name,
@@ -462,10 +496,33 @@ function properNounsAllowed(
   for (const source of sources) {
     for (const word of source.match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) allowed.add(word.toLowerCase());
   }
-  for (const token of text.match(/\p{Lu}[\p{L}\p{N}]*/gu) ?? []) {
-    if (!allowed.has(token.toLowerCase())) return false;
+  const text = `${title}\n${body}`;
+  for (const match of text.matchAll(/\p{Lu}[\p{L}\p{N}]*/gu)) {
+    const index = match.index ?? 0;
+    if (index < title.length || isSentenceStart(text, index)) continue;
+    const token = match[0];
+    if (token === undefined || !allowed.has(token.toLowerCase())) return false;
   }
   return true;
+}
+
+function isSentenceStart(text: string, index: number): boolean {
+  let cursor = index - 1;
+  while (cursor >= 0 && (text[cursor] === ' ' || text[cursor] === '\t' || text[cursor] === '\r')) cursor -= 1;
+  if (cursor < 0) return true;
+  const previous = text[cursor];
+  if (previous === '\n' || previous === '!' || previous === '?') return true;
+  if (previous === '"' || previous === "'" || previous === '\u201C' || previous === '\u2018') {
+    return isSentenceStart(text, cursor);
+  }
+  if (previous === '.') return !abbreviationBefore(text, cursor);
+  return false;
+}
+
+function abbreviationBefore(text: string, periodIndex: number): boolean {
+  let start = periodIndex - 1;
+  while (start >= 0 && /\p{L}/u.test(text[start] ?? '')) start -= 1;
+  return NAME_ABBREVIATIONS.has(text.slice(start + 1, periodIndex).toLowerCase());
 }
 
 function otherChildNamed(text: string, childName: string): boolean {

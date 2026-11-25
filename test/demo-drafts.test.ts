@@ -948,6 +948,7 @@ test('storySafety rejects banned words, worried tone, and leaving phrases', () =
 
 test('storySafety rejects unknown names, the wrong child, and a missing name', () => {
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met Theo.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met "Theo".` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Mrs. Lee waves.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Grace Chapel is nearby.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Maya sings.` }, rowanInput), false);
@@ -1028,6 +1029,16 @@ test('storySafety accepts a title, sentence starts, and common capitals', () => 
     true,
   );
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Theo waves.` }, rowanInput), true);
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: '"Today Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello."',
+      },
+      rowanInput,
+    ),
+    true,
+  );
   assert.equal(
     storySafety(
       {
