@@ -16,12 +16,12 @@ Account-specific values come from the environment. Provider and model names for 
 | `AI_GATEWAY_TOKEN` | secret | `cf-aig-authorization` bearer token |
 | `SUPABASE_URL` | secret | Supabase project URL |
 | `SUPABASE_ANON_KEY` | secret | Supabase anon key. The Worker forwards the user JWT so RLS applies. The sign-in adapter also sends this value as `apikey` when it checks a session |
-| `SUPABASE_JWT_SECRET` | secret | HMAC secret for the project JWT (`sub` is the user id) |
+| `SUPABASE_JWT_SECRET` | secret | Worker secret |
 | `INTAKE_PROFILE_PROVIDER` | var | Primary provider slug |
 | `INTAKE_PROFILE_MODEL` | var | Primary model id |
 | `INTAKE_PROFILE_FALLBACK_PROVIDER` | var | Fallback provider slug |
 | `INTAKE_PROFILE_FALLBACK_MODEL` | var | Fallback model id |
-| `READY_SIGN_IN` | unset | Engine access routes. Only the exact value `on` opens them. The demo worker does not read it. |
+| `READY_SIGN_IN` | unset | Engine access routes. Only the exact value `on` opens them. The demo refuses to start when this is `on` or when `READY_MODE` is `account`, because that mode cannot use the memory adapter. |
 
 `generate()` builds the OpenAI-compatible chat-completions URL from the gateway base, account id, and gateway id, then appends `/compat/chat/completions`. The request model is `{provider}/{model}`. On a schema failure or a gateway error it retries the primary model once, then calls the fallback model once. Logs contain the endpoint, attempt, provider, model, and outcome. They do not contain prompts, intake answers, or profile text. Gateway payload logging is turned off with `cf-aig-collect-log-payload: false`.
 
@@ -173,9 +173,9 @@ The sign-in migration, once applied, replaces that wide approved-profile select 
 
 ## Role access
 
-Leave `READY_SIGN_IN` unset. The demo worker and the intake routes stay as they are, and `/v1/access/` answers `404`.
+Leave `READY_SIGN_IN` unset and leave `READY_MODE` unset. The demo keeps the memory adapter, intake stays as it is, and `/v1/access/` answers `404`.
 
-Set `READY_SIGN_IN=on` to open those routes on a local engine process. The process reads `SUPABASE_URL` and `SUPABASE_ANON_KEY`. It checks the caller's bearer token with `GET /auth/v1/user`, then reads and writes memberships, children, briefs, invites, and medical grants with that same token so row-level security applies. It ignores Auth role claims. It does not read a service-role key.
+Set `READY_SIGN_IN=on` or `READY_MODE=account` only with the Supabase adapter. The memory adapter refuses to start in that mode. The process reads `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Intake and access both check the caller's bearer token with `GET /auth/v1/user`, then access reads and writes memberships, children, briefs, invites, and medical grants with that same token so row-level security applies. It ignores Auth role claims. It does not read a service-role key. The in-memory access source is for the demo and tests.
 
 Tests use a fake Auth response for that check. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
 

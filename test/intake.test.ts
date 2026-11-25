@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import type { SafeLog } from '../src/log.ts';
+import { sessionAuthVerifier } from '../src/session-auth.ts';
 import { bearer, chatEnvelope, churchStore, ids, intakeBody, nowMs, sampleProfile, testEnv, type MemoryStore } from './fixtures.ts';
 
 function deps(store: MemoryStore, fetchImpl: typeof fetch = async () => chatEnvelope(sampleProfile())): AppDeps {
@@ -14,6 +15,7 @@ function deps(store: MemoryStore, fetchImpl: typeof fetch = async () => chatEnve
     },
     log: () => undefined,
     now: () => nowMs,
+    auth: sessionAuthVerifier(),
   };
 }
 

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { postLesson, postSundayUpdate } from '../../lib/drafts';
 import { checkInBrief, childPreferredName, reviewValue, type ChurchSetup } from '../../lib/visit';
-import { useScrollWhen, useVisit } from '../visit-shell';
+import { useReadyStore, useScrollWhen } from '../visit-shell';
 
 const CHURCH_FIELDS = [
   ['name', 'Church name'],
@@ -15,7 +15,9 @@ const CHURCH_FIELDS = [
 ] as const satisfies ReadonlyArray<readonly [keyof ChurchSetup, string]>;
 
 export default function LeaderPage() {
-  const { visit, dispatch } = useVisit();
+  const store = useReadyStore();
+  const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const { dispatch } = store;
   const brief = checkInBrief(visit);
   const lesson = reviewValue(visit.lesson);
   const blocked = brief.status !== 'approved';

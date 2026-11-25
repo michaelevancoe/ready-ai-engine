@@ -1,3 +1,4 @@
+import { assertAdapterAllowed } from '../src/adapter.ts';
 import type { WorkerBindings } from '../src/bindings.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import {
@@ -22,11 +23,13 @@ import { ConfigError, GenerateError, SchemaRejected } from '../src/errors.ts';
 import { generate } from '../src/generate.ts';
 import { json } from '../src/http.ts';
 import { parseIntake, type IntakeAnswers } from '../src/intake.ts';
-import { signHs256 } from '../src/jwt.ts';
 import { emitSafe } from '../src/log.ts';
+import { emptyMemoryAccessWorld, memoryAccessSource } from '../src/memory-access.ts';
+import { churchStore, ids, type MemoryStore } from '../src/memory-store.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
-import { chatEnvelope, churchStore, ids, testEnv, type MemoryStore } from '../test/fixtures.ts';
+import { fictionalDemoEnv } from '../src/demo-env.ts';
+import { sessionAuthVerifier, sessionToken } from '../src/session-auth.ts';
 import { ACK_FALLBACK } from '../web/lib/acknowledgement.ts';
 import { SECTION_IDS } from '../web/lib/intake-tree.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
@@ -56,6 +59,7 @@ export class DemoContext {
   private readonly deps: AppDeps;
 
   private constructor(env: WorkerBindings, fetchImpl: typeof fetch) {
+    assertAdapterAllowed(env, 'memory');
     this.store = churchStore();
     this.deps = {
       env,
@@ -63,6 +67,8 @@ export class DemoContext {
       storeFactory: () => this.store,
       log: emitSafe,
       now: () => Date.now(),
+      auth: sessionAuthVerifier(),
+      accessSource: memoryAccessSource(emptyMemoryAccessWorld()),
     };
   }
 
@@ -70,10 +76,11 @@ export class DemoContext {
     env: Readonly<Record<string, string | undefined>>,
     fetchImpl: typeof fetch = globalThis.fetch,
   ): DemoContext {
+    assertAdapterAllowed(env, 'memory');
     const mode = demoModelMode(env.READY_DEMO_MODEL);
     switch (mode) {
       case 'mock':
-        return new DemoContext(testEnv, mockGateway);
+        return new DemoContext(fictionalDemoEnv, mockGateway);
       case 'live':
         return new DemoContext(liveDemoBindings(env), fetchImpl);
       default: {
@@ -85,12 +92,20 @@ export class DemoContext {
 
   static async open(envValue: string | undefined, options?: DemoOpenOptions): Promise<DemoContext> {
     if (!localDemoEnabled(envValue)) throw new Error('READY_LOCAL_DEMO is off');
-    if (options?.fromEnvironment !== true) return new DemoContext(testEnv, mockGateway);
-    const merged = mergeDemoEnv(devVarsLayer(options), options.shell ?? process.env);
+    const shell = options?.shell;
+    assertAdapterAllowed(
+      {
+        READY_SIGN_IN: shell?.READY_SIGN_IN ?? process.env.READY_SIGN_IN,
+        READY_MODE: shell?.READY_MODE ?? process.env.READY_MODE,
+      },
+      'memory',
+    );
+    if (options?.fromEnvironment !== true) return new DemoContext(fictionalDemoEnv, mockGateway);
+    const merged = mergeDemoEnv(devVarsLayer(options), shell ?? process.env);
     const mode = demoModelMode(options.model !== undefined ? options.model : merged.READY_DEMO_MODEL);
     switch (mode) {
       case 'mock':
-        return new DemoContext(testEnv, mockGateway);
+        return new DemoContext(fictionalDemoEnv, mockGateway);
       case 'live':
         return new DemoContext(liveDemoBindings(merged), options.fetchImpl ?? globalThis.fetch);
       default: {
@@ -194,8 +209,7 @@ export class DemoContext {
   }
 
   private async callEngine(url: URL, body: string): Promise<Response> {
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    const token = await signHs256({ sub: ids.avery, exp }, testEnv.SUPABASE_JWT_SECRET);
+    const token = sessionToken(ids.avery);
     return handleRequest(
       new Request(url, {
         method: 'POST',
@@ -250,6 +264,15 @@ function devVarsLayer(options: DemoOpenOptions): Record<string, string> {
   if (options.readDevVarsFile === false) return {};
   if (options.model !== undefined && options.readDevVarsFile !== true) return {};
   return options.loadDevVars?.() ?? {};
+}
+
+function chatEnvelope(content: unknown, status = 200): Response {
+  return new Response(
+    JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: JSON.stringify(content) } }],
+    }),
+    { status, headers: { 'content-type': 'application/json' } },
+  );
 }
 
 const mockGateway: typeof fetch = async (input, init) => {

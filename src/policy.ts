@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'parent' | 'volunteer';
+export type Role = 'admin' | 'parent' | 'volunteer' | 'leader';
 
 export type ProfileStatus = 'draft' | 'approved';
 
@@ -29,6 +29,7 @@ export function authorize(input: AccessInput): boolean {
     case 'profile.read_draft':
       switch (input.role) {
         case 'volunteer':
+        case 'leader':
           return false;
         case 'admin':
           return true;
@@ -38,7 +39,16 @@ export function authorize(input: AccessInput): boolean {
           return assertNever(input.role);
       }
     case 'profile.read_approved':
-      return true;
+      switch (input.role) {
+        case 'leader':
+          return false;
+        case 'admin':
+        case 'parent':
+        case 'volunteer':
+          return true;
+        default:
+          return assertNever(input.role);
+      }
     case 'profile.approve':
       return (
         input.role === 'parent' &&

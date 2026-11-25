@@ -20,6 +20,7 @@ const clientFiles = [
   'web/lib/fictional-label.ts',
   'web/lib/intake-tree.ts',
   'web/lib/local-demo.ts',
+  'web/lib/ready-store.ts',
   'web/lib/speech.ts',
   'web/lib/visit.ts',
 ];
