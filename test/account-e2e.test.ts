@@ -38,6 +38,13 @@ test('the account job stays on local supabase and ci stays keyless', () => {
   assert.equal(config.includes("READY_ACCOUNT_E2E: '1'"), true);
   assert.equal(config.includes('READY_LOCAL_DB_URL'), true);
   assert.equal(config.includes('workers: 1'), true);
+  for (const spec of ['web/e2e/demo.spec.ts', 'web/e2e/built-worker-flows.spec.ts']) {
+    const source = readFileSync(join(root, spec), 'utf8');
+    assert.equal(source.includes('test.beforeEach'), true, spec);
+    assert.equal(source.includes('resetSavedVisit'), true, spec);
+  }
+  const helper = readFileSync(join(root, 'web/e2e/walk-tree.ts'), 'utf8');
+  assert.equal(helper.includes('test.beforeEach'), false);
   const script = readFileSync(join(root, 'web/package.json'), 'utf8');
   assert.equal(script.includes('READY_ACCOUNT_E2E=1 playwright test -c playwright.account.config.ts'), true);
   assert.equal(config.includes('-u READY_VISIT_STORE'), true);

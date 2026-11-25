@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { answerTree } from './walk-tree';
+import { answerTree, resetSavedVisit } from './walk-tree';
+
+test.beforeEach(({ request }) => resetSavedVisit(request));
 
 const artifacts = '/opt/cursor/artifacts';
 

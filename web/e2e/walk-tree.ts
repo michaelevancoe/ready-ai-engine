@@ -1,10 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
 
-test.beforeEach(async ({ request }) => {
+export async function resetSavedVisit(request: APIRequestContext): Promise<void> {
   if (process.env.READY_ACCOUNT_E2E !== '1') return;
   const response = await request.post('/visit-reset');
   if (!response.ok()) throw new Error(`visit reset failed with ${response.status()}`);
-});
+}
 
 const LONG_HELPS = 'A quiet corner and a heads-up before the next song.';
 const BEHAVIOR =
