@@ -96,6 +96,84 @@ test('an acknowledgement with a newline comes back as one line', async () => {
   assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
 });
 
+const PARENT_FALLBACK = "That's really helpful.";
+
+const ACKNOWLEDGEMENT_PROMPT = [
+  'The data is fictional. Do not invent medical facts.',
+  'Write one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
+  'Do not restate or quote the answer.',
+  'Do not generalise about individuals.',
+  'Never mention a condition, diagnosis, or disability.',
+  'Do not use a pronoun for the child.',
+  "Use the child's name only if the answer includes it.",
+  'Do not ask a question.',
+  'Do not preview the next question.',
+  'Examples:',
+  "Thank you, that's really useful to know.",
+  'Got it, that will help the volunteers.',
+  'Thanks, that gives us a clearer picture.',
+  "That's really helpful.",
+].join('\n');
+
+test('a good acknowledgement is returned unchanged', async () => {
+  const line = "Thank you, that's really useful to know.";
+  const result = await acknowledgementFrom(line);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.equal(result.maxTokens, 60);
+  assert.equal(result.system, ACKNOWLEDGEMENT_PROMPT);
+  assert.equal(result.user, 'Answer: Picture cards.\nSection: communication');
+  assert.deepEqual(result.body, { line });
+});
+
+test('an acknowledgement of 120 characters is returned unchanged', async () => {
+  const line = `${'a'.repeat(119)}.`;
+  assert.equal(line.length, 120);
+  const result = await acknowledgementFrom(line);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { line });
+});
+
+test('a cut-off acknowledgement falls back', async () => {
+  const result = await acknowledgementFrom('Thank you for telling me tha');
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+});
+
+test('an acknowledgement with a non-Latin character falls back', async () => {
+  const result = await acknowledgementFrom('Thank you, that helps噪.');
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+});
+
+test('an acknowledgement that names a diagnosis falls back', async () => {
+  for (const word of ['autism', 'Aphasia', 'diagnosis', 'disorder', 'disability', 'impairment', 'individuals']) {
+    const result = await acknowledgementFrom(`Thank you for the note on ${word}.`);
+    assert.equal(result.status, 200, word);
+    assert.equal(result.calls, 1, word);
+    assert.deepEqual(result.body, { line: PARENT_FALLBACK }, word);
+  }
+});
+
+test('an acknowledgement longer than 120 characters falls back', async () => {
+  const line = `${'a'.repeat(120)}.`;
+  assert.equal(line.length, 121);
+  const result = await acknowledgementFrom(line);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+});
+
+test('an acknowledgement with a question mark falls back', async () => {
+  const result = await acknowledgementFrom('Really? That helps.');
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+});
+
 test('a live acknowledgement asks for sixty tokens and leaves the next question out', async () => {
   const calls: GatewayCall[] = [];
   const logs: string[] = [];
@@ -557,6 +635,40 @@ interface GatewayCall {
     messages?: { role?: string; content?: string }[];
     response_format?: { json_schema?: { name?: string } };
   };
+}
+
+async function acknowledgementFrom(line: string): Promise<{
+  status: number;
+  calls: number;
+  body: unknown;
+  system: string;
+  user: string;
+  maxTokens: number | undefined;
+}> {
+  const calls: GatewayCall[] = [];
+  const original = console.log;
+  console.log = () => {};
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+      const request = new Request(input, init);
+      calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
+      return chatEnvelope({ line });
+    });
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+    );
+    const call = calls[0];
+    return {
+      status: response.status,
+      calls: calls.length,
+      body: await response.json(),
+      system: call?.body.messages?.find((message) => message.role === 'system')?.content ?? '',
+      user: call?.body.messages?.find((message) => message.role === 'user')?.content ?? '',
+      maxTokens: call?.body.max_tokens,
+    };
+  } finally {
+    console.log = original;
+  }
 }
 
 async function rejectedAcknowledgement(body: unknown): Promise<{ status: number; calls: number }> {
