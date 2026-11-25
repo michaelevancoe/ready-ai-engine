@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, type Dispatch } from 'react';
 import { acknowledgementLine, type AckResult } from '../lib/acknowledgement';
-import { presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
+import { joinSpoken, presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
 import { postAcknowledgement, type AckPost } from '../lib/drafts';
 import { approveProfile, submitIntake } from '../lib/desk';
-import { intakeTree, type SectionId } from '../lib/intake-tree';
+import { intakeTree, isSectionId, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
 import { approvedValue, type Visit, type VisitEvent } from '../lib/visit';
 import { useVisit } from './visit-shell';
@@ -39,23 +39,24 @@ export default function Page() {
     const next = reduceConversation(intakeTree, current, { type: 'answer', text });
     if (next === current) return;
     const title = sectionTitle(current);
-    const beat = current.talk.mode === 'ask' && next.talk.mode === 'ask' && title !== null;
+    const sectionId = sectionKey(current);
+    const beat = current.talk.mode === 'ask' && next.talk.mode === 'ask' && sectionId !== null;
     if (beat) setSpoken(text.trim());
     if (current.talk.mode === 'fix' && next.talk.mode === 'brief' && title !== null) setSavedTitle(title);
     dispatch({ type: 'conversation', event: { type: 'answer', text } });
-    if (!beat || title === null) {
+    if (!beat || sectionId === null) {
       setReading({ phase: 'idle' });
       return;
     }
     const tokenId = token.current + 1;
     token.current = tokenId;
     setReading({ phase: 'reading', token: tokenId });
-    void settle(tokenId, text.trim(), title);
+    void settle(tokenId, text.trim(), sectionId);
   }
 
-  async function settle(tokenId: number, answer: string, title: string): Promise<void> {
+  async function settle(tokenId: number, answer: string, sectionId: string): Promise<void> {
     const raced = await Promise.all([
-      Promise.race([postAcknowledgement(answer, title), delayResult(ACK_LIMIT_MS)]),
+      Promise.race([postAcknowledgement(answer, sectionId), delayResult(ACK_LIMIT_MS)]),
       delay(BEAT_MS),
     ]);
     if (token.current !== tokenId) return;
@@ -264,6 +265,7 @@ function QuestionScreen({
         </>
       ) : (
         <>
+          <p className="guided">Guided by Ready</p>
           <p className="progress-label">
             <span>{ask.progress}</span>
             <span>Every question required</span>
@@ -277,8 +279,18 @@ function QuestionScreen({
       )}
       {spoken === null || ask.fixing ? null : <p className="bubble parent">{spoken}</p>}
       {locked ? (
-        <p className="draft-status" role="status">
-          Reading your answer...
+        <p className="bubble ready reading" role="status">
+          <span className="avatar" aria-hidden="true">
+            R
+          </span>
+          <span>
+            <span className="dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            Ready is reading your answer...
+          </span>
         </p>
       ) : (
         <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
@@ -290,25 +302,19 @@ function QuestionScreen({
           </article>
         </div>
       )}
-      {ask.chips.length > 0 ? (
+      {locked || ask.chips.length === 0 ? null : (
         <div className="chips">
           {ask.chips.map((chip) => (
-            <button
-              type="button"
-              key={chip}
-              disabled={locked}
-              onClick={() => submit(ask.exactChip !== null && chip === ask.exactChip ? chip : joinAnswer(draft, chip))}
-            >
+            <button type="button" key={chip} onClick={() => submit(chipText(ask, draft, chip))}>
               {chip}
             </button>
           ))}
         </div>
-      ) : null}
-      {ask.closeChip === null ? null : (
+      )}
+      {locked || ask.closeChip === null ? null : (
         <button
           type="button"
           className="inline"
-          disabled={locked}
           onClick={() => submit(draft.trim() === '' ? ask.closeChip ?? '' : draft)}
         >
           {ask.closeChip}
@@ -322,7 +328,7 @@ function QuestionScreen({
           id="answer"
           rows={3}
           value={draft}
-          placeholder={ask.placeholder}
+          placeholder={locked ? 'Ready is reading your answer...' : ask.placeholder}
           aria-describedby={locked ? undefined : 'current-question'}
           autoComplete="off"
           disabled={locked}
@@ -343,9 +349,14 @@ function QuestionScreen({
           }}
         >
           {mic.phase === 'live' ? <span className="mic-ring" aria-hidden="true" /> : null}
-          <MicIcon />
+          {mic.phase === 'live' ? <span className="mic-square" aria-hidden="true" /> : <MicIcon />}
         </button>
       </div>
+      {ask.fixing ? null : (
+        <p className="hint">
+          Tap the mic to talk, or type. Every question needs an answer. You can review and fix anything at the end.
+        </p>
+      )}
       {mic.phase === 'live' ? (
         <p className="draft-status" role="status">
           Mic is on
@@ -355,6 +366,7 @@ function QuestionScreen({
           </button>
         </p>
       ) : null}
+      {speech === 'missing' ? <p className="hint">This browser can&apos;t use the mic. Type your answer instead.</p> : null}
       {ask.fixing ? (
         <>
           <button type="button" className="primary" disabled={locked || draft.trim() === ''} onClick={() => submit(draft)}>
@@ -395,14 +407,23 @@ function BriefScreen({
   const brief = view.brief;
   return (
     <section aria-label="Brief">
-      <h1>
-        {brief.name}&apos;s brief
-      </h1>
-      <p>{brief.summary}</p>
+      <p className="guided">Ready drafted this</p>
+      <h1>{brief.name}&apos;s brief</h1>
+      <article className="brief-card identity">
+        <span className="portrait" aria-hidden="true">
+          {brief.name.slice(0, 1)}
+        </span>
+        <div>
+          <h2>
+            {brief.name}, {brief.ageYears}
+          </h2>
+          <p>{brief.summary}</p>
+        </div>
+      </article>
       <div className="photos">
-        <span className="portrait">Placeholder photo</span>
-        <span className="portrait">Placeholder photo</span>
-        <span className="portrait">Placeholder photo</span>
+        <span className="portrait">{brief.name}</span>
+        <span className="portrait">Headphones</span>
+        <span className="portrait">Quiet corner</span>
       </div>
       {savedTitle === null ? null : (
         <p className="banner" role="status">
@@ -415,7 +436,11 @@ function BriefScreen({
             {card.label}
             {card.updated ? <span className="badge">Updated</span> : null}
           </h2>
-          <p>{card.text}</p>
+          <ul>
+            {spokenLines(card.text).map((line, index) => (
+              <li key={`${index}-${line}`}>{line}</li>
+            ))}
+          </ul>
         </article>
       ))}
       {error === null ? null : <p role="alert">{error}</p>}
@@ -466,6 +491,12 @@ function ApprovedScreen({
   const update = approvedValue(visit.update);
   return (
     <section aria-label="Ready">
+      <div className="identity">
+        <span className="portrait" aria-hidden="true">
+          {view.name.slice(0, 1)}
+        </span>
+        <p className="guided">Approved</p>
+      </div>
       <h1>{view.headline}</h1>
       <p>
         Thank you. {view.name}&apos;s room leader and volunteers will read the brief before class. Nothing else is
@@ -476,9 +507,12 @@ function ApprovedScreen({
         <li>Volunteers read it before class</li>
         <li>You get a short note after Sunday</li>
       </ol>
-      <article className="story-card">
-        <h2>Sunday story</h2>
-        <p>A Sunday story is not part of this demo.</p>
+      <article className="story-card" id="sunday-story">
+        <h2>A Sunday story for {view.name}</h2>
+        <p>A short picture story about what Sunday will look like. Read it together before you go.</p>
+        <a className="text-link" href="#sunday-story">
+          Read {view.name}&apos;s story
+        </a>
       </article>
       <section aria-label="Sunday update" id="sunday-update">
         <h2>Sunday update</h2>
@@ -487,15 +521,13 @@ function ApprovedScreen({
       <button type="button" className="primary" onClick={() => dispatch({ type: 'conversation', event: { type: 'viewBrief' } })}>
         View {view.name}&apos;s brief
       </button>
-      <a
-        href="#brief"
-        onClick={(event) => {
-          event.preventDefault();
-          dispatch({ type: 'conversation', event: { type: 'viewBrief' } });
-        }}
+      <button
+        type="button"
+        className="text"
+        onClick={() => dispatch({ type: 'conversation', event: { type: 'viewBrief' } })}
       >
         Something changed? Update the brief
-      </a>
+      </button>
     </section>
   );
 }
@@ -509,6 +541,14 @@ function MicIcon() {
       />
     </svg>
   );
+}
+
+function sectionKey(conversation: Conversation): SectionId | null {
+  const talk = conversation.talk;
+  if (talk.mode !== 'ask' && talk.mode !== 'fix') return null;
+  const node = intakeTree.nodes.find((item) => item.id === talk.nodeId);
+  if (node === undefined || !isSectionId(node.sectionId)) return null;
+  return node.sectionId;
 }
 
 function sectionTitle(conversation: Conversation): string | null {
@@ -525,10 +565,13 @@ function sectionIdOf(ask: Extract<AskView, { kind: 'question' }>): SectionId | n
   return section?.id ?? null;
 }
 
-function joinAnswer(draft: string, chip: string): string {
-  const typed = draft.trim();
-  if (typed.length === 0) return chip;
-  return `${typed} ${chip}`;
+function chipText(ask: Extract<AskView, { kind: 'question' }>, draft: string, chip: string): string {
+  if (ask.fixing || (ask.exactChip !== null && chip === ask.exactChip)) return chip;
+  return joinSpoken(draft, chip);
+}
+
+function spokenLines(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+/u).filter((line) => line.length > 0);
 }
 
 function clock(ms: number): string {

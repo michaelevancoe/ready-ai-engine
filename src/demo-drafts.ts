@@ -1,7 +1,17 @@
 import { SchemaRejected } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
 
-const BRIEF_FIELDS = ['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory', 'medical'] as const;
+const BRIEF_FIELDS = [
+  'loves',
+  'overwhelms',
+  'whatHelps',
+  'communication',
+  'sensory',
+  'toileting',
+  'allergies',
+  'calming',
+  'medical',
+] as const;
 
 type BriefField = (typeof BRIEF_FIELDS)[number];
 
@@ -175,7 +185,7 @@ function parseLines(value: unknown, min: number, max: number): DraftLine[] | nul
 
 export function parseSocialStoryRequest(value: unknown): SocialStoryRequest | null {
   if (!isRecord(value) || !exactKeys(value, ['lines', 'childName'])) return null;
-  const lines = parseLines(value.lines, 1, 6);
+  const lines = parseLines(value.lines, 1, BRIEF_FIELDS.length);
   if (lines === null || !isBounded(value.childName, 1, 80)) return null;
   return { lines, childName: value.childName };
 }
@@ -183,7 +193,7 @@ export function parseSocialStoryRequest(value: unknown): SocialStoryRequest | nu
 export function parseLessonRequest(value: unknown): LessonRequest | null {
   if (!isRecord(value) || !exactKeys(value, ['lesson', 'lines', 'childName'])) return null;
   if (!isBounded(value.lesson, 1, 4000) || !isBounded(value.childName, 1, 80)) return null;
-  const lines = parseLines(value.lines, 0, 6);
+  const lines = parseLines(value.lines, 0, BRIEF_FIELDS.length);
   if (lines === null) return null;
   return { lesson: value.lesson, lines, childName: value.childName };
 }

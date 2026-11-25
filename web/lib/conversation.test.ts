@@ -27,10 +27,14 @@ test('the first question is the tree prompt and the walk is nine sections', () =
   assert.equal(view.prompt, ABOUT);
   assert.equal(view.prompt, intakeTree.nodes.find((node) => node.id === 'about')?.prompt);
   assert.equal(view.prompt.includes("That's really helpful."), false);
-  assert.equal(view.progress, 'Section 1 of 9');
+  assert.equal(view.progress, 'Section 1 of 9 · About Rowan');
   assert.equal(view.mark, 'About Rowan · REQUIRED');
   const next = say(conversation, 'He likes a quiet hello.');
   assert.equal(promptOf(next), 'What does Rowan love, at church or at home?');
+  const loved = presentAsk(intakeTree, next);
+  assert.equal(loved.kind, 'question');
+  if (loved.kind !== 'question') return;
+  assert.equal(loved.progress, 'Section 2 of 9 · Loves');
 });
 
 test('a short What helps answer opens the follow-up and a long answer does not', () => {
@@ -98,13 +102,13 @@ test('the behavior question is the tree prompt', () => {
   if (view.kind !== 'question') return;
   assert.equal(view.prompt, node?.prompt);
   assert.equal(view.prompt, BEHAVIOR);
-  assert.equal(view.progress, 'Section 9 of 9');
+  assert.equal(view.progress, 'Section 9 of 9 · Behavior & safety');
   assert.equal(view.mark, 'Behavior & safety · REQUIRED');
   const toileting = atToileting();
   const toiletingView = presentAsk(intakeTree, toileting);
   assert.equal(toiletingView.kind, 'question');
   if (toiletingView.kind !== 'question') return;
-  assert.equal(toiletingView.progress, 'Section 7 of 9');
+  assert.equal(toiletingView.progress, 'Section 7 of 9 · Toileting');
 });
 
 test('fixing communication returns to the brief and marks that card', () => {
@@ -163,12 +167,15 @@ test('project keeps the six intake keys and leaves medical empty', () => {
   ]);
   assert.equal(projected.card.medical, '');
   assert.equal(projected.card.loves, 'Trains.');
+  assert.equal(projected.card.toileting, 'Tells an adult.');
+  assert.equal(projected.card.allergies, 'No known allergies.');
+  assert.equal(projected.card.calming, 'No, not usually.');
   assert.equal(projected.post.sensoryNotes.endsWith('.'), true);
 });
 
 test('an example brief keeps the fixture name and does not store answers', () => {
   const opened = reduceConversation(intakeTree, initialConversation(), { type: 'openExample', id: 'maya' });
-  assert.equal(opened.talk.mode, 'brief');
+  assert.equal(opened.talk.mode, 'approved');
   assert.deepEqual(opened.answers, {});
   assert.deepEqual(opened.updated, []);
   const maya = parentBrief(intakeTree, opened);
@@ -187,12 +194,13 @@ test('an example brief keeps the fixture name and does not store answers', () =>
   assert.deepEqual(again.answers, {});
   const start = reduceConversation(intakeTree, approved, { type: 'leaveExample' });
   assert.equal(start.talk.mode, 'start');
-  const theo = parentBrief(
+  const jonah = parentBrief(
     intakeTree,
-    reduceConversation(intakeTree, initialConversation(), { type: 'openExample', id: 'theo' }),
+    reduceConversation(intakeTree, initialConversation(), { type: 'openExample', id: 'jonah' }),
   );
-  assert.equal(theo.ageYears, 9);
-  assert.equal(theo.cards.find((card) => card.sectionId === 'communication')?.text.includes('picture cards'), true);
+  assert.equal(jonah.name, 'Jonah');
+  assert.equal(jonah.ageYears, 9);
+  assert.equal(jonah.cards.find((card) => card.sectionId === 'communication')?.text.includes('picture cards'), true);
   const rowan = parentBrief(
     intakeTree,
     reduceConversation(intakeTree, initialConversation(), { type: 'openExample', id: 'rowan' }),

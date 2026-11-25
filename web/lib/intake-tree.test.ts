@@ -126,9 +126,18 @@ test('the profile cards that remain are written by a node', () => {
   assert.equal(writes.some((write) => isCard(write, 'whatHelps')), true);
   assert.equal(writes.some((write) => isCard(write, 'communication')), true);
   assert.equal(writes.some((write) => isCard(write, 'sensory')), true);
-  assert.equal(intakeTree.nodes.find((node) => node.id === 'toileting')?.writes.length, 0);
-  assert.equal(intakeTree.nodes.find((node) => node.id === 'allergies')?.writes.length, 0);
-  assert.equal(intakeTree.nodes.find((node) => node.id === 'behavior')?.writes.length, 0);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'toileting')?.writes, [
+    { target: 'card', key: 'toileting' },
+  ]);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'allergies')?.writes, [
+    { target: 'card', key: 'allergies' },
+  ]);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'allergies-more')?.writes, [
+    { target: 'card', key: 'allergies' },
+  ]);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'behavior')?.writes, [
+    { target: 'card', key: 'calming' },
+  ]);
 });
 
 function withHelpsFollow(tree: IntakeTree, nodeId: string): IntakeTree {

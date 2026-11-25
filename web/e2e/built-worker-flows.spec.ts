@@ -110,7 +110,11 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   const body = (await posted).postDataJSON() as { sensoryNotes?: string };
   expect(body.sensoryNotes).toBe('TICK-SOFTER-SEAT.');
   await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
-  await expect(page.getByText('A Sunday story is not part of this demo.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'A Sunday story for Rowan' })).toBeVisible();
+  await expect(
+    page.getByText('A short picture story about what Sunday will look like. Read it together before you go.'),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: "Read Rowan's story" })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
   const update = page.getByRole('region', { name: 'Sunday update' });
   await expect(update).toContainText('Waiting for an approved Sunday update.');

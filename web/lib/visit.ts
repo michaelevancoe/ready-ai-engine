@@ -8,6 +8,9 @@ export const BRIEF_FIELDS = [
   'whatHelps',
   'communication',
   'sensory',
+  'toileting',
+  'allergies',
+  'calming',
   'medical',
 ] as const;
 
@@ -109,6 +112,9 @@ export const BRIEF_LABELS: Record<BriefField, string> = {
   whatHelps: 'What helps',
   communication: 'Communication',
   sensory: 'Sensory needs',
+  toileting: 'Toileting',
+  allergies: 'Allergies & health',
+  calming: 'Safety & calming',
   medical: 'Medical / health notes',
 };
 
@@ -125,6 +131,9 @@ export function initialVisit(): Visit {
       whatHelps: true,
       communication: true,
       sensory: true,
+      toileting: true,
+      allergies: true,
+      calming: true,
       medical: false,
     },
     story: { phase: 'idle' },
@@ -178,9 +187,11 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
     case 'approveStory':
       if (visit.story.phase !== 'ready') return visit;
       return { ...visit, story: { phase: 'approved', value: visit.story.value } };
-    case 'approveBrief':
+    case 'approveBrief': {
       if (visit.intake.status !== 'approved') return visit;
-      return { ...visit, brief: { phase: 'approved', lines: briefLines(visit.card, visit.visibility) } };
+      const card = project(intakeTree, visit.conversation).card;
+      return { ...visit, card, brief: { phase: 'approved', lines: briefLines(card, visit.visibility) } };
+    }
     case 'saveNotes':
       return { ...visit, notes: event.notes };
     case 'writeUpdate':
@@ -341,6 +352,9 @@ function blankCard(): ProfileCard {
     whatHelps: '',
     communication: '',
     sensory: '',
+    toileting: '',
+    allergies: '',
+    calming: '',
     medical: '',
   };
 }

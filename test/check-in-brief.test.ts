@@ -132,10 +132,7 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
     hiddenMedical.lines.some((line) => line.field === 'medical'),
     false,
   );
-  assert.equal(
-    hiddenMedical.lines.some((line) => line.field === 'communication'),
-    false,
-  );
+  assert.equal(hiddenMedical.lines.find((line) => line.field === 'communication')?.text, 'Picture cards.');
   const sensory = hiddenMedical.lines.find((line) => line.field === 'sensory');
   assert.equal(sensory?.label, 'Sensory needs');
   assert.equal(sensory?.text, 'TICK-QUIET-ROOM.');
@@ -166,10 +163,11 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   const shownMedical = checkInBrief(visit);
   assert.equal(shownMedical.status, 'approved');
   if (shownMedical.status !== 'approved') return;
-  assert.deepEqual(
-    shownMedical.lines.find((line) => line.field === 'medical'),
-    { field: 'medical', label: 'Medical / health notes', text: 'TICK-MEDICAL' },
+  assert.equal(
+    shownMedical.lines.some((line) => line.field === 'medical'),
+    false,
   );
+  assert.equal(visit.card.medical, '');
 
   visit = reduceVisit(visit, { type: 'writeStory' });
   visit = reduceVisit(visit, {
@@ -378,7 +376,7 @@ test('approving again replaces the loves line from the new answer', () => {
   );
 });
 
-test('saveCard replaces seeded overwhelms and the brief keeps the new line', () => {
+test('approveBrief uses the conversation answer, not an edited card', () => {
   let visit = approveIntake(initialVisit());
   visit = reduceVisit(visit, {
     type: 'saveCard',
@@ -389,5 +387,6 @@ test('saveCard replaces seeded overwhelms and the brief keeps the new line', () 
   const brief = checkInBrief(visit);
   assert.equal(brief.status, 'approved');
   if (brief.status !== 'approved') return;
-  assert.equal(brief.lines.find((line) => line.field === 'overwhelms')?.text, 'Sudden loud noises.');
+  assert.equal(brief.lines.find((line) => line.field === 'overwhelms')?.text, 'Surprise loud songs.');
+  assert.equal(visit.card.overwhelms, 'Surprise loud songs.');
 });

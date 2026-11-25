@@ -428,6 +428,8 @@ button.mic {
 }
 
 button.mic {
+  display: grid;
+  place-items: center;
   width: 3rem;
   height: 3rem;
   border-radius: 999px;
@@ -576,4 +578,70 @@ button.mic .mic-ring {
 
 .mic-timer {
   margin-left: 0.45rem;
+}
+
+.mic-square {
+  display: block;
+  width: 0.7rem;
+  height: 0.7rem;
+  background: white;
+  border-radius: 0.12rem;
+}
+
+.bubble.reading {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+}
+
+.avatar {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--terracotta);
+  color: white;
+  font-weight: 700;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 0.22rem;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.dots span {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.identity {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.brief-card ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+button.text {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--terracotta);
+  border-radius: 0;
+  font-weight: 600;
+}
+
+a.text-link {
+  color: var(--terracotta);
+  font-weight: 600;
 }

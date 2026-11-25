@@ -30,8 +30,8 @@ export function postSundayUpdate(notes: string, childName: string): Promise<Draf
 
 export type AckPost = { readonly kind: 'line'; readonly text: string } | { readonly kind: 'error' };
 
-export function postAcknowledgement(answer: string, sectionTitle: string): Promise<AckPost> {
-  return post('/v1/drafts/acknowledgement', { answer, sectionTitle }, readAcknowledgement).then((result) => {
+export function postAcknowledgement(answer: string, sectionId: string): Promise<AckPost> {
+  return post('/v1/drafts/acknowledgement', { answer, sectionId }, readAcknowledgement).then((result) => {
     if (!result.ok) return { kind: 'error' };
     return { kind: 'line', text: result.value };
   });

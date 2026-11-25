@@ -14,7 +14,15 @@ export type SectionId = (typeof SECTION_IDS)[number];
 
 export type PostKey = 'sensoryNotes' | 'supportNeeds' | 'whatHelps' | 'whatToAvoid';
 
-export type CardKey = 'loves' | 'overwhelms' | 'whatHelps' | 'communication' | 'sensory';
+export type CardKey =
+  | 'loves'
+  | 'overwhelms'
+  | 'whatHelps'
+  | 'communication'
+  | 'sensory'
+  | 'toileting'
+  | 'allergies'
+  | 'calming';
 
 export type Write =
   | { readonly target: 'post'; readonly key: PostKey }
@@ -55,7 +63,16 @@ export type TreeParse = { readonly ok: true; readonly tree: IntakeTree } | { rea
 
 const POST_KEYS = ['sensoryNotes', 'supportNeeds', 'whatHelps', 'whatToAvoid'] as const;
 
-const CARD_KEYS = ['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory'] as const;
+const CARD_KEYS = [
+  'loves',
+  'overwhelms',
+  'whatHelps',
+  'communication',
+  'sensory',
+  'toileting',
+  'allergies',
+  'calming',
+] as const;
 
 const PLACEHOLDER_NOTE = 'Questions are placeholders pending a professional question set.';
 
@@ -151,7 +168,7 @@ const RAW = {
       prompt: 'How does Rowan usually let you know they need the bathroom?',
       placeholder: TYPE_ANSWER,
       chips: ['Tells an adult', 'Uses a sign or picture', 'Needs reminders', 'Needs help in the bathroom'],
-      writes: [],
+      writes: [{ target: 'card', key: 'toileting' }],
     },
     {
       id: 'allergies',
@@ -160,14 +177,14 @@ const RAW = {
       placeholder: TYPE_ANSWER,
       chips: ['No known allergies', 'Food allergy', 'Medicine allergy', 'Something else'],
       follow: { when: 'unless', text: 'No known allergies', nodeId: 'allergies-more' },
-      writes: [],
+      writes: [{ target: 'card', key: 'allergies' }],
     },
     {
       id: 'allergies-more',
       sectionId: 'allergies',
       prompt: 'What happens, and what should a volunteer do?',
       placeholder: TYPE_ANSWER,
-      writes: [],
+      writes: [{ target: 'card', key: 'allergies' }],
     },
     {
       id: 'behavior',
@@ -176,7 +193,7 @@ const RAW = {
         'When Rowan is very upset, does he ever hurt himself or others, or run off? If so, what helps in that moment?',
       placeholder: TYPE_ANSWER,
       chips: ['No, not usually', 'Sometimes runs off', 'Sometimes hits or bites', 'Let me explain'],
-      writes: [],
+      writes: [{ target: 'card', key: 'calming' }],
     },
   ],
 };

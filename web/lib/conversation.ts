@@ -102,6 +102,9 @@ export interface ProjectedCard {
   readonly whatHelps: string;
   readonly communication: string;
   readonly sensory: string;
+  readonly toileting: string;
+  readonly allergies: string;
+  readonly calming: string;
   readonly medical: string;
 }
 
@@ -196,6 +199,9 @@ export function project(tree: IntakeTree, conversation: Conversation): Projectio
       whatHelps: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'whatHelps'),
       communication: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'communication'),
       sensory: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'sensory'),
+      toileting: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'toileting'),
+      allergies: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'allergies'),
+      calming: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'calming'),
       medical: '',
     },
   };
@@ -210,7 +216,7 @@ function beginIntake(tree: IntakeTree, conversation: Conversation): Conversation
 
 function openExample(conversation: Conversation, id: ExampleId): Conversation {
   if (conversation.talk.mode !== 'start') return conversation;
-  return { ...conversation, talk: { mode: 'brief', source: { type: 'example', id } } };
+  return { ...conversation, talk: { mode: 'approved', source: { type: 'example', id } } };
 }
 
 function leaveExample(conversation: Conversation): Conversation {
@@ -300,7 +306,7 @@ function questionView(tree: IntakeTree, conversation: Conversation): AskView {
     kind: 'question',
     nodeId: node.id,
     prompt: fill(node.prompt, tree, conversation, node.id),
-    progress: `Section ${index} of ${tree.sections.length}`,
+    progress: `Section ${index} of ${tree.sections.length} · ${section.title}`,
     mark: fixing ? `${section.title} · FIX` : `${section.title} · REQUIRED`,
     index,
     total: tree.sections.length,
@@ -415,6 +421,14 @@ function joined(tree: IntakeTree, conversation: Conversation, match: (write: Wri
     }
   }
   return spaceSentences(parts.join(' '));
+}
+
+export function joinSpoken(typed: string, chip: string): string {
+  const spoken = finishSentence(chip.trim());
+  const lead = typed.trim();
+  if (lead.length === 0) return spoken;
+  if (/[.!?]$/u.test(lead)) return `${lead} ${spoken}`;
+  return `${lead}. ${spoken}`;
 }
 
 function finishSentence(text: string): string {

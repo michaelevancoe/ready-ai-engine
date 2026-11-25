@@ -27,11 +27,11 @@ test('mock acknowledgement returns a line and does not fetch', async () => {
     },
   });
   const response = await demo.handle(
-    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionTitle: 'Communication' }),
+    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
   );
   assert.equal(calls, 0);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { line: 'Thanks for telling me. Picture cards.' });
+  assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
 });
 
 test('a live acknowledgement records the intake schema and leaves out the next question', async () => {
@@ -48,15 +48,16 @@ test('a live acknowledgement records the intake schema and leaves out the next q
       return chatEnvelope({ line: 'Thanks for telling me.' });
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionTitle: 'Communication' }),
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
     );
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { line: 'Thanks for telling me.' });
     const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
     assert.equal(calls[0]?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
+    assert.equal(calls[0]?.body.max_tokens, 60);
     assert.equal(calls[0]?.body.model, 'workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
     assert.equal(user.includes('Picture cards.'), true);
-    assert.equal(user.includes('Communication'), true);
+    assert.equal(user.includes('communication'), true);
     assert.equal(user.includes(NEXT_QUESTION), false);
     assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
   } finally {
@@ -116,7 +117,9 @@ test('a live acknowledgement asks for sixty tokens and leaves the next question 
     assert.equal(user.includes(NEXT_QUESTION), false);
     assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
     assert.equal(logs.some((line) => line.includes('Picture cards.')), false);
-    const safe = logs.map((line) => JSON.parse(line) as Record<string, unknown>).find((entry) => entry.endpoint === 'intake.profile');
+    const safe = logs
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((entry) => entry.endpoint === 'intake.profile');
     assert.deepEqual(Object.keys(safe ?? {}).sort(), [
       'attempt',
       'endpoint',
@@ -144,7 +147,7 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
       throw new Error('down');
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionTitle: 'Communication' }),
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
     );
     assert.equal(response.status, 502);
     assert.ok(calls.length >= 1);

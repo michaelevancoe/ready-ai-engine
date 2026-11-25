@@ -1,6 +1,6 @@
 import type { SectionId } from './intake-tree.ts';
 
-export type ExampleId = 'rowan' | 'maya' | 'theo';
+export type ExampleId = 'rowan' | 'maya' | 'jonah';
 
 export interface ExampleCard {
   readonly sectionId: Exclude<SectionId, 'about'>;
@@ -68,16 +68,23 @@ const MAYA = brief(
   },
 );
 
-const THEO = brief('theo', 'Theo', 9, 'Loves Lego · uses picture cards', 'Theo loves Lego and uses picture cards.', {
-  loves: 'Theo loves Lego and building on the floor.',
-  overwhelms: 'A rushed transition overwhelms Theo.',
-  helps: 'A picture of the next activity helps Theo.',
-  communication: 'Theo uses picture cards.',
-  sensory: 'Theo likes a firm seat and a predictable sound level.',
-  toileting: 'Theo uses a sign or picture when he needs the bathroom.',
-  allergies: 'Theo has no known allergies.',
-  behavior: 'Theo stays with the group when an adult shows him a calm card.',
-});
+const JONAH = brief(
+  'jonah',
+  'Jonah',
+  9,
+  'Loves Lego · uses picture cards',
+  'Jonah loves Lego and uses picture cards.',
+  {
+    loves: 'Jonah loves Lego and building on the floor.',
+    overwhelms: 'A rushed transition overwhelms Jonah.',
+    helps: 'A picture of the next activity helps Jonah.',
+    communication: 'Jonah uses picture cards.',
+    sensory: 'Jonah likes a firm seat and a predictable sound level.',
+    toileting: 'Jonah uses a sign or picture when he needs the bathroom.',
+    allergies: 'Jonah has no known allergies.',
+    behavior: 'Jonah stays with the group when an adult shows him a calm card.',
+  },
+);
 
 export function exampleBrief(id: ExampleId): ExampleBrief {
   switch (id) {
@@ -85,8 +92,8 @@ export function exampleBrief(id: ExampleId): ExampleBrief {
       return ROWAN;
     case 'maya':
       return MAYA;
-    case 'theo':
-      return THEO;
+    case 'jonah':
+      return JONAH;
     default: {
       const leftover: never = id;
       return leftover;
@@ -95,7 +102,7 @@ export function exampleBrief(id: ExampleId): ExampleBrief {
 }
 
 export function exampleList(): readonly ExampleBrief[] {
-  return [ROWAN, MAYA, THEO];
+  return [ROWAN, MAYA, JONAH];
 }
 
 function brief(

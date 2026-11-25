@@ -27,6 +27,7 @@ import { emitSafe } from '../src/log.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
 import { chatEnvelope, churchStore, ids, testEnv, type MemoryStore } from '../test/fixtures.ts';
+import { SECTION_IDS } from '../web/lib/intake-tree.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
 import { liveDemoBindings, mergeDemoEnv, parseDevVars } from './live-env.ts';
 
@@ -149,6 +150,7 @@ export class DemoContext {
       intakeAcknowledgementSchemaName,
       acknowledgementSchema,
       parseAcknowledgement,
+      60,
     );
   }
 
@@ -168,6 +170,7 @@ export class DemoContext {
     schemaName: string,
     schema: JsonSchema,
     parse: (value: unknown) => T,
+    maxTokens?: number,
   ): Promise<Response> {
     try {
       const value = await generate({
@@ -179,6 +182,7 @@ export class DemoContext {
         env: this.deps.env,
         fetch: this.deps.fetch,
         log: this.deps.log,
+        ...(maxTokens === undefined ? {} : { maxTokens }),
       });
       return json(value, 200);
     } catch (error) {
@@ -319,7 +323,7 @@ function mockDraft(name: string, content: string): unknown | null {
     case intakeAcknowledgementSchemaName: {
       const answer = acknowledgementAnswer(content);
       if (answer === null) return null;
-      return { line: reflectedLine(answer) };
+      return { line: 'Thanks. That helps.' };
     }
     default:
       return null;
@@ -395,16 +399,22 @@ const acknowledgementSchema = {
   },
 } satisfies JsonSchema;
 
-function parseAcknowledgementRequest(value: unknown): { answer: string; sectionTitle: string } | null {
+function parseAcknowledgementRequest(value: unknown): { answer: string; sectionId: (typeof SECTION_IDS)[number] } | null {
   if (!isRecord(value)) return null;
   const keys = Object.keys(value);
-  if (keys.length !== 2 || !Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'sectionTitle')) return null;
-  if (typeof value.answer !== 'string' || value.answer.trim().length === 0) return null;
-  if (typeof value.sectionTitle !== 'string' || value.sectionTitle.trim().length === 0) return null;
-  return { answer: value.answer, sectionTitle: value.sectionTitle };
+  if (keys.length !== 2 || !Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'sectionId')) return null;
+  if (typeof value.answer !== 'string') return null;
+  const answer = value.answer.trim();
+  if (answer.length < 1 || answer.length > 500) return null;
+  if (!isAcknowledgementSection(value.sectionId)) return null;
+  return { answer, sectionId: value.sectionId };
 }
 
-function acknowledgementMessages(request: { answer: string; sectionTitle: string }): {
+function isAcknowledgementSection(value: unknown): value is (typeof SECTION_IDS)[number] {
+  return typeof value === 'string' && SECTION_IDS.some((id) => id === value);
+}
+
+function acknowledgementMessages(request: { answer: string; sectionId: (typeof SECTION_IDS)[number] }): {
   role: 'system' | 'user';
   content: string;
 }[] {
@@ -414,7 +424,7 @@ function acknowledgementMessages(request: { answer: string; sectionTitle: string
       content:
         'The data is fictional. Do not invent medical facts. Write one sentence. Do not ask a question. Do not rewrite the next question.',
     },
-    { role: 'user', content: `Answer: ${request.answer}\nSection: ${request.sectionTitle}` },
+    { role: 'user', content: `Answer: ${request.answer}\nSection: ${request.sectionId}` },
   ];
 }
 
@@ -426,12 +436,6 @@ function acknowledgementAnswer(content: string): string | null {
   if (at < marker.length) return null;
   const answer = content.slice(marker.length, at).trim();
   return answer.length === 0 ? null : answer;
-}
-
-function reflectedLine(answer: string): string {
-  const clipped = answer.replace(/\s+/g, ' ').trim().slice(0, 120);
-  const line = `Thanks for telling me. ${clipped}`;
-  return line.length > 160 ? line.slice(0, 160) : line;
 }
 
 function parseAcknowledgement(value: unknown): { line: string } {
