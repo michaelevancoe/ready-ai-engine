@@ -6,6 +6,7 @@ import type { StoreBoot } from '../lib/select-store.ts';
 import { resumeConversation } from '../lib/conversation.ts';
 import { intakeTree } from '../lib/intake-tree.ts';
 import { BRIEF_FIELDS, BRIEF_LABELS, initialVisit, type BriefField, type BriefLine, type Visit } from '../lib/visit.ts';
+import { withE2eLock } from './e2e-epoch.ts';
 import { envValue, readLocalApi } from './local-api.ts';
 
 const TEXT_COLUMN: Record<BriefField, string> = {
@@ -32,8 +33,14 @@ export async function readStoreBoot(): Promise<StoreBoot> {
   if (choice.status !== 'chosen') throw new Error('account boot needs one chosen church');
   const childId = await loadChild(local.apiUrl, local.anonKey, parent, choice.organizationId);
   const scope = { organizationId: choice.organizationId, childId };
-  const initial = await loadVisit(local.apiUrl, local.anonKey, sessions, scope.organizationId, scope.childId);
-  return { mode: 'account', sessions, scope, initial };
+  if (envValue('READY_ACCOUNT_E2E') !== '1') {
+    const initial = await loadVisit(local.apiUrl, local.anonKey, sessions, scope.organizationId, scope.childId);
+    return { mode: 'account', sessions, scope, initial, epoch: 0 };
+  }
+  return withE2eLock(async (epoch) => {
+    const initial = await loadVisit(local.apiUrl, local.anonKey, sessions, scope.organizationId, scope.childId);
+    return { mode: 'account', sessions, scope, initial, epoch };
+  });
 }
 
 function parseSessions(value: string | undefined): readonly AccountSession[] {

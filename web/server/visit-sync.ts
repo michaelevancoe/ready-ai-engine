@@ -1,4 +1,6 @@
-import { readLocalApi } from './local-api.ts';
+import type { AccountScope, PersistPlan } from '../lib/persist-visit.ts';
+import { withE2eLock } from './e2e-epoch.ts';
+import { envValue, readLocalApi, type LocalApi } from './local-api.ts';
 import { parseSyncBody, userIdFromAuthorization, visitWrites, type VisitWrite } from './visit-writes.ts';
 
 export async function syncVisit(request: Request): Promise<Response> {
@@ -10,6 +12,21 @@ export async function syncVisit(request: Request): Promise<Response> {
   if (userId === null || token === null) return Response.json({ error: 'unauthorized' }, { status: 401 });
   const parsed = parseSyncBody(await readBody(request));
   if (parsed === null) return Response.json({ error: 'bad_request' }, { status: 400 });
+  if (envValue('READY_ACCOUNT_E2E') !== '1') return applyWrites(local, token, userId, parsed);
+  if (parsed.epoch === null) return Response.json({ error: 'bad_request' }, { status: 400 });
+  const epoch = parsed.epoch;
+  return withE2eLock(async (current) => {
+    if (epoch !== current) return Response.json({ error: 'stale' }, { status: 409 });
+    return applyWrites(local, token, userId, parsed);
+  });
+}
+
+async function applyWrites(
+  local: LocalApi,
+  token: string,
+  userId: string,
+  parsed: { scope: AccountScope; plan: PersistPlan },
+): Promise<Response> {
   const writes = visitWrites(userId, parsed.scope, parsed.plan);
   for (const write of writes) {
     let response: Response;

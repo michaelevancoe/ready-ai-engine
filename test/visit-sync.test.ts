@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { persistDispatch, type AccountScope } from '../web/lib/persist-visit.ts';
 import { initialVisit, reduceVisit } from '../web/lib/visit.ts';
+import { withE2eLock } from '../web/server/e2e-epoch.ts';
 import { syncVisit } from '../web/server/visit-sync.ts';
 import { parseSyncBody, userIdFromAuthorization, visitWrites } from '../web/server/visit-writes.ts';
 
@@ -60,7 +61,7 @@ test('a sync body cannot publish a medical line', () => {
 });
 
 test('visit sync is absent without a loopback key and forwards the user bearer', async () => {
-  const names = ['READY_VISIT_STORE', 'READY_LOCAL_API_URL', 'READY_LOCAL_ANON_KEY'] as const;
+  const names = ['READY_VISIT_STORE', 'READY_LOCAL_API_URL', 'READY_LOCAL_ANON_KEY', 'READY_ACCOUNT_E2E'] as const;
   const previous = new Map(names.map((name) => [name, process.env[name]]));
   const calls: { url: string; apikey: string | null; authorization: string | null; prefer: string | null }[] = [];
   const original = globalThis.fetch;
@@ -110,6 +111,37 @@ test('visit sync is absent without a loopback key and forwards the user bearer',
     );
     assert.equal(refused.status, 404);
     assert.equal(calls.length, 1);
+
+    process.env.READY_LOCAL_API_URL = 'http://127.0.0.1:54321';
+    process.env.READY_ACCOUNT_E2E = '1';
+    const current = await withE2eLock(async (epoch) => epoch);
+    const missingEpoch = await syncVisit(
+      new Request('http://127.0.0.1/visit-sync', {
+        method: 'POST',
+        headers: { authorization: bearer(userId), 'content-type': 'application/json' },
+        body: JSON.stringify({ scope, plan }),
+      }),
+    );
+    assert.equal(missingEpoch.status, 400);
+    assert.equal(calls.length, 1);
+    const stale = await syncVisit(
+      new Request('http://127.0.0.1/visit-sync', {
+        method: 'POST',
+        headers: { authorization: bearer(userId), 'content-type': 'application/json' },
+        body: JSON.stringify({ scope, plan, epoch: current + 1 }),
+      }),
+    );
+    assert.equal(stale.status, 409);
+    assert.equal(calls.length, 1);
+    const fresh = await syncVisit(
+      new Request('http://127.0.0.1/visit-sync', {
+        method: 'POST',
+        headers: { authorization: bearer(userId), 'content-type': 'application/json' },
+        body: JSON.stringify({ scope, plan, epoch: current }),
+      }),
+    );
+    assert.equal(fresh.status, 204);
+    assert.equal(calls.length, 2);
   } finally {
     globalThis.fetch = original;
     for (const [name, value] of previous) {

@@ -11,6 +11,7 @@ export type StoreBoot =
       readonly sessions: readonly AccountSession[];
       readonly scope: AccountScope;
       readonly initial: Visit;
+      readonly epoch: number;
     };
 
 export function selectReadyStore(boot: StoreBoot): ReadyStore {
@@ -18,7 +19,7 @@ export function selectReadyStore(boot: StoreBoot): ReadyStore {
     case 'demo':
       return new DemoStore();
     case 'account':
-      return new AccountStore(boot.sessions, boot.scope, visitSyncGateway(), boot.initial);
+      return new AccountStore(boot.sessions, boot.scope, visitSyncGateway(), boot.initial, boot.epoch);
     default: {
       const leftover: never = boot;
       return leftover;

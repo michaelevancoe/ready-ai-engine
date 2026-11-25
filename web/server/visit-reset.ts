@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { bumpE2eEpoch, withE2eLock } from './e2e-epoch.ts';
 import { envValue } from './local-api.ts';
 
 const resetSql = `
@@ -11,18 +12,21 @@ delete from public.lessons;
 delete from public.church_setup;
 `;
 
-export function resetAccountVisit(): Response {
+export async function resetAccountVisit(): Promise<Response> {
   if (envValue('READY_ACCOUNT_E2E') !== '1') return new Response(null, { status: 404 });
   const dbUrl = envValue('READY_LOCAL_DB_URL');
   if (dbUrl === undefined || !loopbackPostgres(dbUrl)) {
     return new Response(null, { status: 404 });
   }
-  const applied = spawnSync('psql', [dbUrl, '-v', 'ON_ERROR_STOP=1', '-q'], {
-    input: resetSql,
-    encoding: 'utf8',
+  return withE2eLock(async () => {
+    bumpE2eEpoch();
+    const applied = spawnSync('psql', [dbUrl, '-v', 'ON_ERROR_STOP=1', '-q'], {
+      input: resetSql,
+      encoding: 'utf8',
+    });
+    if (applied.error !== undefined || applied.status !== 0) return new Response(null, { status: 500 });
+    return new Response(null, { status: 204 });
   });
-  if (applied.error !== undefined || applied.status !== 0) return new Response(null, { status: 500 });
-  return new Response(null, { status: 204 });
 }
 
 function loopbackPostgres(value: string): boolean {

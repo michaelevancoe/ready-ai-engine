@@ -24,7 +24,7 @@ test('a no-op does not write and notes use the volunteer session', () => {
       saved.push({ role: session.role, plan });
     },
   };
-  const store = new AccountStore([parent, volunteer, leader], scope, gateway, initialVisit());
+  const store = new AccountStore([parent, volunteer, leader], scope, gateway, initialVisit(), 0);
   let calls = 0;
   store.subscribe(() => {
     calls += 1;
@@ -49,7 +49,7 @@ test('a visit still updates when the owning session is absent', () => {
       calls += 1;
     },
   };
-  const store = new AccountStore([parent], scope, gateway, initialVisit());
+  const store = new AccountStore([parent], scope, gateway, initialVisit(), 0);
   store.dispatch({ type: 'saveNotes', notes: 'Kept on the visit.' });
   assert.equal(store.getState().notes, 'Kept on the visit.');
   assert.equal(calls, 0);

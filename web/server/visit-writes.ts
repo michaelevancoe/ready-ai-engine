@@ -145,13 +145,21 @@ export function visitWrites(userId: string, scope: AccountScope, plan: PersistPl
   return writes;
 }
 
-export function parseSyncBody(value: unknown): { scope: AccountScope; plan: PersistPlan } | null {
+export function parseSyncBody(value: unknown): { scope: AccountScope; plan: PersistPlan; epoch: number | null } | null {
   if (!isRecord(value) || !isRecord(value.scope) || !isRecord(value.plan)) return null;
   const scope = parseScope(value.scope);
   if (scope === null) return null;
   const plan = parsePlan(value.plan, scope);
   if (plan === null) return null;
-  return { scope, plan };
+  const epoch = parseEpoch(value.epoch);
+  if (epoch === undefined) return null;
+  return { scope, plan, epoch };
+}
+
+function parseEpoch(value: unknown): number | null | undefined {
+  if (value === undefined) return null;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return undefined;
+  return value;
 }
 
 export function userIdFromAuthorization(header: string | null): string | null {

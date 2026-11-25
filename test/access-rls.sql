@@ -821,7 +821,7 @@ begin
   execute 'reset role';
   select s.plan into plan from public.church_setup s where s.organization_id = '10000000-0000-4000-8000-0000000000a1';
   select l.title into title from public.lessons l where l.id = '10000000-0000-4000-8000-0000000000b4';
-  select count(*) into lessons from public.lessons where title = 'Harbor Lesson';
+  select count(*) into lessons from public.lessons as lesson_row where lesson_row.title = 'Harbor Lesson';
   if plan is distinct from 'Harbor plan' or title is distinct from 'Harbor Lesson' or lessons <> 1 then
     raise exception 'parent changed church=% title=% lessons=%', plan, title, lessons;
   end if;

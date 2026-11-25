@@ -9,7 +9,7 @@ export interface AccountSession {
 }
 
 export interface VisitGateway {
-  save(session: AccountSession, scope: AccountScope, plan: PersistPlan): void;
+  save(session: AccountSession, scope: AccountScope, plan: PersistPlan, epoch: number): void;
 }
 
 export class AccountStore implements ReadyStore {
@@ -17,13 +17,21 @@ export class AccountStore implements ReadyStore {
   private readonly scope: AccountScope;
   private readonly gateway: VisitGateway;
   private visit: Visit;
+  private readonly epoch: number;
   private readonly listeners = new Set<() => void>();
 
-  constructor(sessions: readonly AccountSession[], scope: AccountScope, gateway: VisitGateway, initial: Visit) {
+  constructor(
+    sessions: readonly AccountSession[],
+    scope: AccountScope,
+    gateway: VisitGateway,
+    initial: Visit,
+    epoch: number,
+  ) {
     this.sessions = sessions;
     this.scope = scope;
     this.gateway = gateway;
     this.visit = initial;
+    this.epoch = epoch;
   }
 
   getState = (): Visit => this.visit;
@@ -55,7 +63,7 @@ export class AccountStore implements ReadyStore {
     if (plan === null) return;
     const session = this.sessions.find((item) => item.role === role);
     if (session === undefined) return;
-    this.gateway.save(session, this.scope, plan);
+    this.gateway.save(session, this.scope, plan, this.epoch);
   }
 }
 

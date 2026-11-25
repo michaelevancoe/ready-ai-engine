@@ -1,5 +1,5 @@
 import { resetAccountVisit } from '../../server/visit-reset';
 
-export function POST(): Response {
+export async function POST(): Promise<Response> {
   return resetAccountVisit();
 }

@@ -33,13 +33,14 @@ test('account boot posts the acting bearer to visit sync', async () => {
       { userId: '10000000-0000-4000-8000-000000000011', accessToken: 'parent-token', role: 'parent' },
       { userId: '10000000-0000-4000-8000-000000000013', accessToken: 'volunteer-token', role: 'volunteer' },
     ];
-    const store = selectReadyStore({ mode: 'account', sessions, scope, initial: initialVisit() });
+    const store = selectReadyStore({ mode: 'account', sessions, scope, initial: initialVisit(), epoch: 4 });
     store.dispatch({ type: 'saveNotes', notes: 'A quiet corner.' });
     await Promise.resolve();
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.url, '/visit-sync');
     assert.equal(calls[0]?.authorization, 'Bearer volunteer-token');
     assert.equal(calls[0]?.body.includes('A quiet corner.'), true);
+    assert.equal(calls[0]?.body.includes('"epoch":4'), true);
     assert.equal(calls[0]?.body.includes('parent-token'), false);
   } finally {
     globalThis.fetch = original;
