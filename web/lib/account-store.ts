@@ -1,5 +1,11 @@
 import { emptyPlan, persistDispatch, type AccountScope, type PersistPlan } from './persist-visit.ts';
-import type { ReadyStore } from './ready-store.ts';
+import {
+  emptyChurchPhotos,
+  replaceChurchPhoto,
+  type ChurchPhotoSet,
+  type ChurchPhotoSlot,
+  type ReadyStore,
+} from './ready-store.ts';
 import { reduceVisit, type DemoRole, type Visit, type VisitEvent } from './visit.ts';
 
 export interface AccountSession {
@@ -17,6 +23,7 @@ export class AccountStore implements ReadyStore {
   private readonly scope: AccountScope;
   private readonly gateway: VisitGateway;
   private visit: Visit;
+  private photos: ChurchPhotoSet = emptyChurchPhotos();
   private readonly epoch: number;
   private readonly listeners = new Set<() => void>();
 
@@ -41,7 +48,7 @@ export class AccountStore implements ReadyStore {
     if (next === this.visit) return;
     const plan = persistDispatch(this.visit, next, this.scope);
     this.visit = next;
-    for (const listener of this.listeners) listener();
+    this.emit();
     this.persist(plan);
   };
 
@@ -51,6 +58,27 @@ export class AccountStore implements ReadyStore {
       this.listeners.delete(listener);
     };
   };
+
+  getChurchPhotos = (): ChurchPhotoSet => this.photos;
+
+  setChurchPhoto = (slot: ChurchPhotoSlot, url: string): void => {
+    this.changePhoto(slot, url);
+  };
+
+  clearChurchPhoto = (slot: ChurchPhotoSlot): void => {
+    this.changePhoto(slot, null);
+  };
+
+  private changePhoto(slot: ChurchPhotoSlot, url: string | null): void {
+    const next = replaceChurchPhoto(this.photos, slot, url);
+    if (next === this.photos) return;
+    this.photos = next;
+    this.emit();
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) listener();
+  }
 
   private persist(plan: PersistPlan): void {
     if (emptyPlan(plan)) return;

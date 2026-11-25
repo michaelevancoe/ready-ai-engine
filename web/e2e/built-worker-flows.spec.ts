@@ -283,12 +283,12 @@ test('leader settings save, and back without saving keeps the church', async ({ 
 
   await page.getByRole('link', { name: 'Leader' }).click();
   await page.getByRole('button', { name: 'Church settings' }).click();
-  await page.getByLabel('Room').fill('North room');
+  await page.getByLabel('Room', { exact: true }).fill('North room');
   await page.getByRole('button', { name: 'Leader home' }).click();
   await expect(page.getByText('Harbor Room · Sunday 9:30')).toBeVisible();
   await page.getByRole('button', { name: 'Church settings' }).click();
-  await expect(page.getByLabel('Room')).toHaveValue('Harbor Room');
-  await page.getByLabel('Room').fill('North room');
+  await expect(page.getByLabel('Room', { exact: true })).toHaveValue('Harbor Room');
+  await page.getByLabel('Room', { exact: true }).fill('North room');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await expect(page.getByText('North room · Sunday 9:30')).toBeVisible();

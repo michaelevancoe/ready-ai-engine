@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { isChurchPhotoFile, readChurchPhoto } from '../../lib/church-photo-file';
 import { postLesson, postSundayUpdate } from '../../lib/drafts';
+import type { ChurchPhotoSlot } from '../../lib/ready-store';
+import { STORY_SAMPLES } from '../../lib/sunday-story';
 import {
   checkInBrief,
   childAgeYears,
@@ -11,7 +14,7 @@ import {
   type LessonAdaptation,
   type Visit,
 } from '../../lib/visit';
-import { useReadyStore, useScrollWhen } from '../visit-shell';
+import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
 
 const CHURCH_FIELDS = [
   ['name', 'Church name'],
@@ -21,6 +24,15 @@ const CHURCH_FIELDS = [
   ['ages', 'Ages'],
   ['plan', 'Plan'],
 ] as const satisfies ReadonlyArray<readonly [keyof ChurchSetup, string]>;
+
+const PHOTO_SLOTS = [
+  ['outside', 'Outside / arriving'],
+  ['doors', 'Front doors'],
+  ['desk', 'Welcome desk'],
+  ['classroom', 'Classroom'],
+  ['quiet', 'Quiet spot'],
+  ['pickup', 'Pickup area'],
+] as const satisfies ReadonlyArray<readonly [ChurchPhotoSlot, string]>;
 
 type Screen = 'home' | 'sunday' | 'draft' | 'after' | 'settings';
 
@@ -498,11 +510,109 @@ function SettingsScreen({
             )}
           </div>
         ))}
+        <ChurchPhotos />
         <button type="submit" className="primary">
           Save
         </button>
       </form>
     </main>
+  );
+}
+
+function ChurchPhotos() {
+  const store = useReadyStore();
+  const photos = useChurchPhotos();
+  return (
+    <div className="photo-settings">
+      <p className="photo-guidance">Photos of spaces only, no people. Sample images, not a real church.</p>
+      <div className="photo-grid">
+        {PHOTO_SLOTS.map(([slot, label]) => (
+          <ChurchPhotoField
+            key={slot}
+            label={label}
+            src={photos[slot] ?? STORY_SAMPLES[slot].src}
+            alt={STORY_SAMPLES[slot].alt}
+            uploaded={photos[slot] !== null}
+            onReplace={(url) => store.setChurchPhoto(slot, url)}
+            onClear={() => store.clearChurchPhoto(slot)}
+          />
+        ))}
+      </div>
+      <p className="photo-guidance">
+        Photos you add stay in this browser tab only and clear when you refresh. They are never uploaded.
+      </p>
+    </div>
+  );
+}
+
+function ChurchPhotoField({
+  label,
+  src,
+  alt,
+  uploaded,
+  onReplace,
+  onClear,
+}: {
+  label: string;
+  src: string;
+  alt: string;
+  uploaded: boolean;
+  onReplace: (url: string) => void;
+  onClear: () => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function onPick(file: File | undefined): void {
+    if (file === undefined) return;
+    if (!isChurchPhotoFile(file)) {
+      setError('Use a JPEG, PNG, or WebP photo.');
+      return;
+    }
+    void readChurchPhoto(file).then(
+      (url) => {
+        onReplace(url);
+        setError(null);
+      },
+      () => setError('Use a JPEG, PNG, or WebP photo.'),
+    );
+  }
+
+  return (
+    <section className="photo-slot" aria-label={label}>
+      <img src={src} alt={alt} />
+      <p>{label}</p>
+      <div className="photo-actions">
+        <button type="button" className="text" onClick={() => input.current?.click()}>
+          Replace
+        </button>
+        {uploaded ? (
+          <button
+            type="button"
+            className="text"
+            onClick={() => {
+              onClear();
+              setError(null);
+            }}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+      <input
+        ref={input}
+        className="photo-file"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        aria-label={`${label} photo`}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          onPick(file);
+        }}
+      />
+      {error === null ? null : <p role="alert">{error}</p>}
+    </section>
   );
 }
 
