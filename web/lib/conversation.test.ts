@@ -198,6 +198,8 @@ test('an example brief keeps the fixture name and does not store answers', () =>
   assert.equal(maya.name, 'Maya');
   assert.equal(maya.ageYears, 5);
   assert.equal(maya.cards.find((card) => card.sectionId === 'allergies')?.text.includes('peanut'), true);
+  assert.equal([...maya.photos, ...maya.cards.map((card) => card.text)].join(' ').includes('His'), false);
+  assert.deepEqual(maya.photos, ['Maya', 'Her dinosaurs', 'A dim corner']);
   assert.equal(maya.cards.every((card) => card.updated === false), true);
   assert.equal(reduceConversation(intakeTree, opened, { type: 'chooseSection', sectionId: 'communication' }), opened);
   const approved = reduceConversation(intakeTree, opened, { type: 'approve' });
@@ -217,11 +219,13 @@ test('an example brief keeps the fixture name and does not store answers', () =>
   assert.equal(jonah.name, 'Jonah');
   assert.equal(jonah.ageYears, 9);
   assert.equal(jonah.cards.find((card) => card.sectionId === 'communication')?.text.includes('picture cards'), true);
+  assert.deepEqual(jonah.photos, ['Jonah', 'His Lego', 'Picture cards']);
   const rowan = parentBrief(
     intakeTree,
     reduceConversation(intakeTree, initialConversation(), { type: 'openExample', id: 'rowan' }),
   );
   assert.equal(rowan.ageYears, 7);
+  assert.deepEqual(rowan.photos, ['Rowan', 'His headphones', 'Quiet corner']);
   assert.equal(rowan.summary.includes('Disney'), true);
   assert.equal(rowan.summary.includes('quiet breaks'), true);
 });

@@ -448,7 +448,7 @@ function BriefScreen({
       </article>
       <p className="section-label">Photos</p>
       <div className="photos">
-        {[brief.name, 'His headphones', 'Quiet corner'].map((label) => (
+        {brief.photos.map((label) => (
           <figure key={label}>
             <span className="photo-tile" aria-hidden="true">
               <PhotoMark />

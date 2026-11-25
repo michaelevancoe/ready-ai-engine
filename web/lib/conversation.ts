@@ -50,6 +50,7 @@ export interface ParentBrief {
   readonly name: string;
   readonly ageYears: number;
   readonly summary: string;
+  readonly photos: readonly [string, string, string];
   readonly cards: readonly BriefCard[];
 }
 
@@ -172,6 +173,7 @@ export function parentBrief(tree: IntakeTree, conversation: Conversation): Paren
     name: tree.child.preferredName,
     ageYears: tree.child.ageYears,
     summary: sectionProse(tree, conversation, 'about'),
+    photos: [tree.child.preferredName, 'His headphones', 'Quiet corner'],
     cards: tree.sections.flatMap((section) => {
       if (section.id === 'about') return [];
       return [
@@ -345,6 +347,7 @@ function exampleParentBrief(id: ExampleId): ParentBrief {
     name: example.name,
     ageYears: example.ageYears,
     summary: example.summary,
+    photos: example.photos,
     cards: example.cards.map((card) => ({ ...card, updated: false })),
   };
 }
