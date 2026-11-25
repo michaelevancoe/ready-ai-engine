@@ -24,6 +24,7 @@ export default function Page() {
   const { visit, dispatch } = useVisit();
   const view = presentAsk(intakeTree, visit.conversation);
   const [reading, setReading] = useState<Reading>({ phase: 'idle' });
+  const [held, setHeld] = useState<{ progress: string; index: number } | null>(null);
   const [spoken, setSpoken] = useState<string | null>(null);
   const [savedTitle, setSavedTitle] = useState<string | null>(null);
   const token = useRef(0);
@@ -42,6 +43,7 @@ export default function Page() {
     const sectionId = sectionKey(current);
     const beat = current.talk.mode === 'ask' && next.talk.mode === 'ask' && sectionId !== null;
     if (beat) setSpoken(text.trim());
+    setHeld(beat && view.kind === 'question' ? { progress: view.progress, index: view.index } : null);
     if (current.talk.mode === 'fix' && next.talk.mode === 'brief' && title !== null) setSavedTitle(title);
     dispatch({ type: 'conversation', event: { type: 'answer', text } });
     if (!beat || sectionId === null) {
@@ -117,6 +119,7 @@ export default function Page() {
         <QuestionScreen
           ask={view}
           locked={locked}
+          held={locked ? held : null}
           readyLine={readyLine}
           spoken={spoken}
           onAnswer={onAnswer}
@@ -178,6 +181,7 @@ function StartScreen({
 function QuestionScreen({
   ask,
   locked,
+  held,
   readyLine,
   spoken,
   onAnswer,
@@ -185,6 +189,7 @@ function QuestionScreen({
 }: {
   ask: Extract<AskView, { kind: 'question' }>;
   locked: boolean;
+  held: { progress: string; index: number } | null;
   readyLine: string | null;
   spoken: string | null;
   onAnswer: (text: string) => void;
@@ -267,12 +272,12 @@ function QuestionScreen({
         <>
           <p className="guided">Guided by Ready</p>
           <p className="progress-label">
-            <span>{ask.progress}</span>
+            <span>{held === null ? ask.progress : held.progress}</span>
             <span>Every question required</span>
           </p>
           <div className="bars" aria-hidden="true">
             {Array.from({ length: ask.total }, (_, index) => (
-              <span className={index < ask.index ? 'on' : undefined} key={index} />
+              <span className={index < (held === null ? ask.index : held.index) ? 'on' : undefined} key={index} />
             ))}
           </div>
         </>
