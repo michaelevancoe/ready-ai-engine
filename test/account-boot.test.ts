@@ -115,3 +115,42 @@ test('account boot chooses the one church and restores the leader row', async ()
     restore(previous);
   }
 });
+
+test('saved answers reopen on the next question', async () => {
+  const previous = new Map(names.map((name) => [name, process.env[name]]));
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const path = new URL(url).pathname;
+    if (path.endsWith('/memberships')) return Response.json([{ organization_id: orgId, role: 'parent' }]);
+    if (path.endsWith('/children')) return Response.json([{ id: childId }]);
+    if (path.endsWith('/intake_answers')) {
+      return Response.json([
+        {
+          answers: {
+            about: { kind: 'answered', text: 'He is quiet.' },
+            loves: { kind: 'answered', text: 'Quiet trains' },
+          },
+        },
+      ]);
+    }
+    return Response.json([]);
+  };
+  try {
+    process.env.READY_VISIT_STORE = 'account';
+    process.env.READY_LOCAL_API_URL = 'http://127.0.0.1:54321';
+    process.env.READY_LOCAL_ANON_KEY = 'local-anon';
+    delete process.env.READY_ORGANIZATION_ID;
+    process.env.READY_ACCOUNT_SESSIONS = JSON.stringify([
+      { userId: parentId, accessToken: 'parent-token', role: 'parent' },
+    ]);
+    const boot = await readStoreBoot();
+    assert.equal(boot.mode, 'account');
+    if (boot.mode !== 'account') return;
+    assert.deepEqual(boot.initial.conversation.talk, { mode: 'ask', nodeId: 'overwhelms' });
+    assert.equal(boot.initial.conversation.answers.loves?.text, 'Quiet trains');
+  } finally {
+    globalThis.fetch = original;
+    restore(previous);
+  }
+});

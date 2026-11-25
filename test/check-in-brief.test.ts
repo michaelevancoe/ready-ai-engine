@@ -474,3 +474,29 @@ test('approveBrief uses the conversation answer, not an edited card', () => {
   assert.equal(brief.lines.find((line) => line.field === 'overwhelms')?.text, 'Surprise loud songs.');
   assert.equal(visit.card.overwhelms, 'Surprise loud songs.');
 });
+
+test('a restored publication republishes an edited answer without a new intake', () => {
+  const restored: Visit = {
+    ...initialVisit(),
+    brief: { phase: 'approved', lines: [{ field: 'loves', label: 'Loves', text: 'Trains' }] },
+    conversation: {
+      talk: { mode: 'approved', source: { type: 'intake' } },
+      answers: {
+        about: { kind: 'answered', text: 'He is quiet.' },
+        loves: { kind: 'answered', text: 'Trains' },
+      },
+      updated: [],
+    },
+  };
+  assert.equal(restored.intake.status, 'idle');
+  let visit = reduceVisit(restored, { type: 'conversation', event: { type: 'viewBrief' } });
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'chooseSection', sectionId: 'loves' } });
+  visit = say(visit, 'Quiet trains');
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  const brief = checkInBrief(visit);
+  assert.equal(brief.status, 'approved');
+  if (brief.status !== 'approved') return;
+  const loves = brief.lines.find((line) => line.field === 'loves')?.text ?? '';
+  assert.equal(loves.includes('Quiet trains'), true);
+  assert.equal(loves.includes('Trains'), false);
+});

@@ -3,6 +3,8 @@ import { isUuid } from '../../src/ids.ts';
 import { isRecord } from '../../src/schema.ts';
 import type { AccountSession } from '../lib/account-store.ts';
 import type { StoreBoot } from '../lib/select-store.ts';
+import { resumeConversation } from '../lib/conversation.ts';
+import { intakeTree } from '../lib/intake-tree.ts';
 import { BRIEF_FIELDS, BRIEF_LABELS, initialVisit, type BriefField, type BriefLine, type Visit } from '../lib/visit.ts';
 import { envValue, readLocalApi } from './local-api.ts';
 
@@ -145,7 +147,9 @@ async function applyParent(
     `/rest/v1/brief_publications?select=lines&organization_id=eq.${organizationId}&child_id=eq.${childId}`,
   );
   let next = visit;
-  if (answers !== null) next = { ...next, conversation: { ...next.conversation, answers: parseAnswers(answers.answers) } };
+  if (answers !== null) {
+    next = { ...next, conversation: resumeConversation(intakeTree, parseAnswers(answers.answers)) };
+  }
   if (brief !== null) next = applyBrief(next, brief);
   if (publication !== null) {
     next = {

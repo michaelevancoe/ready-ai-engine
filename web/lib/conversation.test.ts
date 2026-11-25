@@ -7,6 +7,7 @@ import {
   presentAsk,
   project,
   reduceConversation,
+  resumeConversation,
   type Conversation,
 } from './conversation.ts';
 import { intakeTree } from './intake-tree.ts';
@@ -243,6 +244,15 @@ test('a transcript from speech and a typed string advance the same node', () => 
   assert.deepEqual(spoken.talk, typed.talk);
   assert.deepEqual(spoken.answers, typed.answers);
   assert.equal(promptOf(spoken), 'What does Rowan love, at church or at home?');
+});
+
+test('saved answers resume on the next unanswered question', () => {
+  const cursor = say(say(begin(), 'He is quiet.'), 'Quiet trains');
+  const resumed = resumeConversation(intakeTree, cursor.answers);
+  assert.deepEqual(resumed.talk, cursor.talk);
+  assert.equal(presentAsk(intakeTree, resumed).kind, 'question');
+  assert.equal(resumed.answers.loves?.text, 'Quiet trains');
+  assert.deepEqual(resumeConversation(intakeTree, {}), initialConversation());
 });
 
 function begin(): Conversation {

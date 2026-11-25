@@ -8,7 +8,15 @@ import { approveProfile, submitIntake } from '../lib/desk';
 import { intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
 import { initialReader, reduceReader, type Reader } from '../lib/story-reader';
-import { approvedValue, checkInBrief, childPreferredName, type SocialStory, type Visit, type VisitEvent } from '../lib/visit';
+import {
+  approvedValue,
+  briefAlreadyApproved,
+  checkInBrief,
+  childPreferredName,
+  type SocialStory,
+  type Visit,
+  type VisitEvent,
+} from '../lib/visit';
 import { useVisit } from './visit-shell';
 
 const BEAT_MS = 1200;
@@ -100,7 +108,7 @@ export default function Page() {
       dispatch({ type: 'conversation', event: { type: 'approve' } });
       return;
     }
-    if (visit.intake.status === 'approved') {
+    if (briefAlreadyApproved(visit)) {
       dispatch({ type: 'approveBrief' });
       dispatch({ type: 'conversation', event: { type: 'approve' } });
       return;
