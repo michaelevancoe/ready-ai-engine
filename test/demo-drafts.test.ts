@@ -174,6 +174,23 @@ test('an acknowledgement with a question mark falls back', async () => {
   assert.deepEqual(result.body, { line: PARENT_FALLBACK });
 });
 
+test('an acknowledgement that uses a child pronoun falls back', async () => {
+  for (const line of ['She loves trains.', 'He likes a quiet hello.', 'They love trains.']) {
+    const result = await acknowledgementFrom(line);
+    assert.equal(result.status, 200, line);
+    assert.equal(result.calls, 1, line);
+    assert.deepEqual(result.body, { line: PARENT_FALLBACK }, line);
+  }
+});
+
+test('an acknowledgement that repeats the answer falls back', async () => {
+  const line = 'Quiet mornings work best.';
+  const result = await acknowledgementFrom(line, line);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+});
+
 test('a live acknowledgement asks for sixty tokens and leaves the next question out', async () => {
   const calls: GatewayCall[] = [];
   const logs: string[] = [];
@@ -637,7 +654,7 @@ interface GatewayCall {
   };
 }
 
-async function acknowledgementFrom(line: string): Promise<{
+async function acknowledgementFrom(line: string, answer = 'Picture cards.'): Promise<{
   status: number;
   calls: number;
   body: unknown;
@@ -655,7 +672,7 @@ async function acknowledgementFrom(line: string): Promise<{
       return chatEnvelope({ line });
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+      post('/v1/drafts/acknowledgement', { answer, sectionId: 'communication' }),
     );
     const call = calls[0];
     return {
