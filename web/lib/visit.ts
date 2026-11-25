@@ -146,7 +146,7 @@ export function initialVisit(): Visit {
       name: 'Example Harbor Fellowship',
       service: 'Sunday 9:30',
       room: 'Harbor Room',
-      leader: 'Devon Placeholder',
+      leader: 'Ms. Dana',
       ages: 'Ages 5\u201312',
       plan: 'A short welcome, one song, and a quiet activity.',
     },

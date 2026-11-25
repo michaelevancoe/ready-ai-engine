@@ -21,7 +21,7 @@ test('the same plan writes the same row twice and maps the leader label', () => 
   const start = initialVisit();
   const next = reduceVisit(start, {
     type: 'saveChurch',
-    church: { ...start.church, name: 'Harbor', leader: 'Devon Placeholder' },
+    church: { ...start.church, name: 'Harbor', leader: 'Ms. Dana' },
   });
   const plan = persistDispatch(start, next, scope);
   const first = visitWrites(userId, scope, plan);
@@ -33,7 +33,7 @@ test('the same plan writes the same row twice and maps the leader label', () => 
   if (write?.method !== 'POST') return;
   assert.equal(write.table, 'church_setup');
   assert.equal(write.conflict, 'organization_id');
-  assert.equal(write.row.leader_label, 'Devon Placeholder');
+  assert.equal(write.row.leader_label, 'Ms. Dana');
   assert.equal(write.row.organization_id, scope.organizationId);
 });
 

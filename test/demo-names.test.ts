@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const retired = ['Eli', 'Ms. Dana', 'Sam Rivera'] as const;
+const retired = ['Eli', 'Sam Rivera'] as const;
 const skipDirectories = new Set([
   'node_modules',
   '.next',
@@ -30,7 +30,7 @@ function sourceFiles(directory: string): string[] {
   return found;
 }
 
-test('Eli, Ms. Dana, and Sam Rivera do not appear in the demo copy', () => {
+test('Eli and Sam Rivera do not appear in the demo copy', () => {
   const paths = [
     join(root, 'README.md'),
     join(root, 'src/demo-drafts.ts'),

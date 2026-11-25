@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState, type Dispatch } from 'react';
-import { useAccountChurch } from './visit-shell';
 import { decideAck, type AckResult } from '../lib/acknowledgement';
 import { joinSpoken, presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
@@ -18,7 +17,8 @@ import {
   type Visit,
   type VisitEvent,
 } from '../lib/visit';
-import { useVisit } from './visit-shell';
+import { SundayPrint } from './sunday-print';
+import { useAccountChurch, useChurchPhotos, useVisit } from './visit-shell';
 
 const BEAT_MS = 1200;
 const ACK_LIMIT_MS = 4000;
@@ -604,6 +604,7 @@ function ApprovedScreen({
   visit: Visit;
   dispatch: Dispatch<VisitEvent>;
 }) {
+  const photos = useChurchPhotos();
   const update = approvedValue(visit.update);
   const [reader, setReader] = useState<Reader>(initialReader());
   const request = useRef(0);
@@ -682,6 +683,7 @@ function ApprovedScreen({
 
   return (
     <section aria-label="Ready">
+      <div className="screen-only">
       <div className="identity">
         <span className="portrait" aria-hidden="true">
           {view.name.slice(0, 1)}
@@ -704,6 +706,10 @@ function ApprovedScreen({
         <button type="button" className="text" onClick={onRead}>
           Read {view.name}&apos;s story
         </button>
+        <button type="button" className="outline" onClick={() => window.print()}>
+          <PrinterIcon />
+          Print {view.name}&apos;s Sunday story
+        </button>
       </article>
       <section aria-label="Sunday update" id="sunday-update">
         <h2>Sunday update</h2>
@@ -719,7 +725,29 @@ function ApprovedScreen({
       >
         Something changed? Update the brief
       </button>
+      </div>
+      <SundayPrint visit={visit} photos={photos} />
     </section>
+  );
+}
+
+function PrinterIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7 8V3h10v5" />
+      <path d="M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="7" y="13" width="10" height="8" rx="1" />
+    </svg>
   );
 }
 

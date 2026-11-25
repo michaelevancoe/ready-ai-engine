@@ -84,7 +84,7 @@ test('account boot chooses the one church and restores the leader row', async ()
           name: 'Harbor',
           service: 'Sunday 9:30',
           room: 'Harbor Room',
-          leader_label: 'Devon Placeholder',
+          leader_label: 'Ms. Dana',
           ages: 'Ages 5-12',
           plan: 'A short welcome.',
         },
@@ -107,7 +107,7 @@ test('account boot chooses the one church and restores the leader row', async ()
     assert.equal(boot.scope.organizationId, orgId);
     assert.equal(boot.scope.childId, childId);
     assert.equal(boot.initial.church.name, 'Harbor');
-    assert.equal(boot.initial.church.leader, 'Devon Placeholder');
+    assert.equal(boot.initial.church.leader, 'Ms. Dana');
     assert.equal(boot.initial.notes, initialVisit().notes);
     assert.equal(boot.sessions.length, 2);
   } finally {

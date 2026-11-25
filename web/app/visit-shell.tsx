@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { FICTIONAL_DATA_LABEL } from '../lib/fictional-label';
-import type { ReadyStore } from '../lib/ready-store';
+import type { ChurchPhotoSet, ReadyStore } from '../lib/ready-store';
 import { selectReadyStore, type StoreBoot } from '../lib/select-store';
 import type { DemoRole, Visit, VisitEvent } from '../lib/visit';
 
@@ -38,6 +38,11 @@ export function useVisit(): VisitState {
   const store = useReadyStore();
   const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   return { visit, dispatch: store.dispatch };
+}
+
+export function useChurchPhotos(): ChurchPhotoSet {
+  const store = useReadyStore();
+  return useSyncExternalStore(store.subscribe, store.getChurchPhotos, store.getChurchPhotos);
 }
 
 let scrolledId: string | null = null;
