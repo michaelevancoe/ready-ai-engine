@@ -72,13 +72,23 @@ export interface PersistPlan {
   readonly update: UpdatePersist | null;
 }
 
+const blankPlan: PersistPlan = {
+  answers: null,
+  brief: null,
+  publication: null,
+  notes: null,
+  church: null,
+  lesson: null,
+  update: null,
+};
+
 export function persistDispatch(before: Visit, after: Visit, scope: AccountScope): PersistPlan {
-  const example = showingExample(before) || showingExample(after);
+  if (showingExample(before) || showingExample(after)) return blankPlan;
   return {
-    answers: example || sameAnswers(before.conversation.answers, after.conversation.answers)
+    answers: sameAnswers(before.conversation.answers, after.conversation.answers)
       ? null
       : { organizationId: scope.organizationId, childId: scope.childId, answers: after.conversation.answers },
-    brief: example || sameBrief(before, after)
+    brief: sameBrief(before, after)
       ? null
       : {
           organizationId: scope.organizationId,
@@ -87,7 +97,7 @@ export function persistDispatch(before: Visit, after: Visit, scope: AccountScope
           visibility: after.visibility,
           cardTouched: after.cardTouched,
         },
-    publication: example ? null : publicationChange(before, after, scope),
+    publication: publicationChange(before, after, scope),
     notes:
       before.notes === after.notes
         ? null

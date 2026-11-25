@@ -10,8 +10,7 @@ test('visit reset stays closed unless the local account e2e flag is on', () => {
   assert.equal(resetAccountVisit().status, 404);
   process.env.READY_ACCOUNT_E2E = '1';
   assert.equal(resetAccountVisit().status, 404);
-  const hosted = ['supabase', 'co'].join('.');
-  process.env.READY_LOCAL_DB_URL = `postgresql://postgres:postgres@db.${hosted}:5432/postgres`;
+  process.env.READY_LOCAL_DB_URL = 'postgresql://postgres:postgres@db.example:5432/postgres';
   assert.equal(resetAccountVisit().status, 404);
   process.env.READY_LOCAL_DB_URL = 'https://127.0.0.1:54322/postgres';
   assert.equal(resetAccountVisit().status, 404);

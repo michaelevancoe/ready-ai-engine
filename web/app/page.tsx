@@ -214,10 +214,12 @@ function StartScreen({
           <span className="badge">Complete brief</span>
         </button>
       ))}
-      <p className="footer-note">
-        Examples are built into the demo with fictional children. Nothing typed here is saved, so they are always ready
-        to show.
-      </p>
+      {church === null ? (
+        <p className="footer-note">
+          Examples are built into the demo with fictional children. Nothing typed here is saved, so they are always
+          ready to show.
+        </p>
+      ) : null}
     </section>
   );
 }

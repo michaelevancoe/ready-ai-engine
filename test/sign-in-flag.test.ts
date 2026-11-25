@@ -20,6 +20,8 @@ test('sign-in is on only for the string on', () => {
   assert.equal(signInEnabled('1'), false);
   assert.equal(signInEnabled('ON'), false);
   assert.equal(signInEnabled('on'), true);
+  assert.equal(signInEnabled('on '), false);
+  assert.equal(signInEnabled(' on'), false);
 });
 
 test('the flag defaults off and the deployed demo routes stay the same', async () => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { persistDispatch, type AccountScope } from './persist-visit.ts';
+import { emptyPlan, persistDispatch, type AccountScope } from './persist-visit.ts';
 import { briefLines, initialVisit, reduceVisit, type Visit } from './visit.ts';
 
 const scope: AccountScope = {
@@ -31,7 +31,7 @@ test('a role change and an in-flight lesson do not settle a row', () => {
   assert.equal(persistDispatch(approved, cleared, scope).lesson?.action, 'delete');
 });
 
-test('an example does not save or delete the account child brief', () => {
+test('an example does not save or delete the account child', () => {
   const child: Visit = {
     ...initialVisit(),
     card: { ...initialVisit().card, loves: 'Trains' },
@@ -39,17 +39,18 @@ test('an example does not save or delete the account child brief', () => {
       phase: 'approved',
       lines: [{ field: 'loves', label: 'Loves', text: 'Trains' }],
     },
+    notes: 'Quiet trains.',
+    lessonSource: 'Jonah',
+    lesson: { phase: 'approved', value: { summary: 'A quiet story', steps: ['Sit down'] } },
   };
   const opened = reduceVisit(child, { type: 'conversation', event: { type: 'openExample', id: 'maya' } });
-  const openedPlan = persistDispatch(child, opened, scope);
-  assert.equal(openedPlan.brief, null);
-  assert.equal(openedPlan.publication, null);
-  assert.equal(openedPlan.answers, null);
+  assert.equal(emptyPlan(persistDispatch(child, opened, scope)), true);
   const closed = reduceVisit(opened, { type: 'conversation', event: { type: 'leaveExample' } });
-  const closedPlan = persistDispatch(opened, closed, scope);
-  assert.equal(closedPlan.brief, null);
-  assert.equal(closedPlan.publication, null);
-  assert.equal(closedPlan.answers, null);
+  assert.equal(emptyPlan(persistDispatch(opened, closed, scope)), true);
+  assert.equal(child.notes, 'Quiet trains.');
+  assert.equal(child.lesson.phase, 'approved');
+  if (child.lesson.phase !== 'approved') return;
+  assert.equal(child.lesson.value.summary, 'A quiet story');
   assert.equal(child.brief.phase, 'approved');
   if (child.brief.phase !== 'approved') return;
   assert.equal(child.brief.lines[0]?.text, 'Trains');

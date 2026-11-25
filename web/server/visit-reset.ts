@@ -1,8 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { envValue } from './local-api.ts';
 
-const hosted = ['supabase', 'co'].join('.');
-
 const resetSql = `
 delete from public.brief_publications;
 delete from public.parent_briefs;
@@ -16,7 +14,7 @@ delete from public.church_setup;
 export function resetAccountVisit(): Response {
   if (envValue('READY_ACCOUNT_E2E') !== '1') return new Response(null, { status: 404 });
   const dbUrl = envValue('READY_LOCAL_DB_URL');
-  if (dbUrl === undefined || dbUrl.includes(hosted) || !loopbackPostgres(dbUrl)) {
+  if (dbUrl === undefined || !loopbackPostgres(dbUrl)) {
     return new Response(null, { status: 404 });
   }
   const applied = spawnSync('psql', [dbUrl, '-v', 'ON_ERROR_STOP=1', '-q'], {

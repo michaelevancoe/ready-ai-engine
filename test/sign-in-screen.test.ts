@@ -13,6 +13,10 @@ test('the sign-in screen is off unless the flag is exactly on', () => {
   assert.equal(signInOpen(), false);
   process.env.READY_SIGN_IN = 'true';
   assert.equal(signInOpen(), false);
+  process.env.READY_SIGN_IN = 'on ';
+  assert.equal(signInOpen(), false);
+  process.env.READY_SIGN_IN = ' on';
+  assert.equal(signInOpen(), false);
   process.env.READY_SIGN_IN = 'on';
   assert.equal(signInOpen(), true);
   if (previous === undefined) delete process.env.READY_SIGN_IN;
