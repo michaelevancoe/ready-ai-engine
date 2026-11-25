@@ -390,15 +390,6 @@ button.mic {
   background: var(--terracotta);
 }
 
-.placeholder-note {
-  margin-top: 0.8rem;
-  background: var(--portrait);
-  border: 1px dashed var(--line);
-  border-radius: 0.8rem;
-  padding: 0.7rem 0.8rem;
-  color: var(--muted);
-}
-
 .bubble {
   border: 1px solid var(--line);
   border-radius: 1rem;
@@ -437,6 +428,8 @@ button.mic {
 }
 
 button.mic {
+  display: grid;
+  place-items: center;
   width: 3rem;
   height: 3rem;
   border-radius: 999px;
@@ -480,4 +473,233 @@ button.mic {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+button.example-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  text-align: left;
+}
+
+button.example-card .hint {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.question-card,
+.brief-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  margin-top: 0.9rem;
+}
+
+.question-card {
+  border-color: var(--terracotta);
+}
+
+.brief-card h2,
+.question-card h2 {
+  margin-top: 0.2rem;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  border-radius: 999px;
+  background: var(--loves);
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+}
+
+.top-bar button.back {
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+}
+
+.drafted {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--helps);
+  color: var(--focus);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.lede {
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
+.section-label {
+  margin: 1.15rem 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.photos {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+}
+
+.photos figure {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+}
+
+.photo-tile {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 0.9rem;
+  background: var(--portrait);
+  color: var(--muted);
+}
+
+.photos figcaption {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.brief-card.sectioned {
+  border-left: 0.28rem solid var(--terracotta);
+}
+
+.banner {
+  background: var(--loves);
+  border-radius: 0.8rem;
+  padding: 0.7rem 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  margin-top: 1.2rem;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+button.mic {
+  position: relative;
+}
+
+button.mic .mic-ring {
+  position: absolute;
+  inset: -0.35rem;
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes mic-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.15);
+  }
+}
+
+.mic-timer {
+  margin-left: 0.45rem;
+}
+
+.mic-square {
+  display: block;
+  width: 0.7rem;
+  height: 0.7rem;
+  background: white;
+  border-radius: 0.12rem;
+}
+
+.bubble.reading {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+}
+
+.avatar {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--terracotta);
+  color: white;
+  font-weight: 700;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 0.22rem;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.dots span {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.identity {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.brief-card ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+button.text {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--terracotta);
+  border-radius: 0;
+  font-weight: 600;
+}
+
+a.text-link {
+  color: var(--terracotta);
+  font-weight: 600;
 }

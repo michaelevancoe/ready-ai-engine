@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { answerTree, reviewProfile } from './walk-tree';
+import { answerTree } from './walk-tree';
 
 test('a new question is announced after send', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Start with a new child' }).click();
   const log = page.getByRole('log', { name: 'Conversation' });
   await expect(log).toHaveAttribute('aria-live', 'polite');
   const answer = page.getByRole('textbox', { name: 'Your answer' });
@@ -39,13 +40,17 @@ test('the built page hydrates and submits intake without a GET navigation', asyn
   expect(rejected.headers()['x-robots-tag']).toBe('noindex');
 
   await page.goto('/');
+  await answerTree(page, 'TICK-QUIET-ROOM');
   const posted = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().includes('/v1/intake/profile'),
   );
-  await answerTree(page, 'TICK-QUIET-ROOM');
+  await page.getByRole('button', { name: 'Looks right, approve' }).click();
   const request = await posted;
-  expect(request.postDataJSON()).toMatchObject({ sensoryNotes: 'TICK-QUIET-ROOM', preferredName: 'Rowan', ageYears: 7 });
-  await reviewProfile(page);
-  await expect(page.getByRole('region', { name: 'Sensory considerations' })).toContainText('TICK-QUIET-ROOM');
+  expect(request.postDataJSON()).toMatchObject({
+    sensoryNotes: 'TICK-QUIET-ROOM.',
+    preferredName: 'Rowan',
+    ageYears: 7,
+  });
+  await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
   expect(new URL(page.url()).search).toBe('');
 });

@@ -39,7 +39,7 @@ Tests mock the network. They do not need Cloudflare or Supabase credentials.
 
 Run the demo on this machine for Avery Sampleton, parent of Rowan Sampleton, in Example Harbor Fellowship. The parent page asks one question at a time from `web/lib/intake-tree.ts`. The wording is a placeholder pending a professional question set.
 
-Edit that file to change a question, its prompt, a branch, a follow-up, the medical opt-in, the fix prompts, or the profile section a node writes. A later question update is a pull request that edits `web/lib/intake-tree.ts`. Voice uses the browser speech API and stores no audio. Approve the draft to see Approved.
+Edit that file to change a question, its prompt, a branch, or a follow-up. The tree is nine required sections, including Toileting, Allergies & health, and Behavior & safety, and every node is required. A later professional question set is a pull request that edits `web/lib/intake-tree.ts`. Voice uses the browser speech API and stores no audio. Approve the brief to see the child ready for Sunday.
 
 The demo process keeps the fictional church in memory and signs the Avery session on each request. The page posts to its own address. It forwards `/v1` to that process only when `READY_LOCAL_DEMO` is `1`. `npm run demo` does not set that variable.
 
@@ -49,7 +49,7 @@ The demo uses the mock unless you set `READY_DEMO_MODEL` to `live`. Any other va
 
 **Parent**, **Volunteer**, and **Leader** are links at the top. They share one visit in the browser. A refresh resets that visit. Mock mode stays the default.
 
-Avery Sampleton uses Parent to approve Rowan's profile and a Sunday brief. Avery does not write the Sunday update. The brief keeps the visible fields that have text at the moment of approval. The medical field starts off. Avery must turn it on and approve again before the brief includes it. Avery sees the Sunday update only after Devon approves it.
+Avery Sampleton uses Parent to answer the questions and approve Rowan's brief. Avery does not write the Sunday update. The brief keeps the visible fields that have text at the moment of approval. Avery sees the Sunday update only after Devon approves it.
 
 Theo Park uses Volunteer to read that brief and save notes after Sunday. Those notes stay on the volunteer and leader screens. Volunteer shows no profile text before the brief is approved. Volunteer sees the lesson only after Devon approves it.
 

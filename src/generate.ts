@@ -24,6 +24,7 @@ export interface GenerateInput<T> {
   env: WorkerBindings;
   fetch: typeof fetch;
   log?: (event: SafeLog) => void;
+  maxTokens?: number;
 }
 
 interface Attempt {
@@ -55,6 +56,7 @@ async function callGateway(
   messages: readonly ChatMessage[],
   schemaName: string,
   schema: JsonSchema,
+  maxTokens: number | undefined,
 ): Promise<unknown> {
   let response: Response;
   try {
@@ -68,6 +70,7 @@ async function callGateway(
       body: JSON.stringify({
         model: `${target.provider}/${target.model}`,
         messages,
+        ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
         response_format: {
           type: 'json_schema',
           json_schema: {
@@ -129,6 +132,7 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
         input.messages,
         input.schemaName,
         input.schema,
+        input.maxTokens,
       );
       const content = extractContent(envelope);
       let decoded: unknown;

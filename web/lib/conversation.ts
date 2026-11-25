@@ -1,97 +1,93 @@
 import { spaceSentences } from './desk.ts';
-import type { IntakeNode, IntakeSection, IntakeTree, Write } from './intake-tree.ts';
+import { exampleBrief, exampleList, type ExampleId } from './example-briefs.ts';
+import {
+  isSectionId,
+  type Follow,
+  type IntakeNode,
+  type IntakeSection,
+  type IntakeTree,
+  type SectionId,
+  type Write,
+} from './intake-tree.ts';
 
-export type NodeAnswer = { readonly kind: 'answered'; readonly text: string } | { readonly kind: 'skipped' };
+export type { ExampleId, SectionId };
+
+export type BriefSource = { readonly type: 'intake' } | { readonly type: 'example'; readonly id: ExampleId };
 
 export type Talk =
-  | { readonly mode: 'intro' }
+  | { readonly mode: 'start' }
   | { readonly mode: 'ask'; readonly nodeId: string }
-  | { readonly mode: 'medicalOffer' }
-  | { readonly mode: 'reviewWait' }
-  | { readonly mode: 'fixPick' }
-  | { readonly mode: 'fixReason'; readonly sectionId: string }
-  | {
-      readonly mode: 'fixing';
-      readonly sectionId: string;
-      readonly nodeId: string;
-      readonly reason: string;
-      readonly done: boolean;
-    };
+  | { readonly mode: 'brief'; readonly source: BriefSource }
+  | { readonly mode: 'fix'; readonly sectionId: SectionId; readonly nodeId: string }
+  | { readonly mode: 'approved'; readonly source: BriefSource };
+
+export type NodeAnswer = { readonly kind: 'answered'; readonly text: string };
 
 export interface Conversation {
   readonly talk: Talk;
   readonly answers: Readonly<Record<string, NodeAnswer>>;
-  readonly medical: 'unasked' | 'declined' | 'open';
+  readonly updated: readonly SectionId[];
 }
 
 export type ConversationEvent =
-  | { readonly type: 'start' }
+  | { readonly type: 'beginIntake' }
+  | { readonly type: 'openExample'; readonly id: ExampleId }
+  | { readonly type: 'leaveExample' }
   | { readonly type: 'answer'; readonly text: string }
-  | { readonly type: 'skip' }
-  | { readonly type: 'declineMedical' }
-  | { readonly type: 'acceptMedical' }
-  | { readonly type: 'beginFix' }
   | { readonly type: 'chooseSection'; readonly sectionId: string }
-  | { readonly type: 'giveReason'; readonly text: string }
-  | { readonly type: 'leaveFix' }
-  | { readonly type: 'finishFix' }
-  | { readonly type: 'reopen' };
+  | { readonly type: 'approve' }
+  | { readonly type: 'viewBrief' }
+  | { readonly type: 'reopenQuestions' };
 
-export interface AskLine {
-  readonly from: 'ready' | 'parent';
+export interface BriefCard {
+  readonly sectionId: SectionId;
+  readonly label: string;
   readonly text: string;
+  readonly updated: boolean;
 }
 
-export interface FixingView {
-  readonly label: string;
-  readonly reason: string;
-  readonly done: boolean;
+export interface ParentBrief {
+  readonly name: string;
+  readonly ageYears: number;
+  readonly summary: string;
+  readonly photos: readonly [string, string, string];
+  readonly cards: readonly BriefCard[];
 }
 
 export type AskView =
   | {
+      readonly kind: 'start';
+      readonly examples: readonly {
+        readonly id: ExampleId;
+        readonly name: string;
+        readonly ageYears: number;
+        readonly blurb: string;
+      }[];
+    }
+  | {
       readonly kind: 'question';
-      readonly lines: readonly AskLine[];
+      readonly nodeId: string;
+      readonly prompt: string;
       readonly progress: string;
-      readonly countedIndex: number;
-      readonly countedTotal: number;
-      readonly onMedical: boolean;
+      readonly mark: string;
+      readonly index: number;
+      readonly total: number;
       readonly placeholder: string;
       readonly chips: readonly string[];
       readonly closeChip: string | null;
-      readonly skip: boolean;
-      readonly leave: string;
-      readonly fixing: FixingView | null;
+      readonly exactChip: string | null;
+      readonly priorAnswer: string | null;
+      readonly followAnswer: string | null;
+      readonly fixing: boolean;
+      readonly sectionTitle: string;
+      readonly sections: readonly { readonly id: SectionId; readonly label: string }[];
     }
   | {
-      readonly kind: 'offer';
-      readonly lines: readonly AskLine[];
-      readonly countedTotal: number;
-      readonly leave: string;
-      readonly skipLabel: string;
-      readonly acceptLabel: string;
+      readonly kind: 'brief';
+      readonly brief: ParentBrief;
+      readonly actions: 'intake' | 'example';
     }
-  | {
-      readonly kind: 'fixPick';
-      readonly lines: readonly AskLine[];
-      readonly chips: readonly { readonly id: string; readonly label: string }[];
-      readonly leave: string;
-    }
-  | {
-      readonly kind: 'fixReason';
-      readonly lines: readonly AskLine[];
-      readonly label: string;
-      readonly placeholder: string;
-      readonly leave: string;
-    }
-  | { readonly kind: 'review' };
-
-export interface ProjectRow {
-  readonly sectionId: string;
-  readonly label: string;
-  readonly state: 'drafted' | 'skipped';
-  readonly text: string;
-}
+  | { readonly kind: 'approved'; readonly name: string; readonly headline: string };
 
 export interface IntakePost {
   readonly preferredName: string;
@@ -108,44 +104,39 @@ export interface ProjectedCard {
   readonly whatHelps: string;
   readonly communication: string;
   readonly sensory: string;
+  readonly toileting: string;
+  readonly allergies: string;
+  readonly calming: string;
   readonly medical: string;
 }
 
 export interface Projection {
   readonly post: IntakePost;
   readonly card: ProjectedCard;
-  readonly rows: readonly ProjectRow[];
 }
 
 export function initialConversation(): Conversation {
-  return { talk: { mode: 'intro' }, answers: {}, medical: 'unasked' };
+  return { talk: { mode: 'start' }, answers: {}, updated: [] };
 }
 
 export function reduceConversation(tree: IntakeTree, conversation: Conversation, event: ConversationEvent): Conversation {
   switch (event.type) {
-    case 'start':
-      return begin(tree, conversation);
+    case 'beginIntake':
+      return beginIntake(tree, conversation);
+    case 'openExample':
+      return openExample(conversation, event.id);
+    case 'leaveExample':
+      return leaveExample(conversation);
     case 'answer':
-      return commit(tree, conversation, { kind: 'answered', text: event.text });
-    case 'skip':
-      return commit(tree, conversation, { kind: 'skipped' });
-    case 'declineMedical':
-      return decline(conversation);
-    case 'acceptMedical':
-      return accept(tree, conversation);
-    case 'beginFix':
-      return openFix(conversation);
+      return commitAnswer(tree, conversation, event.text);
     case 'chooseSection':
       return chooseSection(tree, conversation, event.sectionId);
-    case 'giveReason':
-      if (conversation.talk.mode !== 'fixReason') return conversation;
-      return commit(tree, conversation, { kind: 'answered', text: event.text });
-    case 'leaveFix':
-      return leaveFix(conversation);
-    case 'finishFix':
-      return finishFix(conversation);
-    case 'reopen':
-      return reopen(tree, conversation);
+    case 'approve':
+      return approve(conversation);
+    case 'viewBrief':
+      return viewBrief(conversation);
+    case 'reopenQuestions':
+      return reopenQuestions(tree, conversation);
     default: {
       const leftover: never = event;
       return leftover;
@@ -155,19 +146,19 @@ export function reduceConversation(tree: IntakeTree, conversation: Conversation,
 
 export function presentAsk(tree: IntakeTree, conversation: Conversation): AskView {
   switch (conversation.talk.mode) {
-    case 'intro':
-      return introView(tree);
+    case 'start':
+      return startView();
     case 'ask':
-    case 'fixing':
+    case 'fix':
       return questionView(tree, conversation);
-    case 'medicalOffer':
-      return offerView(tree, conversation);
-    case 'fixPick':
-      return fixPickView(tree);
-    case 'fixReason':
-      return fixReasonView(tree, conversation);
-    case 'reviewWait':
-      return { kind: 'review' };
+    case 'brief':
+      return {
+        kind: 'brief',
+        brief: parentBrief(tree, conversation),
+        actions: conversation.talk.source.type === 'example' ? 'example' : 'intake',
+      };
+    case 'approved':
+      return approvedView(tree, conversation.talk.source);
     default: {
       const leftover: never = conversation.talk;
       return leftover;
@@ -175,11 +166,29 @@ export function presentAsk(tree: IntakeTree, conversation: Conversation): AskVie
   }
 }
 
+export function parentBrief(tree: IntakeTree, conversation: Conversation): ParentBrief {
+  const source = briefSource(conversation);
+  if (source?.type === 'example') return exampleParentBrief(source.id);
+  return {
+    name: tree.child.preferredName,
+    ageYears: tree.child.ageYears,
+    summary: sectionProse(tree, conversation, 'about'),
+    photos: [tree.child.preferredName, 'His headphones', 'Quiet corner'],
+    cards: tree.sections.flatMap((section) => {
+      if (section.id === 'about') return [];
+      return [
+        {
+          sectionId: section.id,
+          label: section.reviewLabel,
+          text: sectionProse(tree, conversation, section.id),
+          updated: conversation.updated.includes(section.id),
+        },
+      ];
+    }),
+  };
+}
+
 export function project(tree: IntakeTree, conversation: Conversation): Projection {
-  const medical =
-    conversation.medical === 'declined'
-      ? ''
-      : joined(tree, conversation, (write) => write.target === 'card' && write.key === 'medical');
   return {
     post: {
       preferredName: tree.child.preferredName,
@@ -195,65 +204,35 @@ export function project(tree: IntakeTree, conversation: Conversation): Projectio
       whatHelps: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'whatHelps'),
       communication: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'communication'),
       sensory: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'sensory'),
-      medical,
+      toileting: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'toileting'),
+      allergies: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'allergies'),
+      calming: joined(tree, conversation, (write) => write.target === 'card' && write.key === 'calming'),
+      medical: '',
     },
-    rows: tree.sections.map((section) => rowFor(tree, conversation, section)),
   };
 }
 
-function begin(tree: IntakeTree, conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'intro') return conversation;
-  const first = countedSections(tree)[0];
+function beginIntake(tree: IntakeTree, conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'start') return conversation;
+  const first = tree.sections[0];
   if (first === undefined) return conversation;
   return { ...conversation, talk: { mode: 'ask', nodeId: first.nodeId } };
 }
 
-function decline(conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'medicalOffer') return conversation;
-  return { ...conversation, talk: { mode: 'reviewWait' }, medical: 'declined' };
+function openExample(conversation: Conversation, id: ExampleId): Conversation {
+  if (conversation.talk.mode !== 'start') return conversation;
+  return { ...conversation, talk: { mode: 'approved', source: { type: 'example', id } } };
 }
 
-function accept(tree: IntakeTree, conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'medicalOffer') return conversation;
-  const section = tree.sections.find((item) => item.kind === 'medical');
-  if (section === undefined) return conversation;
-  return { ...conversation, talk: { mode: 'ask', nodeId: section.nodeId }, medical: 'open' };
-}
-
-function openFix(conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'reviewWait') return conversation;
-  return { ...conversation, talk: { mode: 'fixPick' } };
-}
-
-function chooseSection(tree: IntakeTree, conversation: Conversation, sectionId: string): Conversation {
-  if (conversation.talk.mode !== 'fixPick') return conversation;
-  const section = sectionById(tree, sectionId);
-  if (section === undefined) return conversation;
-  return { ...conversation, talk: { mode: 'fixReason', sectionId: section.id } };
-}
-
-function beginFix(tree: IntakeTree, conversation: Conversation, sectionId: string, reason: string): Conversation {
-  if (conversation.talk.mode !== 'fixReason' || conversation.talk.sectionId !== sectionId) return conversation;
-  const trimmed = reason.trim();
-  if (trimmed.length === 0) return conversation;
-  const section = sectionById(tree, sectionId);
-  if (section === undefined) return conversation;
-  return {
-    ...conversation,
-    talk: { mode: 'fixing', sectionId: section.id, nodeId: section.nodeId, reason: trimmed, done: false },
-  };
-}
-
-function leaveFix(conversation: Conversation): Conversation {
+function leaveExample(conversation: Conversation): Conversation {
   switch (conversation.talk.mode) {
-    case 'fixPick':
-    case 'fixReason':
-    case 'fixing':
-      return { ...conversation, talk: { mode: 'reviewWait' } };
-    case 'intro':
+    case 'brief':
+    case 'approved':
+      if (conversation.talk.source.type !== 'example') return conversation;
+      return { ...conversation, talk: { mode: 'start' } };
+    case 'start':
     case 'ask':
-    case 'medicalOffer':
-    case 'reviewWait':
+    case 'fix':
       return conversation;
     default: {
       const leftover: never = conversation.talk;
@@ -262,224 +241,162 @@ function leaveFix(conversation: Conversation): Conversation {
   }
 }
 
-function finishFix(conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'fixing') return conversation;
-  return { ...conversation, talk: { mode: 'reviewWait' } };
+function approve(conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'brief') return conversation;
+  return { ...conversation, talk: { mode: 'approved', source: conversation.talk.source } };
 }
 
-function reopen(tree: IntakeTree, conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'reviewWait') return conversation;
-  const last = countedSections(tree).at(-1);
-  if (last === undefined) return conversation;
-  return { ...conversation, talk: { mode: 'ask', nodeId: last.nodeId } };
+function viewBrief(conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'approved') return conversation;
+  return { ...conversation, talk: { mode: 'brief', source: conversation.talk.source } };
 }
 
-function commit(tree: IntakeTree, conversation: Conversation, answer: NodeAnswer): Conversation {
-  if (answer.kind === 'answered' && answer.text.trim() === '') return conversation;
-  if (conversation.talk.mode === 'fixReason') {
-    if (answer.kind !== 'answered') return conversation;
-    return beginFix(tree, conversation, conversation.talk.sectionId, answer.text);
-  }
-  const located = locate(tree, conversation);
-  if (located === null || (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing')) return conversation;
-  const { node, section } = located;
-  const stored = conversation.answers[node.id];
-  const followTarget = tree.nodes.some((other) => other.follow?.nodeId === node.id);
-  const committed =
-    answer.kind === 'skipped' && followTarget && stored?.kind === 'answered' ? stored : answer;
-  const followId = committed.kind === 'answered' ? openedFollow(tree, node, committed.text) : null;
-  const answers = dropClosedFollow({ ...conversation.answers, [node.id]: committed }, node, followId);
-  const medical = section.kind === 'medical' && answer.kind === 'answered' ? 'open' : conversation.medical;
-  if (conversation.talk.mode === 'fixing') {
-    if (followId !== null) {
-      return {
-        talk: {
-          mode: 'fixing',
-          sectionId: conversation.talk.sectionId,
-          nodeId: followId,
-          reason: conversation.talk.reason,
-          done: false,
-        },
-        answers,
-        medical,
-      };
+function reopenQuestions(tree: IntakeTree, conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'brief' || conversation.talk.source.type !== 'intake') return conversation;
+  const first = tree.sections[0];
+  if (first === undefined) return conversation;
+  return { ...conversation, talk: { mode: 'ask', nodeId: first.nodeId } };
+}
+
+function chooseSection(tree: IntakeTree, conversation: Conversation, sectionId: string): Conversation {
+  if (conversation.talk.mode === 'brief' && conversation.talk.source.type !== 'intake') return conversation;
+  if (conversation.talk.mode !== 'brief' && conversation.talk.mode !== 'fix') return conversation;
+  if (!isSectionId(sectionId)) return conversation;
+  const section = sectionById(tree, sectionId);
+  if (section === undefined) return conversation;
+  return { ...conversation, talk: { mode: 'fix', sectionId: section.id, nodeId: section.nodeId } };
+}
+
+function commitAnswer(tree: IntakeTree, conversation: Conversation, text: string): Conversation {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return conversation;
+  if (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fix') return conversation;
+  const node = nodeById(tree, conversation.talk.nodeId);
+  if (node === undefined) return conversation;
+  const section = sectionById(tree, node.sectionId);
+  if (section === undefined) return conversation;
+  const followId = openedFollow(tree, node, trimmed);
+  const answers = dropClosedFollow({ ...conversation.answers, [node.id]: { kind: 'answered', text: trimmed } }, node, followId);
+  if (followId !== null) {
+    if (conversation.talk.mode === 'fix') {
+      return { ...conversation, talk: { mode: 'fix', sectionId: conversation.talk.sectionId, nodeId: followId }, answers };
     }
-    return { talk: { ...conversation.talk, done: true }, answers, medical };
+    return { ...conversation, talk: { mode: 'ask', nodeId: followId }, answers };
   }
-  if (section.kind === 'medical') return { talk: { mode: 'reviewWait' }, answers, medical };
-  if (followId !== null) return { talk: { mode: 'ask', nodeId: followId }, answers, medical };
-  return { talk: afterSection(tree, section.id, conversation.medical), answers, medical };
+  if (conversation.talk.mode === 'fix') {
+    return {
+      talk: { mode: 'brief', source: { type: 'intake' } },
+      answers,
+      updated: appendUpdated(conversation.updated, conversation.talk.sectionId),
+    };
+  }
+  const next = nextSection(tree, section.id);
+  if (next === undefined) return { talk: { mode: 'brief', source: { type: 'intake' } }, answers, updated: conversation.updated };
+  return { ...conversation, talk: { mode: 'ask', nodeId: next.nodeId }, answers };
 }
 
-function introView(tree: IntakeTree): AskView {
-  const first = countedSections(tree)[0];
-  if (first === undefined) return { kind: 'review' };
-  return questionView(tree, { talk: { mode: 'ask', nodeId: first.nodeId }, answers: {}, medical: 'unasked' });
+function startView(): AskView {
+  return {
+    kind: 'start',
+    examples: exampleList().map((example) => ({
+      id: example.id,
+      name: example.name,
+      ageYears: example.ageYears,
+      blurb: example.blurb,
+    })),
+  };
 }
 
 function questionView(tree: IntakeTree, conversation: Conversation): AskView {
-  if (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing') return { kind: 'review' };
+  if (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fix') return startView();
   const node = nodeById(tree, conversation.talk.nodeId);
   const section = node === undefined ? undefined : sectionById(tree, node.sectionId);
-  if (node === undefined || section === undefined) return { kind: 'review' };
-  const counted = countedSections(tree);
-  const progress = progressFor(section, counted);
-  const done = conversation.talk.mode === 'fixing' && conversation.talk.done;
-  const first = counted[0];
+  if (node === undefined || section === undefined) return startView();
+  const index = tree.sections.findIndex((item) => item.id === section.id) + 1;
+  const fixing = conversation.talk.mode === 'fix';
   return {
     kind: 'question',
-    lines: questionLines(tree, conversation, node, section),
-    progress: progress.label,
-    countedIndex: progress.index,
-    countedTotal: counted.length,
-    onMedical: section.kind === 'medical',
-    placeholder: done ? '' : node.placeholder,
-    chips: done ? [] : (node.chips ?? []),
-    closeChip: done || node.closeChip === undefined ? null : node.closeChip,
-    skip: !done,
-    leave:
-      conversation.talk.mode === 'fixing'
-        ? tree.fixCopy.back
-        : conversation.talk.mode === 'ask' && node.id === first?.nodeId
-          ? 'Home'
-          : 'Save & exit',
-    fixing:
-      conversation.talk.mode === 'fixing'
-        ? { label: section.reviewLabel, reason: conversation.talk.reason, done: conversation.talk.done }
-        : null,
+    nodeId: node.id,
+    prompt: fill(node.prompt, tree, conversation, node.id),
+    progress: `Section ${index} of ${tree.sections.length} · ${section.title}`,
+    mark: fixing ? `${section.title} · FIX` : `${section.title} · REQUIRED`,
+    index,
+    total: tree.sections.length,
+    placeholder: node.placeholder,
+    chips: node.chips ?? [],
+    closeChip: node.closeChip ?? null,
+    exactChip: node.follow?.when === 'unless' ? node.follow.text : null,
+    priorAnswer: answerText(conversation, node.id),
+    followAnswer: node.follow === undefined ? null : answerText(conversation, node.follow.nodeId),
+    fixing,
+    sectionTitle: section.title,
+    sections: tree.sections.flatMap((item) =>
+      item.id === 'about' ? [] : [{ id: item.id, label: item.reviewLabel }],
+    ),
   };
 }
 
-function offerView(tree: IntakeTree, conversation: Conversation): AskView {
-  const lines: AskLine[] = [];
-  const previous = lastAnswer(tree, conversation);
-  if (previous !== null) lines.push({ from: 'parent', text: previous });
-  lines.push({ from: 'ready', text: tree.medicalOffer.lead });
-  lines.push({ from: 'ready', text: tree.medicalOffer.prompt });
+function approvedView(tree: IntakeTree, source: BriefSource): AskView {
+  const name = source.type === 'example' ? exampleBrief(source.id).name : tree.child.preferredName;
+  return { kind: 'approved', name, headline: `${name} is ready for Sunday` };
+}
+
+function exampleParentBrief(id: ExampleId): ParentBrief {
+  const example = exampleBrief(id);
   return {
-    kind: 'offer',
-    lines,
-    countedTotal: countedSections(tree).length,
-    leave: 'Save & exit',
-    skipLabel: tree.medicalOffer.skipLabel,
-    acceptLabel: tree.medicalOffer.acceptLabel,
+    name: example.name,
+    ageYears: example.ageYears,
+    summary: example.summary,
+    photos: example.photos,
+    cards: example.cards.map((card) => ({ ...card, updated: false })),
   };
 }
 
-function fixPickView(tree: IntakeTree): AskView {
-  return {
-    kind: 'fixPick',
-    lines: [{ from: 'ready', text: tree.fixCopy.pick }],
-    chips: tree.sections.map((section) => ({ id: section.id, label: section.reviewLabel })),
-    leave: tree.fixCopy.back,
-  };
-}
-
-function fixReasonView(tree: IntakeTree, conversation: Conversation): AskView {
-  if (conversation.talk.mode !== 'fixReason') return { kind: 'review' };
-  const section = sectionById(tree, conversation.talk.sectionId);
-  if (section === undefined) return { kind: 'review' };
-  return {
-    kind: 'fixReason',
-    lines: [
-      { from: 'ready', text: tree.fixCopy.pick },
-      { from: 'parent', text: section.reviewLabel },
-      { from: 'ready', text: tree.fixCopy.reason },
-    ],
-    label: section.reviewLabel,
-    placeholder: tree.fixCopy.reasonPlaceholder,
-    leave: tree.fixCopy.back,
-  };
-}
-
-function questionLines(
-  tree: IntakeTree,
-  conversation: Conversation,
-  node: IntakeNode,
-  section: IntakeSection,
-): AskLine[] {
-  const lines: AskLine[] = [];
-  const fixing = conversation.talk.mode === 'fixing' ? conversation.talk : null;
-  if (fixing !== null) {
-    lines.push({
-      from: 'ready',
-      text: `You said "${section.reviewLabel}" needs a fix: "${fixing.reason}" Let's revisit just that question.`,
-    });
-  } else if (node.id === countedSections(tree)[0]?.nodeId) {
-    for (const line of tree.intro) lines.push({ from: 'ready', text: fill(line, tree, conversation, node.id) });
-  } else {
-    const previous = previousExchange(tree, conversation, node.id);
-    if (previous !== null) lines.push(...previous);
-  }
-  lines.push({ from: 'ready', text: promptText(tree, conversation, node) });
-  if (fixing !== null && !fixing.done) {
-    const earlier = answeredText(conversation, node.id);
-    if (earlier !== null) lines.push({ from: 'parent', text: earlier });
-  }
-  if (fixing?.done) {
-    const spoken = answeredText(conversation, node.id);
-    if (spoken !== null) lines.push({ from: 'parent', text: spoken });
-    lines.push({
-      from: 'ready',
-      text: `Got it. I've updated ${section.reviewLabel}. The other sections stay the same.`,
-    });
-  }
-  return lines;
-}
-
-function previousExchange(tree: IntakeTree, conversation: Conversation, nodeId: string): AskLine[] | null {
-  let previous: { id: string; prompt: string; text: string } | null = null;
-  for (const section of tree.sections) {
-    for (const node of tree.nodes) {
-      if (node.sectionId !== section.id) continue;
-      if (node.id === nodeId) {
-        if (previous === null) return null;
-        return [
-          { from: 'ready', text: fill(previous.prompt, tree, conversation, previous.id) },
-          { from: 'parent', text: previous.text },
-        ];
-      }
-      const text = answeredText(conversation, node.id);
-      if (text !== null) previous = { id: node.id, prompt: node.prompt, text };
+function briefSource(conversation: Conversation): BriefSource | null {
+  switch (conversation.talk.mode) {
+    case 'brief':
+    case 'approved':
+      return conversation.talk.source;
+    case 'start':
+    case 'ask':
+    case 'fix':
+      return null;
+    default: {
+      const leftover: never = conversation.talk;
+      return leftover;
     }
   }
-  return null;
 }
 
-function lastAnswer(tree: IntakeTree, conversation: Conversation): string | null {
-  let text: string | null = null;
-  for (const section of tree.sections) {
-    for (const node of tree.nodes) {
-      if (node.sectionId !== section.id) continue;
-      const spoken = answeredText(conversation, node.id);
-      if (spoken !== null) text = spoken;
+function appendUpdated(updated: readonly SectionId[], id: SectionId): readonly SectionId[] {
+  if (updated.includes(id)) return updated;
+  return [...updated, id];
+}
+
+function nextSection(tree: IntakeTree, sectionId: SectionId): IntakeSection | undefined {
+  const index = tree.sections.findIndex((section) => section.id === sectionId);
+  return tree.sections[index + 1];
+}
+
+function openedFollow(tree: IntakeTree, node: IntakeNode, text: string): string | null {
+  const follow = node.follow;
+  if (follow === undefined) return null;
+  if (tree.nodes.some((other) => other.follow?.nodeId === node.id)) return null;
+  if (!followOpens(follow, text)) return null;
+  return follow.nodeId;
+}
+
+function followOpens(follow: Follow, text: string): boolean {
+  switch (follow.when) {
+    case 'short':
+      return text.trim().length <= follow.maxChars;
+    case 'unless':
+      return text.trim() !== follow.text;
+    default: {
+      const leftover: never = follow;
+      return leftover;
     }
   }
-  return text;
-}
-
-function progressFor(section: IntakeSection, counted: readonly IntakeSection[]): { label: string; index: number } {
-  if (section.kind === 'medical') return { label: 'Optional · Medical', index: counted.length };
-  const index = counted.findIndex((item) => item.id === section.id) + 1;
-  return { label: `Section ${index} of ${counted.length} · ${section.title}`, index };
-}
-
-function locate(tree: IntakeTree, conversation: Conversation): { node: IntakeNode; section: IntakeSection } | null {
-  if (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fixing') return null;
-  const node = nodeById(tree, conversation.talk.nodeId);
-  if (node === undefined) return null;
-  const section = sectionById(tree, node.sectionId);
-  if (section === undefined) return null;
-  return { node, section };
-}
-
-function afterSection(tree: IntakeTree, sectionId: string, medical: Conversation['medical']): Talk {
-  const counted = countedSections(tree);
-  const index = counted.findIndex((section) => section.id === sectionId);
-  const next = counted[index + 1];
-  if (next !== undefined) return { mode: 'ask', nodeId: next.nodeId };
-  if (medical !== 'unasked') return { mode: 'reviewWait' };
-  return { mode: 'medicalOffer' };
 }
 
 function dropClosedFollow(
@@ -494,30 +411,15 @@ function dropClosedFollow(
   return next;
 }
 
-function openedFollow(tree: IntakeTree, node: IntakeNode, text: string): string | null {
-  if (node.follow === undefined) return null;
-  if (tree.nodes.some((other) => other.follow?.nodeId === node.id)) return null;
-  if (text.trim().length > node.follow.maxChars) return null;
-  return node.follow.nodeId;
-}
-
-function rowFor(tree: IntakeTree, conversation: Conversation, section: IntakeSection): ProjectRow {
+function sectionProse(tree: IntakeTree, conversation: Conversation, sectionId: string): string {
   const parts: string[] = [];
-  let skipped = false;
-    for (const node of tree.nodes) {
-      if (node.sectionId !== section.id) continue;
-      if (conversation.answers[node.id]?.kind === 'skipped') skipped = true;
-      const text = spokenPart(tree, conversation, node);
-      if (text !== null) parts.push(text);
-    }
-  const text = spaceSentences(parts.join(' '));
-  const drafted = section.kind === 'medical' ? conversation.medical !== 'declined' && !skipped && text.length > 0 : text.length > 0;
-  return {
-    sectionId: section.id,
-    label: section.reviewLabel,
-    state: drafted ? 'drafted' : 'skipped',
-    text: drafted ? text : '',
-  };
+  for (const node of tree.nodes) {
+    if (node.sectionId !== sectionId) continue;
+    const text = answerText(conversation, node.id);
+    if (text === null) continue;
+    parts.push(finishSentence(text));
+  }
+  return spaceSentences(parts.join(' '));
 }
 
 function joined(tree: IntakeTree, conversation: Conversation, match: (write: Write) => boolean): string {
@@ -526,36 +428,32 @@ function joined(tree: IntakeTree, conversation: Conversation, match: (write: Wri
     for (const node of tree.nodes) {
       if (node.sectionId !== section.id) continue;
       if (!node.writes.some(match)) continue;
-      const text = spokenPart(tree, conversation, node);
+      const text = answerText(conversation, node.id);
       if (text === null) continue;
-      parts.push(text);
+      parts.push(finishSentence(text));
     }
   }
   return spaceSentences(parts.join(' '));
 }
 
-function answeredText(conversation: Conversation, nodeId: string): string | null {
-  const answer = conversation.answers[nodeId];
-  if (answer === undefined || answer.kind !== 'answered') return null;
-  const text = answer.text.trim();
-  return text.length === 0 ? null : text;
+export function joinSpoken(typed: string, chip: string): string {
+  const spoken = finishSentence(chip.trim());
+  const lead = typed.trim();
+  if (lead.length === 0) return spoken;
+  if (/[.!?]$/u.test(lead)) return `${lead} ${spoken}`;
+  return `${lead}. ${spoken}`;
 }
 
-function spokenPart(tree: IntakeTree, conversation: Conversation, node: IntakeNode): string | null {
-  const text = answeredText(conversation, node.id);
-  if (text === null) return null;
-  const follow = tree.nodes.some((other) => other.follow?.nodeId === node.id);
-  if (!follow || /[.!?]$/u.test(text)) return text;
+function finishSentence(text: string): string {
+  if (/[.!?]$/u.test(text)) return text;
   return `${text}.`;
 }
 
-function promptText(tree: IntakeTree, conversation: Conversation, node: IntakeNode): string {
-  const text = fill(node.prompt, tree, conversation, node.id);
-  if (conversation.talk.mode !== 'ask') return text;
-  const section = sectionById(tree, node.sectionId);
-  if (section === undefined || section.kind !== 'counted' || section.nodeId !== node.id) return text;
-  if (countedSections(tree)[0]?.id === section.id) return text;
-  return `${tree.acknowledgement} ${text}`;
+function answerText(conversation: Conversation, nodeId: string): string | null {
+  const answer = conversation.answers[nodeId];
+  if (answer === undefined) return null;
+  const text = answer.text.trim();
+  return text.length === 0 ? null : text;
 }
 
 function fill(template: string, tree: IntakeTree, conversation: Conversation, nodeId: string): string {
@@ -566,13 +464,9 @@ function priorFor(tree: IntakeTree, conversation: Conversation, nodeId: string):
   for (const node of tree.nodes) {
     if (node.follow?.nodeId !== nodeId) continue;
     const answer = conversation.answers[node.id];
-    if (answer?.kind === 'answered') return answer.text.trim().replace(/[.!?]+$/u, '');
+    if (answer !== undefined) return answer.text.trim().replace(/[.!?]+$/u, '');
   }
   return '';
-}
-
-function countedSections(tree: IntakeTree): IntakeSection[] {
-  return tree.sections.filter((section) => section.kind === 'counted');
 }
 
 function nodeById(tree: IntakeTree, id: string): IntakeNode | undefined {

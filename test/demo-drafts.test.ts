@@ -16,6 +16,159 @@ const proseStory = 'You arrive and the room is quiet. Soft music helps.';
 const labelStory =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
 
+const NEXT_QUESTION = 'How does Rowan usually let you know what he needs?';
+
+test('mock acknowledgement returns a line and does not fetch', async () => {
+  let calls = 0;
+  const demo = await DemoContext.open('1', {
+    fetchImpl: async () => {
+      calls += 1;
+      throw new Error('mock must not fetch');
+    },
+  });
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+  );
+  assert.equal(calls, 0);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
+});
+
+test('a live acknowledgement records the intake schema and leaves out the next question', async () => {
+  const calls: GatewayCall[] = [];
+  const logs: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+      const request = new Request(input, init);
+      calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
+      return chatEnvelope({ line: 'Thanks for telling me.' });
+    });
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { line: 'Thanks for telling me.' });
+    const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
+    assert.equal(calls[0]?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
+    assert.equal(calls[0]?.body.max_tokens, 60);
+    assert.equal(calls[0]?.body.model, 'workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    assert.equal(user.includes('Picture cards.'), true);
+    assert.equal(user.includes('communication'), true);
+    assert.equal(user.includes(NEXT_QUESTION), false);
+    assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
+  } finally {
+    console.log = original;
+  }
+});
+
+test('an acknowledgement longer than 500 characters is rejected before fetch', async () => {
+  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(501), sectionId: 'communication' });
+  assert.equal(result.status, 400);
+  assert.equal(result.calls, 0);
+});
+
+test('an unknown acknowledgement section is rejected before fetch', async () => {
+  const result = await rejectedAcknowledgement({ answer: 'Picture cards.', sectionId: 'nope' });
+  assert.equal(result.status, 400);
+  assert.equal(result.calls, 0);
+});
+
+test('an acknowledgement with an extra key is rejected before fetch', async () => {
+  const result = await rejectedAcknowledgement({
+    answer: 'Picture cards.',
+    sectionId: 'communication',
+    prompt: 'Write the next question.',
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.calls, 0);
+});
+
+test('an acknowledgement with a newline comes back as one line', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () => chatEnvelope({ line: 'Thanks.\nThat helps.' }));
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
+});
+
+test('a live acknowledgement asks for sixty tokens and leaves the next question out', async () => {
+  const calls: GatewayCall[] = [];
+  const logs: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  const planted = 'What should we ask after this planted sentence?';
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+      const request = new Request(input, init);
+      calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
+      return chatEnvelope({ line: 'Thanks. That helps.' });
+    });
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
+    const call = calls[0];
+    const user = call?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
+    assert.equal(call?.body.max_tokens, 60);
+    assert.equal(call?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
+    assert.equal(call?.headers.get('cf-aig-collect-log-payload'), 'false');
+    assert.equal(user.includes('Picture cards.'), true);
+    assert.equal(user.includes('communication'), true);
+    assert.equal(user.includes(planted), false);
+    assert.equal(user.includes(NEXT_QUESTION), false);
+    assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
+    assert.equal(logs.some((line) => line.includes('Picture cards.')), false);
+    const safe = logs
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((entry) => entry.endpoint === 'intake.profile');
+    assert.deepEqual(Object.keys(safe ?? {}).sort(), [
+      'attempt',
+      'endpoint',
+      'model',
+      'outcome',
+      'phase',
+      'provider',
+    ]);
+  } finally {
+    console.log = original;
+  }
+});
+
+test('a thrown acknowledgement fetch records the schema and the intake endpoint', async () => {
+  const calls: GatewayCall[] = [];
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+      const request = new Request(input, init);
+      calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
+      throw new Error('down');
+    });
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+    );
+    assert.equal(response.status, 502);
+    assert.ok(calls.length >= 1);
+    const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
+    assert.equal(calls[0]?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
+    assert.equal(user.includes(NEXT_QUESTION), false);
+    assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
+  } finally {
+    console.error = original;
+  }
+});
+
 test('mock drafts echo supplied lines and ignore fetch', async () => {
   const opened = await DemoContext.open('1', {
     fetchImpl: async () => {
@@ -400,9 +553,20 @@ interface GatewayCall {
   headers: Headers;
   body: {
     model?: string;
+    max_tokens?: number;
     messages?: { role?: string; content?: string }[];
     response_format?: { json_schema?: { name?: string } };
   };
+}
+
+async function rejectedAcknowledgement(body: unknown): Promise<{ status: number; calls: number }> {
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return chatEnvelope({ line: 'Thanks. That helps.' });
+  });
+  const response = await demo.handle(post('/v1/drafts/acknowledgement', body));
+  return { status: response.status, calls };
 }
 
 function recordingFetch(calls: GatewayCall[]): typeof fetch {

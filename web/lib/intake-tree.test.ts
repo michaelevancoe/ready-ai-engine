@@ -3,16 +3,34 @@ import { test } from 'node:test';
 import { intakeTree, parseIntakeTree, type IntakeTree, type Write } from './intake-tree.ts';
 
 const NOTE = 'Questions are placeholders pending a professional question set.';
+const BEHAVIOR =
+  'When Rowan is very upset, does he ever hurt himself or others, or run off? If so, what helps in that moment?';
 
-test('the shipped tree parses and carries the placeholder note', () => {
+test('the shipped tree parses nine required sections', () => {
   const parsed = parseIntakeTree(intakeTree);
   assert.equal(parsed.ok, true);
   if (!parsed.ok) return;
   assert.equal(parsed.tree.placeholderNote, NOTE);
   assert.equal(intakeTree.placeholderNote, NOTE);
-  assert.equal(parsed.tree.sections.filter((section) => section.kind === 'counted').length, 6);
-  assert.equal(parsed.tree.nodes.find((node) => node.id === 'helps')?.follow?.maxChars, 40);
-  assert.equal(parsed.tree.nodes.find((node) => node.id === 'helps')?.follow?.nodeId, 'helps-more');
+  assert.equal(parsed.tree.sections.length, 9);
+  assert.deepEqual(
+    parsed.tree.sections.map((section) => section.id),
+    ['about', 'loves', 'overwhelms', 'helps', 'communication', 'sensory', 'toileting', 'allergies', 'behavior'],
+  );
+  const helps = parsed.tree.nodes.find((node) => node.id === 'helps')?.follow;
+  assert.equal(helps?.when, 'short');
+  if (helps?.when !== 'short') return;
+  assert.equal(helps.maxChars, 40);
+  assert.equal(helps.nodeId, 'helps-more');
+  const allergies = parsed.tree.nodes.find((node) => node.id === 'allergies')?.follow;
+  assert.equal(allergies?.when, 'unless');
+  if (allergies?.when !== 'unless') return;
+  assert.equal(allergies.text, 'No known allergies');
+  assert.equal(allergies.nodeId, 'allergies-more');
+  assert.equal(parsed.tree.nodes.find((node) => node.id === 'behavior')?.prompt, BEHAVIOR);
+  assert.equal(parsed.tree.sections.find((section) => section.id === 'behavior')?.title, 'Behavior & safety');
+  assert.equal(parsed.tree.sections.find((section) => section.id === 'behavior')?.reviewLabel, 'Safety & calming');
+  assert.equal(parsed.tree.sections.find((section) => section.id === 'toileting')?.title, 'Toileting');
 });
 
 test('an unreachable node fails and a follow target still parses', () => {
@@ -69,7 +87,38 @@ test('a section node id and a node section id must exist, and node ids are uniqu
   assert.equal(duplicate.error, 'duplicate-node:about');
 });
 
-test('every profile section is written by at least one node', () => {
+test('a medical offer, an optional section, and a skip are rejected', () => {
+  const offered = parseIntakeTree({ ...intakeTree, medicalOffer: { lead: 'One last question.' } });
+  assert.equal(offered.ok, false);
+  if (offered.ok) return;
+  assert.equal(offered.error, 'medical-offer');
+
+  const medical = parseIntakeTree({
+    ...intakeTree,
+    sections: intakeTree.sections.map((item) => (item.id === 'sensory' ? { ...item, kind: 'medical' } : item)),
+  });
+  assert.equal(medical.ok, false);
+  if (medical.ok) return;
+  assert.equal(medical.error, 'medical-offer');
+
+  const optional = parseIntakeTree({
+    ...intakeTree,
+    sections: intakeTree.sections.map((item) => (item.id === 'sensory' ? { ...item, optional: true } : item)),
+  });
+  assert.equal(optional.ok, false);
+  if (optional.ok) return;
+  assert.equal(optional.error, 'optional-section');
+
+  const skipped = parseIntakeTree({
+    ...intakeTree,
+    nodes: intakeTree.nodes.map((item) => (item.id === 'sensory' ? { ...item, skip: true } : item)),
+  });
+  assert.equal(skipped.ok, false);
+  if (skipped.ok) return;
+  assert.equal(skipped.error, 'skip');
+});
+
+test('the profile cards that remain are written by a node', () => {
   const writes = intakeTree.nodes.flatMap((node) => node.writes);
   assert.equal(writes.some(isSummary), true);
   assert.equal(writes.some((write) => isCard(write, 'loves')), true);
@@ -77,15 +126,27 @@ test('every profile section is written by at least one node', () => {
   assert.equal(writes.some((write) => isCard(write, 'whatHelps')), true);
   assert.equal(writes.some((write) => isCard(write, 'communication')), true);
   assert.equal(writes.some((write) => isCard(write, 'sensory')), true);
-  assert.equal(writes.some((write) => isCard(write, 'medical')), true);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'toileting')?.writes, [
+    { target: 'card', key: 'toileting' },
+  ]);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'allergies')?.writes, [
+    { target: 'card', key: 'allergies' },
+  ]);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'allergies-more')?.writes, [
+    { target: 'card', key: 'allergies' },
+  ]);
+  assert.deepEqual(intakeTree.nodes.find((node) => node.id === 'behavior')?.writes, [
+    { target: 'card', key: 'calming' },
+  ]);
 });
 
 function withHelpsFollow(tree: IntakeTree, nodeId: string): IntakeTree {
   return {
     ...tree,
-    nodes: tree.nodes.map((node) =>
-      node.id === 'helps' && node.follow !== undefined ? { ...node, follow: { ...node.follow, nodeId } } : node,
-    ),
+    nodes: tree.nodes.map((node) => {
+      if (node.id !== 'helps' || node.follow?.when !== 'short') return node;
+      return { ...node, follow: { ...node.follow, nodeId } };
+    }),
   };
 }
 
@@ -93,6 +154,6 @@ function isSummary(write: Write): boolean {
   return write.target === 'summary';
 }
 
-function isCard(write: Write, key: 'loves' | 'overwhelms' | 'whatHelps' | 'communication' | 'sensory' | 'medical'): boolean {
+function isCard(write: Write, key: 'loves' | 'overwhelms' | 'whatHelps' | 'communication' | 'sensory'): boolean {
   return write.target === 'card' && write.key === key;
 }
