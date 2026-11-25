@@ -2,8 +2,6 @@ import { spawnSync } from 'node:child_process';
 
 const hosted = ['supabase', 'co'].join('.');
 const password = 'harbor-example-password';
-const orgId = '10000000-0000-4000-8000-000000000001';
-const childId = '10000000-0000-4000-8000-000000000021';
 
 const people = [
   { id: '10000000-0000-4000-8000-000000000011', email: 'avery.parent@example.com', role: 'parent' },
@@ -11,17 +9,7 @@ const people = [
   { id: '10000000-0000-4000-8000-000000000014', email: 'devon.admin@example.com', role: 'leader' },
 ] as const;
 
-function person(role: (typeof people)[number]['role']): (typeof people)[number] {
-  const found = people.find((item) => item.role === role);
-  if (found === undefined) throw new Error(`account e2e needs a ${role}`);
-  return found;
-}
-
 export function accountSeedSql(): string {
-  const parent = person('parent');
-  const memberships = people
-    .map((item) => `('${orgId}', '${item.id}', '${item.role}')`)
-    .join(',\n      ');
   const users = people
     .map(
       (item) => `
@@ -66,12 +54,6 @@ export function accountSeedSql(): string {
     .join('\n');
   return `
     ${users}
-    insert into public.organizations (id, name) values
-      ('${orgId}', 'Example Harbor Fellowship');
-    insert into public.memberships (organization_id, user_id, role) values
-      ${memberships};
-    insert into public.children (id, organization_id, display_name, parent_user_id) values
-      ('${childId}', '${orgId}', 'Rowan Sampleton', '${parent.id}');
   `;
 }
 

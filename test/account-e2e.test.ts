@@ -7,15 +7,16 @@ import { accountSeedSql } from '../scripts/account-e2e-sessions.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the account seed inserts three local users and one child', () => {
+test('the account seed signs in the people the local seed already stores', () => {
   const sql = accountSeedSql();
   assert.equal(sql.includes('avery.parent@example.com'), true);
   assert.equal(sql.includes('cameron.volunteer@example.com'), true);
   assert.equal(sql.includes('devon.admin@example.com'), true);
-  assert.equal(sql.includes("'leader'"), true);
   assert.equal(sql.includes('extensions.crypt'), true);
   assert.equal(sql.includes('auth.identities'), true);
-  assert.equal(sql.split('insert into public.children').length, 2);
+  assert.equal(sql.includes('insert into public.organizations'), false);
+  assert.equal(sql.includes('insert into public.memberships'), false);
+  assert.equal(sql.includes('insert into public.children'), false);
   assert.equal(sql.includes('SERVICE_ROLE'), false);
   const source = readFileSync(join(root, 'scripts/account-e2e-sessions.ts'), 'utf8');
   assert.equal(source.includes('SERVICE_ROLE'), false);
