@@ -2,7 +2,6 @@
 -- Avery Sampleton, parent of Rowan Sampleton, avery.parent@example.com
 -- Blake Sampleton, parent of Quinn Placeholder, blake.parent@example.com
 -- Cameron Placeholder, volunteer, cameron.volunteer@example.com
--- Devon Placeholder, leader, devon.admin@example.com
 
 insert into public.organizations (id, name) values
   ('10000000-0000-4000-8000-000000000001', 'Example Harbor Fellowship');
