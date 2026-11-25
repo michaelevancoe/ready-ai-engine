@@ -52,7 +52,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-fix-profile.png');
   await page.getByRole('button', { name: 'Save fix and see the brief' }).click();
   await expect(page.getByText('Saved. Sensory is updated.')).toBeVisible();
-  await expect(page.getByText('Updated')).toBeVisible();
+  await expect(page.getByText('Updated', { exact: true })).toBeVisible();
   await expect(page.getByText('TICK-SOFTER-SEAT')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fix something else' })).toBeVisible();
   const posted = page.waitForRequest(
