@@ -11,17 +11,23 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const clientFiles = [
   'web/app/page.tsx',
   'web/app/layout.tsx',
+  'web/app/sign-in-flow.tsx',
   'web/app/visit-shell.tsx',
   'web/app/volunteer/page.tsx',
   'web/app/leader/page.tsx',
+  'web/lib/account-store.ts',
   'web/lib/conversation.ts',
   'web/lib/desk.ts',
   'web/lib/drafts.ts',
   'web/lib/fictional-label.ts',
   'web/lib/intake-tree.ts',
   'web/lib/local-demo.ts',
+  'web/lib/persist-visit.ts',
   'web/lib/ready-store.ts',
+  'web/lib/select-store.ts',
+  'web/lib/sign-in.ts',
   'web/lib/speech.ts',
+  'web/lib/visit-sync.ts',
   'web/lib/visit.ts',
 ];
 
@@ -30,6 +36,13 @@ test('the shell shows the fictional-data label', () => {
   assert.equal(shell.includes('FICTIONAL_DATA_LABEL'), true);
   assert.equal(FICTIONAL_DATA_LABEL.includes('fictional data only'), true);
   assert.equal(FICTIONAL_DATA_LABEL.includes('real child'), true);
+});
+
+test('account client files do not name the sign-in flag', () => {
+  for (const rel of clientFiles) {
+    const text = readFileSync(join(root, rel), 'utf8');
+    assert.equal(text.includes('READY_SIGN_IN'), false, rel);
+  }
 });
 
 test('client demo files do not name gateway secrets or account ids', () => {

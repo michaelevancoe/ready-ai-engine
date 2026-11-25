@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import type { AccessCommand, AccessResult, ChurchRole } from '../src/access.ts';
 import { isUuid } from '../src/ids.ts';
+import { inviteExpiresAt, inviteOpen } from '../src/invite-expiry.ts';
 import { memoryAccessSource, type MemoryAccessWorld } from '../src/memory-access.ts';
 import { MemoryStore } from '../src/memory-store.ts';
 import type { ProfileStore } from '../src/store.ts';
@@ -25,12 +26,15 @@ interface Actors {
   outsider: string;
   guest: string;
   joiner: string;
+  multi: string;
   org: string;
+  otherOrg: string;
   child: string;
   brief: string;
   lesson: string;
   room: string;
   sunday: string;
+  expiredInvite: string;
 }
 
 interface Harness {
@@ -51,22 +55,27 @@ function actors(): Actors {
     outsider: uuid(),
     guest: uuid(),
     joiner: uuid(),
+    multi: uuid(),
     org: uuid(),
+    otherOrg: uuid(),
     child: uuid(),
     brief: uuid(),
     lesson: uuid(),
     room: uuid(),
     sunday: uuid(),
+    expiredInvite: uuid(),
   };
 }
 
 function worldFor(ids: Actors): MemoryAccessWorld {
   return {
-    organizations: [{ id: ids.org }],
+    organizations: [{ id: ids.org }, { id: ids.otherOrg }],
     memberships: [
       { userId: ids.parent, organizationId: ids.org, role: 'parent' },
       { userId: ids.volunteer, organizationId: ids.org, role: 'volunteer' },
       { userId: ids.leader, organizationId: ids.org, role: 'leader' },
+      { userId: ids.multi, organizationId: ids.org, role: 'parent' },
+      { userId: ids.multi, organizationId: ids.otherOrg, role: 'leader' },
     ],
     children: [
       {
@@ -102,7 +111,14 @@ function worldFor(ids: Actors): MemoryAccessWorld {
     lessons: [{ id: ids.lesson, organizationId: ids.org, title: LESSON_TITLE }],
     medicalGrants: [],
     medicalNotes: [{ childId: ids.child, note: MEDICAL_NOTE }],
-    invites: [],
+    invites: [
+      {
+        id: ids.expiredInvite,
+        organizationId: ids.org,
+        role: 'volunteer',
+        expiresAt: 0,
+      },
+    ],
   };
 }
 
@@ -152,17 +168,34 @@ async function runContract(harness: Harness): Promise<void> {
   const guest = harness.access(ids.guest);
   const joiner = harness.access(ids.joiner);
 
-  assert.deepEqual(await call(parent, ids.parent, { type: 'membership' }), {
+  assert.deepEqual(await call(parent, ids.parent, { type: 'membership', organizationId: null }), {
     status: 200,
     body: { role: 'parent' satisfies ChurchRole },
   });
-  assert.deepEqual(await call(leader, ids.leader, { type: 'membership' }), {
+  assert.deepEqual(await call(leader, ids.leader, { type: 'membership', organizationId: null }), {
     status: 200,
     body: { role: 'leader' satisfies ChurchRole },
   });
-  assert.deepEqual(await call(outsider, ids.outsider, { type: 'membership' }), {
+  assert.deepEqual(await call(outsider, ids.outsider, { type: 'membership', organizationId: null }), {
     status: 404,
     body: { error: 'not_found' },
+  });
+  assert.deepEqual(await call(parent, ids.parent, { type: 'membership', organizationId: ids.otherOrg }), {
+    status: 404,
+    body: { error: 'not_found' },
+  });
+  const multi = harness.access(ids.multi);
+  assert.deepEqual(await call(multi, ids.multi, { type: 'membership', organizationId: null }), {
+    status: 409,
+    body: { error: 'church_required' },
+  });
+  assert.deepEqual(await call(multi, ids.multi, { type: 'membership', organizationId: ids.org }), {
+    status: 200,
+    body: { role: 'parent' satisfies ChurchRole },
+  });
+  assert.deepEqual(await call(multi, ids.multi, { type: 'membership', organizationId: ids.otherOrg }), {
+    status: 200,
+    body: { role: 'leader' satisfies ChurchRole },
   });
 
   assert.deepEqual(await call(parent, ids.parent, { type: 'child', childId: ids.child }), {
@@ -229,7 +262,11 @@ async function runContract(harness: Harness): Promise<void> {
     status: 201,
     body: { role: 'volunteer' },
   });
-  assert.deepEqual(await call(joiner, ids.joiner, { type: 'membership' }), {
+  assert.deepEqual(
+    await call(joiner, ids.joiner, { type: 'accept', inviteId: ids.expiredInvite, claimedRole: null }),
+    { status: 404, body: { error: 'not_found' } },
+  );
+  assert.deepEqual(await call(joiner, ids.joiner, { type: 'membership', organizationId: null }), {
     status: 200,
     body: { role: 'volunteer' },
   });
@@ -254,6 +291,14 @@ async function runContract(harness: Harness): Promise<void> {
   const leaderStore = harness.store(ids.leader);
   assert.equal((await leaderStore.getMembership(ids.leader, ids.org))?.role, 'leader');
 }
+
+test('an invite stays open for seven days and closes at the deadline', () => {
+  const created = 1_700_000_000_000;
+  const expires = inviteExpiresAt(created);
+  assert.equal(expires - created, 7 * 24 * 60 * 60 * 1000);
+  assert.equal(inviteOpen(expires, expires - 1), true);
+  assert.equal(inviteOpen(expires, expires), false);
+});
 
 test('the memory adapter passes the store contract', async () => {
   const ids = actors();
@@ -288,7 +333,7 @@ async function supabaseHarness(): Promise<Harness> {
   const ids = actors();
   const password = 'harbor-example-password';
   const emails = new Map<string, string>();
-  const people = ['parent', 'volunteer', 'leader', 'outsider', 'guest', 'joiner'] as const;
+  const people = ['parent', 'volunteer', 'leader', 'outsider', 'guest', 'joiner', 'multi'] as const;
   for (const name of people) {
     const email = `${name}.${uuid()}@example.com`;
     const userId = await createUser(apiUrl, serviceKey, email, password);
@@ -375,11 +420,15 @@ function quote(value: string): string {
 function seedDatabase(dbUrl: string, ids: Actors): void {
   const lines = JSON.stringify([{ field: 'loves', text: BRIEF_TEXT }]);
   const sql = `
-    insert into public.organizations (id, name) values (${quote(ids.org)}, 'Example Harbor Fellowship');
+    insert into public.organizations (id, name) values
+      (${quote(ids.org)}, 'Example Harbor Fellowship'),
+      (${quote(ids.otherOrg)}, 'Inland Example');
     insert into public.memberships (organization_id, user_id, role) values
       (${quote(ids.org)}, ${quote(ids.parent)}, 'parent'),
       (${quote(ids.org)}, ${quote(ids.volunteer)}, 'volunteer'),
-      (${quote(ids.org)}, ${quote(ids.leader)}, 'leader');
+      (${quote(ids.org)}, ${quote(ids.leader)}, 'leader'),
+      (${quote(ids.org)}, ${quote(ids.multi)}, 'parent'),
+      (${quote(ids.otherOrg)}, ${quote(ids.multi)}, 'leader');
     insert into public.children (id, organization_id, display_name, parent_user_id) values
       (${quote(ids.child)}, ${quote(ids.org)}, '${CHILD_NAME}', ${quote(ids.parent)});
     insert into public.rooms (id, organization_id, name) values
@@ -396,6 +445,8 @@ function seedDatabase(dbUrl: string, ids: Actors): void {
       (${quote(ids.lesson)}, ${quote(ids.org)}, '${LESSON_TITLE}');
     insert into public.medical_notes (child_id, organization_id, note) values
       (${quote(ids.child)}, ${quote(ids.org)}, '${MEDICAL_NOTE}');
+    insert into public.invitations (id, organization_id, role, created_by, expires_at) values
+      (${quote(ids.expiredInvite)}, ${quote(ids.org)}, 'volunteer', ${quote(ids.leader)}, now() - interval '1 day');
   `;
   const result = spawnSync('psql', [dbUrl, '-v', 'ON_ERROR_STOP=1'], { input: sql, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);

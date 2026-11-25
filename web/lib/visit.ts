@@ -178,7 +178,7 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
         ...withdrawnBrief(),
       };
     case 'writeStory':
-      if (visit.intake.status !== 'approved' || visit.story.phase === 'writing') return visit;
+      if (!briefAlreadyApproved(visit) || showingExample(visit) || visit.story.phase === 'writing') return visit;
       return { ...visit, story: { phase: 'writing' } };
     case 'noteStory':
       if (visit.story.phase === 'writing' || visit.brief.phase !== 'approved') return visit;
@@ -193,7 +193,7 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
       if (visit.story.phase !== 'ready') return visit;
       return { ...visit, story: { phase: 'approved', value: visit.story.value } };
     case 'approveBrief': {
-      if (visit.intake.status !== 'approved') return visit;
+      if (!briefAlreadyApproved(visit)) return visit;
       const card = project(intakeTree, visit.conversation).card;
       return { ...visit, card, brief: { phase: 'approved', lines: briefLines(card, visit.visibility) } };
     }
@@ -268,6 +268,16 @@ export function childAgeYears(visit: Visit): number {
 export function childHeading(name: string): string {
   if (name === 'Rowan') return 'Rowan Sampleton';
   return name;
+}
+
+export function briefAlreadyApproved(visit: Visit): boolean {
+  return visit.intake.status === 'approved' || visit.brief.phase === 'approved';
+}
+
+export function showingExample(visit: Visit): boolean {
+  const talk = visit.conversation.talk;
+  if (talk.mode !== 'brief' && talk.mode !== 'approved') return false;
+  return talk.source.type === 'example';
 }
 
 export function checkInBrief(visit: Visit): CheckIn {

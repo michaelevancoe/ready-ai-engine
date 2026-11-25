@@ -29,9 +29,9 @@ export function authorize(input: AccessInput): boolean {
     case 'profile.read_draft':
       switch (input.role) {
         case 'volunteer':
-        case 'leader':
-          return false;
         case 'admin':
+          return false;
+        case 'leader':
           return true;
         case 'parent':
           return input.isChildParent;

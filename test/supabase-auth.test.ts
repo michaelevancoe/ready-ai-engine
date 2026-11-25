@@ -6,6 +6,7 @@ import { supabaseAuthVerifier } from '../src/supabase-auth.ts';
 import { churchStore, testEnv } from './fixtures.ts';
 
 const userId = '10000000-0000-4000-8000-000000000101';
+const orgId = '10000000-0000-4000-8000-0000000000a1';
 const token = 'session-parent-harbor';
 
 function deps(flag: string | undefined, fetchImpl: typeof fetch, auth = supabaseAuthVerifier({
@@ -55,7 +56,7 @@ test('the adapter asks Auth for the user and ignores role claims', async () => {
     const headers = new Headers(init?.headers);
     assert.equal(headers.get('authorization'), `Bearer ${token}`);
     assert.equal(headers.has('x-role'), false);
-    return new Response(JSON.stringify([{ role: 'parent' }]), { status: 200 });
+    return new Response(JSON.stringify([{ organization_id: orgId, role: 'parent' }]), { status: 200 });
   };
   const own = await send(fetchImpl, 'GET', '/v1/access/membership', token);
   assert.equal(own.status, 200);
@@ -152,7 +153,7 @@ test('adapter failures do not log the session, the user id, or the Auth body', a
           { status: 200 },
         );
       }
-      return new Response(JSON.stringify([{ role: 'parent' }]), { status: 200 });
+      return new Response(JSON.stringify([{ organization_id: orgId, role: 'parent' }]), { status: 200 });
     };
     const rejected: typeof fetch = async () =>
       new Response(JSON.stringify({ message: 'bad session', contact: 'person-marker' }), { status: 401 });

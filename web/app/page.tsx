@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type Dispatch } from 'react';
+import { useAccountChurch } from './visit-shell';
 import { decideAck, type AckResult } from '../lib/acknowledgement';
 import { joinSpoken, presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
@@ -8,7 +9,15 @@ import { approveProfile, submitIntake } from '../lib/desk';
 import { intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
 import { initialReader, reduceReader, type Reader } from '../lib/story-reader';
-import { approvedValue, checkInBrief, childPreferredName, type SocialStory, type Visit, type VisitEvent } from '../lib/visit';
+import {
+  approvedValue,
+  briefAlreadyApproved,
+  checkInBrief,
+  childPreferredName,
+  type SocialStory,
+  type Visit,
+  type VisitEvent,
+} from '../lib/visit';
 import { useVisit } from './visit-shell';
 
 const BEAT_MS = 1200;
@@ -100,7 +109,7 @@ export default function Page() {
       dispatch({ type: 'conversation', event: { type: 'approve' } });
       return;
     }
-    if (visit.intake.status === 'approved') {
+    if (briefAlreadyApproved(visit)) {
       dispatch({ type: 'approveBrief' });
       dispatch({ type: 'conversation', event: { type: 'approve' } });
       return;
@@ -181,10 +190,15 @@ function StartScreen({
   onBegin: () => void;
   onExample: (id: Extract<AskView, { kind: 'start' }>['examples'][number]['id']) => void;
 }) {
+  const church = useAccountChurch();
   return (
     <section aria-label="Start">
       <h1>Who are we getting ready for?</h1>
-      <p>Start a new child with Ready&apos;s guided questions, or open a finished example to see the whole flow.</p>
+      <p>
+        {church === null
+          ? "Start a new child with Ready's guided questions, or open a finished example to see the whole flow."
+          : `Signed in to ${church}. Only your family's children show here.`}
+      </p>
       <button type="button" className="primary" onClick={onBegin}>
         Start with a new child
       </button>
@@ -200,10 +214,12 @@ function StartScreen({
           <span className="badge">Complete brief</span>
         </button>
       ))}
-      <p className="footer-note">
-        Examples are built into the demo with fictional children. Nothing typed here is saved, so they are always ready
-        to show.
-      </p>
+      {church === null ? (
+        <p className="footer-note">
+          Examples are built into the demo with fictional children. Nothing typed here is saved, so they are always
+          ready to show.
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -595,4 +595,344 @@ begin
 end
 $$;
 
+insert into public.organizations (id, name) values
+  ('10000000-0000-4000-8000-0000000000a3', 'Empty');
+
+insert into public.memberships (organization_id, user_id, role) values
+  ('10000000-0000-4000-8000-0000000000a1', '10000000-0000-4000-8000-0000000000c2', 'parent');
+
+insert into public.children (id, organization_id, display_name, parent_user_id) values (
+  '10000000-0000-4000-8000-0000000000d3',
+  '10000000-0000-4000-8000-0000000000a2',
+  'Inland Child',
+  '10000000-0000-4000-8000-0000000000c7'
+);
+
+update public.lessons
+set author_user_id = '10000000-0000-4000-8000-0000000000c6'
+where id = '10000000-0000-4000-8000-0000000000b4';
+
+do $$
+declare
+  answers int;
+  briefs int;
+  publications int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c1', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c1","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  insert into public.intake_answers (organization_id, child_id, user_id, answers) values (
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000c1',
+    '{"loves":{"kind":"answered","text":"Trains"}}'::jsonb
+  );
+  insert into public.parent_briefs (
+    child_id, organization_id, user_id,
+    loves, overwhelms, what_helps, communication, sensory, toileting, allergies, calming, medical,
+    show_loves, show_overwhelms, show_what_helps, show_communication, show_sensory, show_toileting,
+    show_allergies, show_calming, show_medical, card_touched
+  ) values (
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000c1',
+    'Trains', '', '', '', '', '', '', '', '',
+    true, false, false, false, false, false, false, false, false, true
+  );
+  insert into public.brief_publications (organization_id, child_id, user_id, lines) values (
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000c1',
+    '[{"field":"loves","text":"Trains"}]'::jsonb
+  );
+  select count(*) into answers from public.intake_answers;
+  select count(*) into briefs from public.parent_briefs;
+  select count(*) into publications from public.brief_publications;
+  if answers <> 1 or briefs <> 1 or publications <> 1 then
+    raise exception 'parent writes answers=% briefs=% publications=%', answers, briefs, publications;
+  end if;
+  execute 'reset role';
+end
+$$;
+
+do $$
+declare
+  changed int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c2', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c2","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  update public.intake_answers
+  set answers = '{"loves":{"kind":"answered","text":"Stolen"}}'::jsonb
+  where child_id = '10000000-0000-4000-8000-0000000000d1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'other parent wrote Rowan answers';
+  end if;
+  update public.parent_briefs
+  set loves = 'Stolen'
+  where child_id = '10000000-0000-4000-8000-0000000000d1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'other parent wrote Rowan brief';
+  end if;
+  update public.brief_publications
+  set lines = '[{"field":"loves","text":"Stolen"}]'::jsonb
+  where child_id = '10000000-0000-4000-8000-0000000000d1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'other parent published Rowan';
+  end if;
+  execute 'reset role';
+  if (
+    select a.answers #>> '{loves,text}'
+    from public.intake_answers a
+    where a.child_id = '10000000-0000-4000-8000-0000000000d1'
+  ) is distinct from 'Trains' then
+    raise exception 'Rowan answers changed';
+  end if;
+end
+$$;
+
+do $$
+declare
+  notes int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c3', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c3","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  insert into public.volunteer_notes (user_id, child_id, organization_id, body) values (
+    '10000000-0000-4000-8000-0000000000c3',
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000a1',
+    'Quiet corner'
+  );
+  select count(*) into notes from public.volunteer_notes where body = 'Quiet corner';
+  if notes <> 1 then
+    raise exception 'volunteer notes %', notes;
+  end if;
+  begin
+    insert into public.brief_publications (organization_id, child_id, user_id, lines) values (
+      '10000000-0000-4000-8000-0000000000a1',
+      '10000000-0000-4000-8000-0000000000d2',
+      '10000000-0000-4000-8000-0000000000c3',
+      '[{"field":"loves","text":"Stolen"}]'::jsonb
+    );
+    raise exception 'volunteer published a brief';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+  begin
+    insert into public.lessons (id, organization_id, title, author_user_id, status) values (
+      '10000000-0000-4000-8000-0000000000b6',
+      '10000000-0000-4000-8000-0000000000a3',
+      'Stolen Lesson',
+      '10000000-0000-4000-8000-0000000000c3',
+      'approved'
+    );
+    raise exception 'volunteer wrote a lesson';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+  begin
+    insert into public.volunteer_notes (user_id, child_id, organization_id, body) values (
+      '10000000-0000-4000-8000-0000000000c3',
+      '10000000-0000-4000-8000-0000000000d3',
+      '10000000-0000-4000-8000-0000000000a2',
+      'Inland note'
+    );
+    raise exception 'volunteer wrote across churches';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+  execute 'reset role';
+end
+$$;
+
+do $$
+declare
+  changed int;
+  plan text;
+  title text;
+  lessons int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c1', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c1","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  update public.church_setup set plan = 'Stolen plan' where organization_id = '10000000-0000-4000-8000-0000000000a1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'parent updated church';
+  end if;
+  update public.lessons set title = 'Stolen Lesson' where organization_id = '10000000-0000-4000-8000-0000000000a1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'parent updated a lesson';
+  end if;
+  delete from public.lessons where organization_id = '10000000-0000-4000-8000-0000000000a1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'parent deleted a lesson';
+  end if;
+  begin
+    insert into public.sunday_updates (child_id, organization_id, author_user_id, body, status) values (
+      '10000000-0000-4000-8000-0000000000d1',
+      '10000000-0000-4000-8000-0000000000a1',
+      '10000000-0000-4000-8000-0000000000c1',
+      'Stolen update',
+      'approved'
+    );
+    raise exception 'parent wrote an update';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+  begin
+    insert into public.intake_answers (organization_id, child_id, user_id, answers) values (
+      '10000000-0000-4000-8000-0000000000a2',
+      '10000000-0000-4000-8000-0000000000d3',
+      '10000000-0000-4000-8000-0000000000c1',
+      '{"loves":{"kind":"answered","text":"Stolen"}}'::jsonb
+    );
+    raise exception 'parent wrote across churches';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+  execute 'reset role';
+  select s.plan into plan from public.church_setup s where s.organization_id = '10000000-0000-4000-8000-0000000000a1';
+  select l.title into title from public.lessons l where l.id = '10000000-0000-4000-8000-0000000000b4';
+  select count(*) into lessons from public.lessons as lesson_row where lesson_row.title = 'Harbor Lesson';
+  if plan is distinct from 'Harbor plan' or title is distinct from 'Harbor Lesson' or lessons <> 1 then
+    raise exception 'parent changed church=% title=% lessons=%', plan, title, lessons;
+  end if;
+end
+$$;
+
+do $$
+declare
+  changed int;
+  plan text;
+  summary text;
+  updates int;
+  seen int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c6', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c6","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  update public.church_setup set plan = 'Harbor plan revised' where organization_id = '10000000-0000-4000-8000-0000000000a1';
+  get diagnostics changed = row_count;
+  if changed <> 1 then
+    raise exception 'leader church update %', changed;
+  end if;
+  update public.church_setup set plan = 'Stolen inland' where organization_id = '10000000-0000-4000-8000-0000000000a2';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'leader wrote another church';
+  end if;
+  update public.lessons set summary = 'Harbor summary' where id = '10000000-0000-4000-8000-0000000000b4';
+  get diagnostics changed = row_count;
+  if changed <> 1 then
+    raise exception 'leader lesson update %', changed;
+  end if;
+  update public.lessons set summary = 'Stolen inland' where id = '10000000-0000-4000-8000-0000000000b5';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'leader wrote another church lesson';
+  end if;
+  insert into public.sunday_updates (child_id, organization_id, author_user_id, body, status) values (
+    '10000000-0000-4000-8000-0000000000d1',
+    '10000000-0000-4000-8000-0000000000a1',
+    '10000000-0000-4000-8000-0000000000c6',
+    'Harbor update',
+    'approved'
+  );
+  select count(*) into updates from public.sunday_updates where body = 'Harbor update';
+  if updates <> 1 then
+    raise exception 'leader updates %', updates;
+  end if;
+  delete from public.lessons where id = '10000000-0000-4000-8000-0000000000b4';
+  get diagnostics changed = row_count;
+  if changed <> 1 then
+    raise exception 'leader lesson delete %', changed;
+  end if;
+  execute 'reset role';
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c7', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c7","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  update public.church_setup set plan = 'Stolen harbor' where organization_id = '10000000-0000-4000-8000-0000000000a1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'inland leader wrote harbor church';
+  end if;
+  update public.sunday_updates
+  set body = 'Stolen update'
+  where child_id = '10000000-0000-4000-8000-0000000000d1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'inland leader wrote a harbor update';
+  end if;
+  update public.intake_answers
+  set answers = '{"loves":{"kind":"answered","text":"Stolen"}}'::jsonb
+  where child_id = '10000000-0000-4000-8000-0000000000d1';
+  get diagnostics changed = row_count;
+  if changed <> 0 then
+    raise exception 'inland leader wrote harbor answers';
+  end if;
+  execute 'reset role';
+  select s.plan into plan from public.church_setup s where s.organization_id = '10000000-0000-4000-8000-0000000000a1';
+  select l.summary into summary from public.lessons l where l.organization_id = '10000000-0000-4000-8000-0000000000a2';
+  select count(*) into seen from public.sunday_updates where body = 'Harbor update';
+  if plan is distinct from 'Harbor plan revised' or summary is distinct from '' or seen <> 1 then
+    raise exception 'cross-church writes plan=% summary=% updates=%', plan, summary, seen;
+  end if;
+end
+$$;
+
+do $$
+declare
+  seen int;
+begin
+  perform set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-0000000000c1', true);
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"10000000-0000-4000-8000-0000000000c1","role":"authenticated"}',
+    true
+  );
+  execute 'set local role authenticated';
+  select count(*) into seen from public.sunday_updates where body = 'Harbor update';
+  if seen <> 1 then
+    raise exception 'parent cannot read the approved update';
+  end if;
+  execute 'reset role';
+end
+$$;
+
 rollback;

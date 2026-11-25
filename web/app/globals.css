@@ -778,3 +778,285 @@ button.home-card {
 .lesson-card input {
   width: 100%;
 }
+
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.sign-in h1 {
+  margin-top: 1.4rem;
+}
+
+.sign-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.wordmark {
+  margin: 0;
+  color: var(--terracotta);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  background: var(--helps);
+  color: var(--focus);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+}
+
+.pill.signed {
+  background: var(--loves);
+  color: var(--green);
+}
+
+.invite-note {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  background: var(--portrait);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  color: var(--muted);
+}
+
+.invite-note.plain {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.invite-note svg {
+  flex: none;
+  margin-top: 0.15rem;
+}
+
+.sent-to {
+  margin-top: 0.15rem;
+  font-weight: 700;
+}
+
+.demo-link {
+  display: block;
+  margin: 1.4rem auto 0;
+  text-align: center;
+}
+
+.demo-link.left {
+  margin-left: 0;
+  text-align: left;
+}
+
+button.text.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.sign-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  margin: 1.6rem 0 0.2rem;
+  border-radius: 999px;
+  background: var(--terracotta);
+  color: white;
+}
+
+.sign-icon.clock {
+  background: var(--portrait);
+  color: var(--muted);
+}
+
+.sample-pill {
+  width: fit-content;
+  margin: auto auto 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--portrait);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+button.primary.continue {
+  margin-top: auto;
+}
+
+.church {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.7rem;
+  padding: 0.9rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.church.picked {
+  background: var(--overwhelms);
+  border-color: var(--terracotta);
+  box-shadow: inset 0 0 0 1px var(--terracotta);
+}
+
+.church input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--terracotta);
+}
+
+.church strong,
+.church small {
+  display: block;
+}
+
+.church small {
+  color: var(--muted);
+}
+
+.contact-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+  margin-top: 1rem;
+}
+
+.contact-card h2 {
+  margin-top: 0.2rem;
+}
+
+.eyebrow {
+  margin: 0.8rem 0 0.1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.35rem 0 1.1rem;
+}
+
+.account-bar a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.account-person {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: auto;
+  margin: 0 auto;
+  padding: 0.2rem 0.7rem 0.2rem 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  text-align: left;
+}
+
+.account-person strong,
+.account-person small {
+  display: block;
+}
+
+.account-person small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  color: white;
+  font-weight: 700;
+}
+
+.avatar.parent {
+  background: var(--terracotta);
+}
+
+.avatar.volunteer {
+  background: var(--focus);
+}
+
+.avatar.leader {
+  background: var(--green);
+}
+
+.account-menu {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.35rem 1rem 0.85rem;
+  margin: -0.4rem 0 1rem;
+}
+
+.menu-value {
+  margin: 0.1rem 0 0.75rem;
+  font-weight: 700;
+}
+
+.menu-block {
+  border-top: 1px solid var(--line);
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.menu-row .menu-value {
+  margin-bottom: 0.75rem;
+}
+
+.account-menu .menu-out {
+  border-top: 1px solid var(--line);
+  display: block;
+  margin-top: 0.2rem;
+  padding-top: 0.75rem;
+  text-align: left;
+}

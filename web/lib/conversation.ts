@@ -119,6 +119,22 @@ export function initialConversation(): Conversation {
   return { talk: { mode: 'start' }, answers: {}, updated: [] };
 }
 
+export function resumeConversation(tree: IntakeTree, answers: Conversation['answers']): Conversation {
+  if (Object.keys(answers).length === 0) return initialConversation();
+  let cursor = reduceConversation(tree, { talk: { mode: 'start' }, answers, updated: [] }, { type: 'beginIntake' });
+  const seen = new Set<string>();
+  while (cursor.talk.mode === 'ask' || cursor.talk.mode === 'fix') {
+    if (seen.has(cursor.talk.nodeId)) break;
+    seen.add(cursor.talk.nodeId);
+    const saved = answers[cursor.talk.nodeId];
+    if (saved === undefined) break;
+    const next = reduceConversation(tree, cursor, { type: 'answer', text: saved.text });
+    if (next === cursor) break;
+    cursor = next;
+  }
+  return { ...cursor, answers };
+}
+
 export function reduceConversation(tree: IntakeTree, conversation: Conversation, event: ConversationEvent): Conversation {
   switch (event.type) {
     case 'beginIntake':

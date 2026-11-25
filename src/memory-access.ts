@@ -1,5 +1,7 @@
 import type { AccessResult, ChurchRole, InviteRole } from './access.ts';
+import { chooseChurch, membershipResult } from './church-choice.ts';
 import { isUuid } from './ids.ts';
+import { inviteExpiresAt, inviteOpen } from './invite-expiry.ts';
 import type { AccessCaller, AccessSource } from './supabase-access.ts';
 
 export interface MemoryMembership {
@@ -47,7 +49,7 @@ export interface MemoryAccessWorld {
   lessons: { id: string; organizationId: string; title: string }[];
   medicalGrants: { childId: string; granted: boolean }[];
   medicalNotes: { childId: string; note: string }[];
-  invites: { id: string; organizationId: string; role: InviteRole }[];
+  invites: { id: string; organizationId: string; role: InviteRole; expiresAt: number }[];
 }
 
 export function emptyMemoryAccessWorld(): MemoryAccessWorld {
@@ -78,10 +80,6 @@ function roleIn(world: MemoryAccessWorld, userId: string, organizationId: string
     (item) => item.userId === userId && item.organizationId === organizationId,
   );
   return membership?.role ?? null;
-}
-
-function firstRole(world: MemoryAccessWorld, userId: string): ChurchRole | null {
-  return world.memberships.find((item) => item.userId === userId)?.role ?? null;
 }
 
 function inviteRole(value: string): InviteRole | null {
@@ -123,10 +121,11 @@ function medicalVisible(world: MemoryAccessWorld, userId: string, childId: strin
   );
 }
 
-function readMembership(world: MemoryAccessWorld, userId: string): AccessResult {
-  const role = firstRole(world, userId);
-  if (role === null) return notFound();
-  return { status: 200, body: { role } };
+function readMembership(world: MemoryAccessWorld, userId: string, organizationId: string | null): AccessResult {
+  const memberships = world.memberships
+    .filter((item) => item.userId === userId)
+    .map((item) => ({ organizationId: item.organizationId, role: item.role }));
+  return membershipResult(chooseChurch(memberships, organizationId));
 }
 
 function readChild(world: MemoryAccessWorld, userId: string, childId: string): AccessResult {
@@ -210,13 +209,14 @@ function createInvite(
   userId: string,
   organizationId: string,
   requestedRole: string,
+  nowMs: number,
 ): AccessResult {
   const role = inviteRole(requestedRole);
   if (role === null || !isUuid(organizationId) || roleIn(world, userId, organizationId) !== 'leader') {
     return forbidden();
   }
   const id = crypto.randomUUID();
-  world.invites.push({ id, organizationId, role });
+  world.invites.push({ id, organizationId, role, expiresAt: inviteExpiresAt(nowMs) });
   return { status: 201, body: { id, role } };
 }
 
@@ -225,10 +225,11 @@ function acceptInvite(
   userId: string,
   inviteId: string,
   claimedRole: string | null,
+  nowMs: number,
 ): AccessResult {
   if (!isUuid(inviteId)) return notFound();
   const invite = world.invites.find((item) => item.id === inviteId);
-  if (invite === undefined) return notFound();
+  if (invite === undefined || !inviteOpen(invite.expiresAt, nowMs)) return notFound();
   if (claimedRole !== null && claimedRole !== invite.role) return forbidden();
   const existing = roleIn(world, userId, invite.organizationId);
   if (existing !== null) {
@@ -239,13 +240,13 @@ function acceptInvite(
   return { status: 201, body: { role: invite.role } };
 }
 
-export function memoryAccessSource(world: MemoryAccessWorld): AccessSource {
+export function memoryAccessSource(world: MemoryAccessWorld, now: () => number = Date.now): AccessSource {
   return {
     async run(input: AccessCaller): Promise<AccessResult> {
       const userId = input.userId;
       switch (input.command.type) {
         case 'membership':
-          return readMembership(world, userId);
+          return readMembership(world, userId, input.command.organizationId);
         case 'child':
           return readChild(world, userId, input.command.childId);
         case 'brief':
@@ -259,9 +260,9 @@ export function memoryAccessSource(world: MemoryAccessWorld): AccessSource {
         case 'register':
           return selfRegister(world, userId, input.command.organizationId, input.command.requestedRole);
         case 'invite':
-          return createInvite(world, userId, input.command.organizationId, input.command.requestedRole);
+          return createInvite(world, userId, input.command.organizationId, input.command.requestedRole, now());
         case 'accept':
-          return acceptInvite(world, userId, input.command.inviteId, input.command.claimedRole);
+          return acceptInvite(world, userId, input.command.inviteId, input.command.claimedRole, now());
         default: {
           const unreachable: never = input.command;
           throw new Error(String(unreachable));

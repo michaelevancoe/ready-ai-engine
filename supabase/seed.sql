@@ -2,7 +2,6 @@
 -- Avery Sampleton, parent of Rowan Sampleton, avery.parent@example.com
 -- Blake Sampleton, parent of Quinn Placeholder, blake.parent@example.com
 -- Cameron Placeholder, volunteer, cameron.volunteer@example.com
--- Devon Placeholder, admin, devon.admin@example.com
 
 insert into public.organizations (id, name) values
   ('10000000-0000-4000-8000-000000000001', 'Example Harbor Fellowship');
@@ -11,7 +10,7 @@ insert into public.memberships (id, organization_id, user_id, role) values
   ('10000000-0000-4000-8000-0000000000a1', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000011', 'parent'),
   ('10000000-0000-4000-8000-0000000000a2', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000012', 'parent'),
   ('10000000-0000-4000-8000-0000000000a3', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000013', 'volunteer'),
-  ('10000000-0000-4000-8000-0000000000a4', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000014', 'admin');
+  ('10000000-0000-4000-8000-0000000000a4', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000014', 'leader');
 
 insert into public.children (id, organization_id, display_name, parent_user_id) values
   ('10000000-0000-4000-8000-000000000021', '10000000-0000-4000-8000-000000000001', 'Rowan Sampleton', '10000000-0000-4000-8000-000000000011'),

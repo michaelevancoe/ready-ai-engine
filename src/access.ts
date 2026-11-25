@@ -8,7 +8,7 @@ export interface BriefLine {
 }
 
 export type AccessCommand =
-  | { type: 'membership' }
+  | { type: 'membership'; organizationId: string | null }
   | { type: 'child'; childId: string }
   | { type: 'brief'; briefId: string }
   | { type: 'church'; organizationId: string }
@@ -23,7 +23,8 @@ export type AccessResult =
   | { status: 201; body: { role: ChurchRole } | { id: string; role: InviteRole } }
   | { status: 401; body: { error: 'unauthorized' } }
   | { status: 403; body: { error: 'forbidden' } }
-  | { status: 404; body: { error: 'not_found' } };
+  | { status: 404; body: { error: 'not_found' } }
+  | { status: 409; body: { error: 'church_required' } };
 
 interface ChildBody {
   id: string;

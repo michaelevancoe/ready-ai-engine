@@ -1,4 +1,5 @@
 import type { AccessCommand, AccessResult, ChurchRole, InviteRole } from './access.ts';
+import { chooseChurch, membershipResult, type ChurchMembership } from './church-choice.ts';
 import { deadline } from './deadline.ts';
 import { ConfigError, StoreError, UpstreamError } from './errors.ts';
 import { isUuid } from './ids.ts';
@@ -165,16 +166,25 @@ export function supabaseAccessSource(options: SupabaseAccessOptions): AccessSour
     return call(`/rest/v1/rpc/${name}`, accessToken, { method: 'POST', body: args });
   }
 
-  async function readMembership(input: AccessCaller): Promise<AccessResult> {
-    const row = await one('memberships', input.accessToken, {
-      select: 'role',
-      user_id: `eq.${input.userId}`,
+  async function readMembership(input: AccessCaller, organizationId: string | null): Promise<AccessResult> {
+    const result = await call('/rest/v1/memberships', input.accessToken, {
+      method: 'GET',
+      query: {
+        select: 'organization_id,role',
+        user_id: `eq.${input.userId}`,
+      },
     });
-    if (isResult(row)) return row;
-    if (row === null) return notFound();
-    const role = churchRole(row.role);
-    if (role === null) return notFound();
-    return { status: 200, body: { role } };
+    const failure = rpcFailure(result);
+    if (failure !== null) return failure;
+    if (!Array.isArray(result.body)) throw new StoreError(502);
+    const memberships: ChurchMembership[] = [];
+    for (const row of result.body) {
+      if (!isRecord(row) || typeof row.organization_id !== 'string') throw new StoreError(502);
+      const role = churchRole(row.role);
+      if (role === null) continue;
+      memberships.push({ organizationId: row.organization_id, role });
+    }
+    return membershipResult(chooseChurch(memberships, organizationId));
   }
 
   async function readChild(input: AccessCaller, childId: string): Promise<AccessResult> {
@@ -288,7 +298,7 @@ export function supabaseAccessSource(options: SupabaseAccessOptions): AccessSour
     async run(input: AccessCaller): Promise<AccessResult> {
       switch (input.command.type) {
         case 'membership':
-          return readMembership(input);
+          return readMembership(input, input.command.organizationId);
         case 'child':
           return readChild(input, input.command.childId);
         case 'brief':
