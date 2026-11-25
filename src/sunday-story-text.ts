@@ -6,6 +6,17 @@ export interface SundaySentenceChurch {
   readonly plan: string;
 }
 
+const CHURCH_FIELD_MAX = 200;
+const CHURCH_PLAN_MAX = 2000;
+
+export const SUNDAY_STORY_BODY_MAX = sundayStorySentences({
+  name: 'n'.repeat(CHURCH_FIELD_MAX),
+  service: 's'.repeat(CHURCH_FIELD_MAX),
+  room: 'r'.repeat(CHURCH_FIELD_MAX),
+  leader: 'l'.repeat(CHURCH_FIELD_MAX),
+  plan: 'p'.repeat(CHURCH_PLAN_MAX),
+}).join('\n\n').length;
+
 export function sundayStorySentences(
   church: SundaySentenceChurch,
 ): readonly [string, string, string, string, string, string, string] {

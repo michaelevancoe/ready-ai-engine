@@ -1,3 +1,4 @@
+import { SUNDAY_STORY_BODY_MAX } from '../../src/sunday-story-text.ts';
 import type { BriefLine, LessonAdaptation, SocialStory, SundayUpdate } from './visit';
 
 export type DraftResult<T> =
@@ -107,7 +108,7 @@ function messageFor(value: unknown): string {
 }
 
 function readStory(value: unknown): SocialStory | null {
-  if (!isRecord(value) || !isBounded(value.title, 1, 120) || !isBounded(value.body, 1, 2000)) return null;
+  if (!isRecord(value) || !isBounded(value.title, 1, 120) || !isBounded(value.body, 1, SUNDAY_STORY_BODY_MAX)) return null;
   const source = storySource(value.source);
   if (source === null) return null;
   return { title: value.title, body: value.body, source };

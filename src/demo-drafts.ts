@@ -338,6 +338,7 @@ export const STORY_TONE_WORDS = [
   "don't worry",
   'don’t worry',
   'dont worry',
+  'do not worry',
 ] as const;
 
 export const STORY_LEAVING_PHRASES = [
@@ -556,7 +557,7 @@ export function fallbackSocialStory(request: SocialStoryRequest): {
 } {
   return {
     title: `Sunday with ${request.childName}`.slice(0, 120),
-    body: sundayStorySentences(request.church).join('\n\n').slice(0, 2000),
+    body: sundayStorySentences(request.church).join('\n\n'),
     source: 'fallback',
   };
 }

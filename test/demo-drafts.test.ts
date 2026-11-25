@@ -9,6 +9,7 @@ import {
   storySafety,
 } from '../src/demo-drafts.ts';
 import { SchemaRejected } from '../src/errors.ts';
+import { SUNDAY_STORY_BODY_MAX, sundayStorySentences } from '../src/sunday-story-text.ts';
 import { chatEnvelope, testEnv } from './fixtures.ts';
 
 interface DraftLine {
@@ -901,6 +902,7 @@ const TONE_TERMS = [
   "don't worry",
   'don’t worry',
   'dont worry',
+  'do not worry',
 ];
 
 const LEAVING_TERMS = ['step outside', 'go outside', 'leave the room', 'run off', 'run away', 'wander'];
@@ -1066,6 +1068,22 @@ test('a social story gateway failure returns the Sunday fallback', async () => {
   const text = await response.text();
   assert.equal(text.includes('GATEWAY-BODY-SHOULD-NOT-LEAK'), false);
   assert.deepEqual(JSON.parse(text), { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
+});
+
+test('a long church plan keeps every Sunday sentence in the fallback', async () => {
+  const plan = `${'Sing a short song and sit quietly. '.repeat(50)}End.`.slice(0, 1800);
+  const church = { ...harbor, plan };
+  const full = sundayStorySentences(church).join('\n\n');
+  const demo = DemoContext.fromBindings(liveShell(), async () => new Response('down', { status: 502 }));
+  const response = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan', church }));
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as { title: string; body: string; source: string };
+  assert.equal(payload.source, 'fallback');
+  assert.equal(payload.body, full);
+  assert.equal(payload.body.includes('there is a quiet spot in the room.'), true);
+  assert.equal(payload.body.endsWith('your grown-up comes back to pick you up.'), true);
+  assert.equal(payload.body.length > 2000, true);
+  assert.equal(payload.body.length <= SUNDAY_STORY_BODY_MAX, true);
 });
 
 test('mock mode story passes storySafety', async () => {
