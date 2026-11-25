@@ -35,6 +35,11 @@ test('the account job stays on local supabase and ci stays keyless', () => {
   assert.equal(ci.includes('supabase'), false);
   const config = readFileSync(join(root, 'web/playwright.account.config.ts'), 'utf8');
   assert.equal(config.includes("READY_VISIT_STORE: 'account'"), true);
+  assert.equal(config.includes("READY_ACCOUNT_E2E: '1'"), true);
+  assert.equal(config.includes('READY_LOCAL_DB_URL'), true);
+  assert.equal(config.includes('workers: 1'), true);
+  const script = readFileSync(join(root, 'web/package.json'), 'utf8');
+  assert.equal(script.includes('READY_ACCOUNT_E2E=1 playwright test -c playwright.account.config.ts'), true);
   assert.equal(config.includes('-u READY_VISIT_STORE'), true);
   assert.equal(config.includes('-u READY_SIGN_IN'), true);
   assert.equal(config.includes('-u READY_MODE'), true);
