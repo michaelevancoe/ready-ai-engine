@@ -67,7 +67,7 @@ export function churchStore(): MemoryStore {
     { organizationId: ids.org, userId: ids.avery, role: 'parent' },
     { organizationId: ids.org, userId: ids.blake, role: 'parent' },
     { organizationId: ids.org, userId: ids.cameron, role: 'volunteer' },
-    { organizationId: ids.org, userId: ids.devon, role: 'admin' },
+    { organizationId: ids.org, userId: ids.devon, role: 'leader' },
     { organizationId: ids.otherOrg, userId: ids.outsider, role: 'parent' },
   );
   store.children.set(ids.rowan, {

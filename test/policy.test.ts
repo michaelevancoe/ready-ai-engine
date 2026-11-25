@@ -23,8 +23,10 @@ const matrix: Case[] = [
   { action: 'profile.read_draft', role: 'volunteer', sameOrganization: true, isChildParent: true, allow: false },
   { action: 'profile.read_draft', role: 'parent', sameOrganization: true, isChildParent: false, allow: false },
   { action: 'profile.read_draft', role: 'parent', sameOrganization: true, isChildParent: true, allow: true },
-  { action: 'profile.read_draft', role: 'leader', sameOrganization: true, isChildParent: true, allow: false },
-  { action: 'profile.read_draft', role: 'admin', sameOrganization: true, isChildParent: false, allow: true },
+  { action: 'profile.read_draft', role: 'leader', sameOrganization: true, isChildParent: true, allow: true },
+  { action: 'profile.read_draft', role: 'leader', sameOrganization: true, isChildParent: false, allow: true },
+  { action: 'profile.read_draft', role: 'leader', sameOrganization: false, isChildParent: false, allow: false },
+  { action: 'profile.read_draft', role: 'admin', sameOrganization: true, isChildParent: false, allow: false },
   { action: 'profile.read_draft', role: 'admin', sameOrganization: false, isChildParent: false, allow: false },
 
   { action: 'profile.read_approved', role: 'volunteer', sameOrganization: true, isChildParent: false, allow: true },

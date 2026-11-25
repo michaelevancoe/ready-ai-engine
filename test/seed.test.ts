@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { churchStore, ids } from './fixtures.ts';
 
 const seed = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../supabase/seed.sql'),
@@ -18,7 +19,13 @@ test('seed is a fictional demo church with a draft and an approved profile', () 
   assert.match(seed, /'approved'/);
   assert.match(seed, /'volunteer'/);
   assert.match(seed, /'parent'/);
-  assert.match(seed, /'admin'/);
+  assert.match(seed, /'leader'/);
+  assert.doesNotMatch(seed, /'admin'/);
+});
+
+test('Devon is a leader in the demo church', async () => {
+  const membership = await churchStore().getMembership(ids.devon, ids.org);
+  assert.equal(membership?.role, 'leader');
 });
 
 test('seed email addresses stay on example.com', () => {
