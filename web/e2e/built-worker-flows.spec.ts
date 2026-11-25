@@ -29,6 +29,12 @@ async function save(page: Page, name: string): Promise<void> {
 
 test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Before you start: who sees what you share' })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Only your child's kids-ministry leader and this Sunday's volunteers at Example Harbor Fellowship see the brief.",
+    ),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Start with a new child' }).click();
   await send(page, 'He likes a quiet hello.', 'What does Rowan love');
   await send(page, 'Trains.', 'What tends to overwhelm');
@@ -46,6 +52,9 @@ test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
   const allergies = page.locator('[data-field="allergies"]');
   await expect(allergies.getByRole('heading', { name: 'Allergies & health' })).toBeVisible();
   await expect(allergies).toContainText('TICK-ALLERGY-PLAN');
+  await expect(
+    page.getByText("Shared by Rowan's parent for this Sunday's team only. Care notes are in the parent's own words."),
+  ).toBeVisible();
 });
 
 test('approving again replaces Trains on the volunteer brief', async ({ page }) => {
@@ -79,6 +88,10 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await page.setViewportSize({ width: 1280, height: 800 });
   await answerTree(page, 'TICK-QUIET-ROOM');
   await expect(page.getByRole('heading', { name: "Rowan's brief" })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "Who sees Rowan's brief" })).toBeVisible();
+  await expect(
+    page.getByText("Ms. Dana and this Sunday's volunteers at Example Harbor Fellowship. No one else."),
+  ).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   expect(await tailGap(page)).toBeLessThan(400);
 
@@ -168,6 +181,12 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await page.getByRole('link', { name: 'Leader' }).click();
   await expect(page.getByRole('heading', { name: 'Good morning, Ms. Dana' })).toBeVisible();
   await page.getByRole('button', { name: /Lesson for Rowan/ }).click();
+  await expect(page.getByRole('heading', { name: "From Rowan's approved brief" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Rowan's parent approved this brief for you and this Sunday's volunteers. Care notes are in the parent's own words.",
+    ),
+  ).toBeVisible();
   await page.getByLabel('Lesson (fictional)').fill('TICK-LESSON-PLAN');
   await page.getByRole('button', { name: 'Adapt for Rowan' }).click();
   const lesson = page.getByRole('region', { name: 'Lesson adaptation' });
@@ -236,6 +255,12 @@ test('reading a Sunday story stays on the page and try again recovers', async ({
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('heading', { name: 'Sunday with Maya' })).toBeVisible();
   await expect(page.getByText(/Maya arrives/)).toBeVisible();
+  await expect(page.getByText('Written by Ready · only from your approved answers')).toBeVisible();
+  await expect(
+    page.getByText(
+      "Ready used only your approved answers and Harbor Room's plan. Medical details and labels stay out of Maya's story.",
+    ),
+  ).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
   await page.unroute('**/v1/drafts/social-story');
 
