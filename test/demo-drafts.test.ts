@@ -777,6 +777,28 @@ test('a dict story body fails the existing generation retry', async () => {
   assert.equal(banned.status, 200);
   assert.equal(banned.calls, 3);
   assert.deepEqual(banned.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
+  const inflected = await generated(
+    '/v1/drafts/social-story',
+    { lines: [sensory], childName: 'Rowan', church: harbor },
+    {
+      title: 'Sunday with Rowan',
+      body: 'On Sunday, Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello. Rowan has peanuts and carries inhalers. Rowan leaves the room. Rowan sits by herself.',
+    },
+  );
+  assert.equal(inflected.status, 200);
+  assert.equal(inflected.calls, 3);
+  assert.deepEqual(inflected.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
+  const missingName = await generated(
+    '/v1/drafts/social-story',
+    { lines: [sensory], childName: 'Al', church: harbor },
+    {
+      title: 'Sunday',
+      body: 'On Sunday, everyone will walk to Example Harbor Fellowship. Harbor Room is quiet. Ms. Dana says hello.',
+    },
+  );
+  assert.equal(missingName.status, 200);
+  assert.equal(missingName.calls, 3);
+  assert.deepEqual(missingName.payload, { title: 'Sunday with Al', body: fallbackBody, source: 'fallback' });
   const clean = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
@@ -895,6 +917,11 @@ test('storySafety rejects banned words, worried tone, and leaving phrases', () =
   }
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} A therapeutic song is quiet.` }, rowanInput), true);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} The sidewalk is outside.` }, rowanInput), true);
+  const quiet = { childName: 'Rowan', church: harbor, lines: [{ text: 'Quiet songs.' }] };
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan has peanuts.` }, quiet), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan carries inhalers.` }, quiet), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan leaves the room.` }, quiet), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan sits by herself.` }, quiet), false);
 });
 
 test('storySafety rejects unknown names, the wrong child, and a missing name', () => {
@@ -911,6 +938,26 @@ test('storySafety rejects unknown names, the wrong child, and a missing name', (
       rowanInput,
     ),
     false,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday',
+        body: 'On Sunday, everyone will walk to Example Harbor Fellowship. Harbor Room is quiet. Ms. Dana says hello.',
+      },
+      { childName: 'Al', church: harbor, lines: [{ text: 'Quiet songs.' }] },
+    ),
+    false,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Al',
+        body: 'Al goes to Example Harbor Fellowship. Al walks to Harbor Room. Ms. Dana says hello.',
+      },
+      { childName: 'Al', church: harbor, lines: [{ text: 'Quiet songs.' }] },
+    ),
+    true,
   );
 });
 

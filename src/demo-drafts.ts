@@ -373,9 +373,9 @@ const STORY_STARTERS = [
 
 const DEMO_CHILD_NAMES = ['Rowan', 'Maya', 'Jonah', 'Quinn'] as const;
 
-const MALE_PRONOUNS = ['he', 'him', 'his'] as const;
+const MALE_PRONOUNS = ['he', 'him', 'his', 'himself'] as const;
 
-const FEMALE_PRONOUNS = ['she', 'her', 'hers'] as const;
+const FEMALE_PRONOUNS = ['she', 'her', 'hers', 'herself'] as const;
 
 export function storySafety(
   story: { readonly title: string; readonly body: string },
@@ -390,7 +390,7 @@ export function storySafety(
     return false;
   }
   if (!properNounsAllowed(text, input)) return false;
-  if (!text.toLowerCase().includes(input.childName.toLowerCase())) return false;
+  if (!preferredNameAppears(text, input.childName)) return false;
   if (otherChildNamed(text, input.childName)) return false;
   return pronounsAllowed(text, input.lines);
 }
@@ -401,13 +401,35 @@ function listed(text: string, words: readonly string[]): boolean {
       if (hasPrefix(text, word)) return true;
       continue;
     }
-    if (hasTerm(text, word)) return true;
+    if (hasInflected(text, word)) return true;
   }
   return false;
 }
 
 function hasTerm(text: string, term: string): boolean {
   return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term)}(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+function hasInflected(text: string, term: string): boolean {
+  const parts = term.split(/\s+/u).map(inflectedWord);
+  return new RegExp(`(?<![\\p{L}\\p{N}])${parts.join('\\s+')}(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+function inflectedWord(word: string): string {
+  const stem = escapeRegExp(word);
+  const forms = [`${stem}(?:s|es|ed|ing)?`];
+  if (word.endsWith('e') && word.length > 1) forms.push(`${escapeRegExp(word.slice(0, -1))}ing`);
+  if (word.endsWith('y') && word.length > 2 && !'aeiou'.includes(word.charAt(word.length - 2).toLowerCase())) {
+    forms.push(`${escapeRegExp(word.slice(0, -1))}ies`);
+  }
+  return `(?:${forms.join('|')})`;
+}
+
+function preferredNameAppears(text: string, childName: string): boolean {
+  const parts = childName.trim().split(/\s+/u).filter((part) => part.length > 0);
+  if (parts.length === 0) return false;
+  const body = parts.map(escapeRegExp).join('\\s+');
+  return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?:['’]s)?(?![\\p{L}\\p{N}])`, 'iu').test(text);
 }
 
 function hasPrefix(text: string, prefix: string): boolean {
