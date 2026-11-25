@@ -51,10 +51,14 @@ export default function LeaderPage() {
   }
 
   function openLesson(): void {
-    if (brief.status !== 'approved' || visit.lesson.phase === 'approved') return;
-    setLessonText(visit.lessonSource);
+    if (brief.status !== 'approved') return;
     setSaved(false);
-    setScreen(visit.lesson.phase === 'ready' ? 'draft' : 'sunday');
+    if (visit.lesson.phase === 'ready' || visit.lesson.phase === 'approved') {
+      setScreen('draft');
+      return;
+    }
+    setLessonText(visit.lessonSource);
+    setScreen('sunday');
   }
 
   function openAfter(): void {
@@ -128,8 +132,17 @@ export default function LeaderPage() {
       />
     );
   }
-  if (screen === 'draft' && visit.lesson.phase === 'ready') {
-    return <DraftScreen value={visit.lesson.value} onApprove={onApproveLesson} onHome={showHome} />;
+  const lesson = visit.lesson;
+  if (screen === 'draft' && (lesson.phase === 'ready' || lesson.phase === 'approved')) {
+    return (
+      <DraftScreen
+        name={name}
+        value={lesson.value}
+        viewing={lesson.phase === 'approved'}
+        onApprove={onApproveLesson}
+        onHome={showHome}
+      />
+    );
   }
   if (screen === 'after' && visit.notes.trim() !== '') {
     return (
@@ -205,7 +218,7 @@ function SundayCard({
       <span className={tagClass(tag)}>{label}</span>
     </>
   );
-  if (waiting || approved) return <article className="home-card">{body}</article>;
+  if (waiting) return <article className="home-card">{body}</article>;
   return (
     <button type="button" className="home-card" onClick={onOpen}>
       {body}
@@ -300,11 +313,15 @@ function LessonScreen({
 }
 
 function DraftScreen({
+  name,
   value,
+  viewing,
   onApprove,
   onHome,
 }: {
+  name: string;
   value: LessonAdaptation;
+  viewing: boolean;
   onApprove: (value: LessonAdaptation) => void;
   onHome: () => void;
 }) {
@@ -312,6 +329,7 @@ function DraftScreen({
   const [summary, setSummary] = useState(value.summary);
   const [steps, setSteps] = useState<string[]>([...value.steps]);
   const cleaned = steps.map((step) => step.trim()).filter((step) => step.length > 0);
+  const showEditor = editing && !viewing;
 
   function approve(): void {
     if (summary.trim().length === 0 || cleaned.length === 0) return;
@@ -322,52 +340,66 @@ function DraftScreen({
     <main>
       <Back onHome={onHome} />
       <section id="lesson-draft" aria-label="Lesson adaptation">
-        <span className={tagClass('ready')}>AI draft · needs your OK</span>
-        <button type="button" className="text" aria-pressed={editing} onClick={() => setEditing((open) => !open)}>
-          {editing ? 'Done' : 'Edit'}
-        </button>
-        {editing ? (
-          <>
-            <label htmlFor="lesson-summary">Summary</label>
-            <textarea
-              id="lesson-summary"
-              rows={3}
-              value={summary}
-              autoComplete="off"
-              onChange={(event) => setSummary(event.target.value)}
-            />
-            <ol>
-              {steps.map((step, index) => (
-                <li key={index}>
-                  <label className="sr-only" htmlFor={`lesson-step-${index}`}>
-                    Step {index + 1}
-                  </label>
-                  <input
-                    id={`lesson-step-${index}`}
-                    value={step}
-                    autoComplete="off"
-                    onChange={(event) =>
-                      setSteps((current) => current.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))
-                    }
-                  />
-                </li>
-              ))}
-            </ol>
-          </>
-        ) : (
-          <>
+        <span className={tagClass(viewing ? 'approved' : 'ready')}>
+          {viewing ? 'Approved' : 'AI draft · needs your OK'}
+        </span>
+        <h1>Lesson for {name}</h1>
+        <article className="lesson-card">
+          <p className="eyebrow">Summary</p>
+          {showEditor ? (
+            <>
+              <label className="sr-only" htmlFor="lesson-summary">
+                Summary
+              </label>
+              <textarea
+                id="lesson-summary"
+                rows={3}
+                value={summary}
+                autoComplete="off"
+                onChange={(event) => setSummary(event.target.value)}
+              />
+            </>
+          ) : (
             <p>{summary}</p>
-            <ol>
-              {steps.map((step, index) => (
-                <li key={`${index}-${step}`}>{step}</li>
-              ))}
-            </ol>
-          </>
+          )}
+        </article>
+        <article className="lesson-card">
+          <p className="eyebrow">Steps</p>
+          <ol>
+            {steps.map((step, index) => (
+              <li key={`${index}-${showEditor ? 'edit' : step}`}>
+                {showEditor ? (
+                  <>
+                    <label className="sr-only" htmlFor={`lesson-step-${index}`}>
+                      Step {index + 1}
+                    </label>
+                    <input
+                      id={`lesson-step-${index}`}
+                      value={step}
+                      autoComplete="off"
+                      onChange={(event) =>
+                        setSteps((current) => current.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))
+                      }
+                    />
+                  </>
+                ) : (
+                  step
+                )}
+              </li>
+            ))}
+          </ol>
+        </article>
+        {viewing ? null : <p className="notice">Volunteers see this lesson only after you approve it.</p>}
+        {viewing ? null : (
+          <button type="button" className="approve" disabled={summary.trim().length === 0 || cleaned.length === 0} onClick={approve}>
+            Approve lesson
+          </button>
         )}
-        <p className="notice">Volunteers see this lesson only after you approve it.</p>
-        <button type="button" className="approve" disabled={summary.trim().length === 0 || cleaned.length === 0} onClick={approve}>
-          Approve lesson
-        </button>
+        {viewing ? null : (
+          <button type="button" className="secondary" aria-pressed={editing} onClick={() => setEditing((open) => !open)}>
+            {editing ? 'Done' : 'Edit'}
+          </button>
+        )}
       </section>
     </main>
   );

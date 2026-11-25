@@ -599,29 +599,34 @@ const NONSENSE = new Set([
   'asdf',
 ]);
 
-const HELPS_PROMPT =
-  'I want to make sure I understand. What usually helps Rowan settle when things feel like too much?';
+function cannedPrompt(sectionId: SectionId, name: string = intakeTree.child.preferredName): string {
+  const asked = named(sectionId, name);
+  if (asked.length <= 120 && !CHILD_PRONOUN.test(asked)) return asked;
+  const shorter = `I want to make sure I understand. Could you say a little more about ${name}?`;
+  if (shorter.length <= 120 && !CHILD_PRONOUN.test(shorter)) return shorter;
+  return 'I want to make sure I understand. Could you say a little more?';
+}
 
-function cannedPrompt(sectionId: SectionId): string {
+function named(sectionId: SectionId, name: string): string {
   switch (sectionId) {
     case 'helps':
-      return HELPS_PROMPT;
+      return `I want to make sure I understand. What usually helps ${name} settle when things feel like too much?`;
     case 'about':
-      return 'I want to make sure I understand. How would you describe Rowan in a sentence or two?';
+      return `I want to make sure I understand. How would you describe ${name} in a sentence or two?`;
     case 'loves':
-      return 'I want to make sure I understand. What does Rowan love, at church or at home?';
+      return `I want to make sure I understand. What does ${name} love, at church or at home?`;
     case 'overwhelms':
-      return 'I want to make sure I understand. What tends to overwhelm Rowan at church or in a new place?';
+      return `I want to make sure I understand. What tends to overwhelm ${name} at church or in a new place?`;
     case 'communication':
-      return 'I want to make sure I understand. How does Rowan usually let you know what is needed?';
+      return `I want to make sure I understand. How does ${name} usually let you know what is needed?`;
     case 'sensory':
-      return 'I want to make sure I understand. What sensory things should a volunteer know?';
+      return `I want to make sure I understand. What sensory things should a volunteer know about ${name}?`;
     case 'toileting':
-      return 'I want to make sure I understand. How does Rowan usually say the bathroom is needed?';
+      return `I want to make sure I understand. How does ${name} usually say the bathroom is needed?`;
     case 'allergies':
-      return 'I want to make sure I understand. Are there any allergies a volunteer should know?';
+      return `I want to make sure I understand. Are there any allergies a volunteer should know about ${name}?`;
     case 'behavior':
-      return 'I want to make sure I understand. When Rowan is very upset, what helps in that moment?';
+      return `I want to make sure I understand. When ${name} is very upset, what helps in that moment?`;
     default: {
       const leftover: never = sectionId;
       return leftover;
@@ -642,6 +647,12 @@ function judgeRelevance(answer: string): boolean {
     if (NONSENSE.has(token)) nonsense += 1;
   }
   return nonsense < 2;
+}
+
+function careSignal(answer: string): boolean {
+  const tokens = answer.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
+  if (tokens.some((token) => token === 'tick' || token.startsWith('tick'))) return true;
+  return tokens.some((token) => CARE.has(token));
 }
 
 function mockAcknowledgement(answer: string, sectionId: SectionId): {
@@ -697,7 +708,7 @@ function parseAcknowledgement(
   }
   const line = oneLine(value.line);
   if (line.length < 1) throw new SchemaRejected();
-  const relevant = judgeRelevance(request.answer);
+  const relevant = value.relevant || careSignal(request.answer);
   const prompt = oneLine(value.clarifyingPrompt);
   return {
     relevant,

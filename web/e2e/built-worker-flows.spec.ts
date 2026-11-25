@@ -271,6 +271,11 @@ test('leader settings save, and back without saving keeps the church', async ({ 
   await page.getByLabel('Summary').fill('A quieter lesson.');
   await page.getByRole('button', { name: 'Approve lesson', exact: true }).click();
   await expect(page.getByText('Approved', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Lesson for Rowan/ }).click();
+  await expect(page.getByRole('heading', { name: 'Lesson for Rowan' })).toBeVisible();
+  await expect(page.getByText('A quieter lesson.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Leader home' }).click();
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('main')).toContainText('A quieter lesson.');
 

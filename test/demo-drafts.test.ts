@@ -252,7 +252,38 @@ test('an acknowledgement that repeats the answer falls back', async () => {
   assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
 });
 
-test('a live acknowledgement asks for sixty tokens and leaves the next question out', async () => {
+test('a live off-topic answer keeps the model not-relevant verdict', async () => {
+  const prompt = 'I want to make sure I understand. What does that have to do with Sunday?';
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({ relevant: false, line: 'Thanks. That helps.', clarifyingPrompt: prompt }),
+  );
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'pizza rocket sandwich', nodeId: 'helps' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    relevant: false,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt: prompt,
+  });
+});
+
+test('a live answer with a number keeps the model relevant verdict', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({ relevant: true, line: 'Thanks. That helps.', clarifyingPrompt: '' }),
+  );
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'Gets 2 breaks', nodeId: 'helps' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    relevant: true,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt: '',
+  });
+});
+
+test('a live acknowledgement asks for eighty tokens and leaves the next question out', async () => {
   const calls: GatewayCall[] = [];
   const logs: string[] = [];
   const original = console.log;

@@ -200,6 +200,12 @@ button.approve {
   color: white;
 }
 
+button.secondary {
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
 button:disabled {
   background: var(--disabled);
   border-color: var(--disabled);
@@ -753,4 +759,22 @@ button.home-card {
   border-radius: 0.8rem;
   padding: 0.7rem 0.8rem;
   margin-top: 0.8rem;
+}
+
+.lesson-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  margin-top: 0.9rem;
+}
+
+.lesson-card ol {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.lesson-card textarea,
+.lesson-card input {
+  width: 100%;
 }
