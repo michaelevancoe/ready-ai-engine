@@ -28,6 +28,15 @@ export function postSundayUpdate(notes: string, childName: string): Promise<Draf
   return post('/v1/drafts/sunday-update', { notes, childName }, readUpdate);
 }
 
+export type AckPost = { readonly kind: 'line'; readonly text: string } | { readonly kind: 'error' };
+
+export function postAcknowledgement(answer: string, sectionTitle: string): Promise<AckPost> {
+  return post('/v1/drafts/acknowledgement', { answer, sectionTitle }, readAcknowledgement).then((result) => {
+    if (!result.ok) return { kind: 'error' };
+    return { kind: 'line', text: result.value };
+  });
+}
+
 function wireLines(lines: readonly BriefLine[]): { field: BriefLine['field']; label: string; text: string }[] {
   return lines.map((line) => ({ field: line.field, label: line.label, text: line.text }));
 }
@@ -84,6 +93,11 @@ function readLesson(value: unknown): LessonAdaptation | null {
 function readUpdate(value: unknown): SundayUpdate | null {
   if (!isRecord(value) || !isBounded(value.body, 1, 2000)) return null;
   return { body: value.body };
+}
+
+function readAcknowledgement(value: unknown): string | null {
+  if (!isRecord(value) || !isBounded(value.line, 1, 160)) return null;
+  return value.line;
 }
 
 function isBounded(value: unknown, min: number, max: number): value is string {

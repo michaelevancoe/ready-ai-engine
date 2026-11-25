@@ -481,3 +481,104 @@ button.mic {
   white-space: nowrap;
   border: 0;
 }
+
+button.example-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  text-align: left;
+}
+
+button.example-card .hint {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.question-card,
+.brief-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  margin-top: 0.9rem;
+}
+
+.brief-card h2,
+.question-card h2 {
+  margin-top: 0.2rem;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  border-radius: 999px;
+  background: var(--loves);
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+}
+
+.photos {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+.banner {
+  background: var(--loves);
+  border-radius: 0.8rem;
+  padding: 0.7rem 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  margin-top: 1.2rem;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+button.mic {
+  position: relative;
+}
+
+button.mic .mic-ring {
+  position: absolute;
+  inset: -0.35rem;
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes mic-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.15);
+  }
+}
+
+.mic-timer {
+  margin-left: 0.45rem;
+}

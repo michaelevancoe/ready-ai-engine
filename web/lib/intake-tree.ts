@@ -1,53 +1,52 @@
+export const SECTION_IDS = [
+  'about',
+  'loves',
+  'overwhelms',
+  'helps',
+  'communication',
+  'sensory',
+  'toileting',
+  'allergies',
+  'behavior',
+] as const;
+
+export type SectionId = (typeof SECTION_IDS)[number];
+
 export type PostKey = 'sensoryNotes' | 'supportNeeds' | 'whatHelps' | 'whatToAvoid';
 
-export type CardKey = 'loves' | 'overwhelms' | 'whatHelps' | 'communication' | 'sensory' | 'medical';
+export type CardKey = 'loves' | 'overwhelms' | 'whatHelps' | 'communication' | 'sensory';
 
 export type Write =
   | { readonly target: 'post'; readonly key: PostKey }
   | { readonly target: 'card'; readonly key: CardKey }
   | { readonly target: 'summary' };
 
+export type Follow =
+  | { readonly when: 'short'; readonly maxChars: number; readonly nodeId: string }
+  | { readonly when: 'unless'; readonly text: string; readonly nodeId: string };
+
 export interface IntakeNode {
   readonly id: string;
   readonly sectionId: string;
   readonly prompt: string;
   readonly placeholder: string;
-  readonly follow?: { readonly when: 'short'; readonly maxChars: number; readonly nodeId: string };
+  readonly follow?: Follow;
   readonly chips?: readonly string[];
   readonly closeChip?: string;
   readonly writes: readonly Write[];
 }
 
 export interface IntakeSection {
-  readonly id: string;
-  readonly kind: 'counted' | 'medical';
+  readonly id: SectionId;
   readonly title: string;
   readonly nodeId: string;
   readonly reviewLabel: string;
-}
-
-export interface MedicalOffer {
-  readonly lead: string;
-  readonly prompt: string;
-  readonly skipLabel: string;
-  readonly acceptLabel: string;
-}
-
-export interface FixCopy {
-  readonly pick: string;
-  readonly reason: string;
-  readonly reasonPlaceholder: string;
-  readonly back: string;
 }
 
 export interface IntakeTree {
   readonly placeholderNote: string;
   readonly child: { readonly preferredName: 'Rowan'; readonly ageYears: 7 };
   readonly parentName: 'Avery';
-  readonly acknowledgement: string;
-  readonly medicalOffer: MedicalOffer;
-  readonly fixCopy: FixCopy;
-  readonly intro: readonly string[];
   readonly sections: readonly IntakeSection[];
   readonly nodes: readonly IntakeNode[];
 }
@@ -56,7 +55,7 @@ export type TreeParse = { readonly ok: true; readonly tree: IntakeTree } | { rea
 
 const POST_KEYS = ['sensoryNotes', 'supportNeeds', 'whatHelps', 'whatToAvoid'] as const;
 
-const CARD_KEYS = ['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory', 'medical'] as const;
+const CARD_KEYS = ['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory'] as const;
 
 const PLACEHOLDER_NOTE = 'Questions are placeholders pending a professional question set.';
 
@@ -66,44 +65,16 @@ const RAW = {
   placeholderNote: PLACEHOLDER_NOTE,
   child: { preferredName: 'Rowan', ageYears: 7 },
   parentName: 'Avery',
-  acknowledgement: "That's really helpful.",
-  medicalOffer: {
-    lead: "That's all the sections. One last question, and it's optional.",
-    prompt:
-      'Would you like to share medical info? It stays off by default, and only you can turn it on for volunteers.',
-    skipLabel: 'Skip for now',
-    acceptLabel: 'Yes, add medical info',
-  },
-  fixCopy: {
-    pick: 'Which part should we fix?',
-    reason: 'What should change?',
-    reasonPlaceholder: TYPE_ANSWER,
-    back: "Rowan's profile",
-  },
-  intro: [
-    "Hi {parent}, I'm Ready. I'll ask a few short questions about Rowan, one at a time.",
-    'Talk or type, whichever is easier. You can skip anything, and nothing is shared until you approve Rowan\'s profile.',
-  ],
   sections: [
-    { id: 'about', kind: 'counted', title: 'About Rowan', nodeId: 'about', reviewLabel: 'Summary' },
-    { id: 'loves', kind: 'counted', title: 'Loves', nodeId: 'loves', reviewLabel: 'Loves' },
-    { id: 'overwhelms', kind: 'counted', title: 'Overwhelms', nodeId: 'overwhelms', reviewLabel: 'Overwhelms' },
-    { id: 'helps', kind: 'counted', title: 'What helps', nodeId: 'helps', reviewLabel: 'What helps' },
-    {
-      id: 'communication',
-      kind: 'counted',
-      title: 'Communication',
-      nodeId: 'communication',
-      reviewLabel: 'Communication',
-    },
-    { id: 'sensory', kind: 'counted', title: 'Sensory', nodeId: 'sensory', reviewLabel: 'Sensory' },
-    {
-      id: 'medical',
-      kind: 'medical',
-      title: 'Medical',
-      nodeId: 'medical',
-      reviewLabel: 'Medical / health notes',
-    },
+    { id: 'about', title: 'About Rowan', nodeId: 'about', reviewLabel: 'Summary' },
+    { id: 'loves', title: 'Loves', nodeId: 'loves', reviewLabel: 'Loves' },
+    { id: 'overwhelms', title: 'Overwhelms', nodeId: 'overwhelms', reviewLabel: 'Overwhelms' },
+    { id: 'helps', title: 'What helps', nodeId: 'helps', reviewLabel: 'What helps' },
+    { id: 'communication', title: 'Communication', nodeId: 'communication', reviewLabel: 'Communication' },
+    { id: 'sensory', title: 'Sensory', nodeId: 'sensory', reviewLabel: 'Sensory' },
+    { id: 'toileting', title: 'Toileting', nodeId: 'toileting', reviewLabel: 'Toileting' },
+    { id: 'allergies', title: 'Allergies & health', nodeId: 'allergies', reviewLabel: 'Allergies & health' },
+    { id: 'behavior', title: 'Behavior & safety', nodeId: 'behavior', reviewLabel: 'Safety & calming' },
   ],
   nodes: [
     {
@@ -111,10 +82,7 @@ const RAW = {
       sectionId: 'about',
       prompt: 'To start: how would you describe Rowan in a sentence or two?',
       placeholder: TYPE_ANSWER,
-      writes: [
-        { target: 'summary' },
-        { target: 'post', key: 'supportNeeds' },
-      ],
+      writes: [{ target: 'summary' }, { target: 'post', key: 'supportNeeds' }],
     },
     {
       id: 'loves',
@@ -136,7 +104,7 @@ const RAW = {
     {
       id: 'helps',
       sectionId: 'helps',
-      prompt: 'When Rowan starts to feel overwhelmed, what helps most?',
+      prompt: 'What helps Rowan feel calm again when things get to be too much?',
       placeholder: TYPE_ANSWER,
       follow: { when: 'short', maxChars: 40, nodeId: 'helps-more' },
       writes: [
@@ -160,7 +128,7 @@ const RAW = {
     {
       id: 'communication',
       sectionId: 'communication',
-      prompt: 'How does Rowan communicate when words are hard?',
+      prompt: 'How does Rowan usually let you know what he needs?',
       placeholder: TYPE_ANSWER,
       writes: [
         { target: 'post', key: 'supportNeeds' },
@@ -178,11 +146,37 @@ const RAW = {
       ],
     },
     {
-      id: 'medical',
-      sectionId: 'medical',
-      prompt: "What medical or health note should stay with Rowan's profile?",
+      id: 'toileting',
+      sectionId: 'toileting',
+      prompt: 'How does Rowan usually let you know they need the bathroom?',
       placeholder: TYPE_ANSWER,
-      writes: [{ target: 'card', key: 'medical' }],
+      chips: ['Tells an adult', 'Uses a sign or picture', 'Needs reminders', 'Needs help in the bathroom'],
+      writes: [],
+    },
+    {
+      id: 'allergies',
+      sectionId: 'allergies',
+      prompt: 'Does Rowan have any allergies, to food, medicine, or anything else?',
+      placeholder: TYPE_ANSWER,
+      chips: ['No known allergies', 'Food allergy', 'Medicine allergy', 'Something else'],
+      follow: { when: 'unless', text: 'No known allergies', nodeId: 'allergies-more' },
+      writes: [],
+    },
+    {
+      id: 'allergies-more',
+      sectionId: 'allergies',
+      prompt: 'What happens, and what should a volunteer do?',
+      placeholder: TYPE_ANSWER,
+      writes: [],
+    },
+    {
+      id: 'behavior',
+      sectionId: 'behavior',
+      prompt:
+        'When Rowan is very upset, does he ever hurt himself or others, or run off? If so, what helps in that moment?',
+      placeholder: TYPE_ANSWER,
+      chips: ['No, not usually', 'Sometimes runs off', 'Sometimes hits or bites', 'Let me explain'],
+      writes: [],
     },
   ],
 };
@@ -196,13 +190,10 @@ export function parseIntakeTree(input: unknown): TreeParse {
     return fail('invalid-tree');
   }
   if (input.parentName !== 'Avery') return fail('invalid-tree');
-  if (!nonEmpty(input.acknowledgement)) return fail('invalid-tree');
-  const medicalOffer = medicalOfferOf(input.medicalOffer);
-  if (medicalOffer === null) return fail('invalid-tree');
-  const fixCopy = fixCopyOf(input.fixCopy);
-  if (fixCopy === null) return fail('invalid-tree');
-  const intro = stringList(input.intro);
-  if (intro === null || intro.length === 0) return fail('invalid-tree');
+  if (input.medicalOffer !== undefined) return fail('medical-offer');
+  if (hasSkip(input)) return fail('skip');
+  const flagged = flaggedShape(input.sections, input.nodes);
+  if (flagged !== null) return fail(flagged);
   const sections = sectionList(input.sections);
   if (sections === null) return fail('invalid-tree');
   const nodes = nodeList(input.nodes);
@@ -210,7 +201,7 @@ export function parseIntakeTree(input: unknown): TreeParse {
   const duplicate = duplicateId(nodes);
   if (duplicate !== null) return fail(`duplicate-node:${duplicate}`);
   const ids = new Set(nodes.map((node) => node.id));
-  const sectionIds = new Set(sections.map((section) => section.id));
+  const sectionIds = new Set<string>(sections.map((section) => section.id));
   for (const section of sections) {
     if (!ids.has(section.nodeId)) return fail(`unknown-node:${section.nodeId}`);
   }
@@ -232,14 +223,14 @@ export function parseIntakeTree(input: unknown): TreeParse {
       placeholderNote: PLACEHOLDER_NOTE,
       child: { preferredName: 'Rowan', ageYears: 7 },
       parentName: 'Avery',
-      acknowledgement: input.acknowledgement,
-      medicalOffer,
-      fixCopy,
-      intro,
       sections,
       nodes,
     },
   };
+}
+
+export function isSectionId(value: string): value is SectionId {
+  return SECTION_IDS.some((id) => id === value);
 }
 
 function ship(input: unknown): IntakeTree {
@@ -252,38 +243,42 @@ function fail(error: string): TreeParse {
   return { ok: false, error };
 }
 
-function medicalOfferOf(value: unknown): MedicalOffer | null {
-  if (!isRecord(value)) return null;
-  if (!nonEmpty(value.lead) || !nonEmpty(value.prompt) || !nonEmpty(value.skipLabel) || !nonEmpty(value.acceptLabel)) {
-    return null;
+function flaggedShape(sections: unknown, nodes: unknown): string | null {
+  if (Array.isArray(sections)) {
+    for (const section of sections) {
+      if (!isRecord(section)) continue;
+      if (section.kind === 'medical') return 'medical-offer';
+      if (section.optional !== undefined || (section.kind !== undefined && section.kind !== 'counted')) {
+        return 'optional-section';
+      }
+      if (hasSkip(section)) return 'skip';
+    }
   }
-  return { lead: value.lead, prompt: value.prompt, skipLabel: value.skipLabel, acceptLabel: value.acceptLabel };
-}
-
-function fixCopyOf(value: unknown): FixCopy | null {
-  if (!isRecord(value)) return null;
-  if (!nonEmpty(value.pick) || !nonEmpty(value.reason) || !nonEmpty(value.reasonPlaceholder) || !nonEmpty(value.back)) {
-    return null;
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (isRecord(node) && hasSkip(node)) return 'skip';
+    }
   }
-  return { pick: value.pick, reason: value.reason, reasonPlaceholder: value.reasonPlaceholder, back: value.back };
+  return null;
 }
 
 function sectionList(value: unknown): IntakeSection[] | null {
-  if (!Array.isArray(value)) return null;
+  if (!Array.isArray(value) || value.length !== SECTION_IDS.length) return null;
   const sections: IntakeSection[] = [];
-  for (const item of value) {
-    const section = sectionOf(item);
+  for (let index = 0; index < value.length; index += 1) {
+    const expected = SECTION_IDS[index];
+    if (expected === undefined) return null;
+    const section = sectionOf(value[index], expected);
     if (section === null) return null;
     sections.push(section);
   }
   return sections;
 }
 
-function sectionOf(value: unknown): IntakeSection | null {
-  if (!isRecord(value)) return null;
-  if (value.kind !== 'counted' && value.kind !== 'medical') return null;
-  if (!isText(value.id) || !isText(value.title) || !isText(value.nodeId) || !isText(value.reviewLabel)) return null;
-  return { id: value.id, kind: value.kind, title: value.title, nodeId: value.nodeId, reviewLabel: value.reviewLabel };
+function sectionOf(value: unknown, id: SectionId): IntakeSection | null {
+  if (!isRecord(value) || value.id !== id) return null;
+  if (!isText(value.title) || !isText(value.nodeId) || !isText(value.reviewLabel)) return null;
+  return { id, title: value.title, nodeId: value.nodeId, reviewLabel: value.reviewLabel };
 }
 
 function nodeList(value: unknown): IntakeNode[] | null {
@@ -299,7 +294,9 @@ function nodeList(value: unknown): IntakeNode[] | null {
 
 function nodeOf(value: unknown): IntakeNode | null {
   if (!isRecord(value)) return null;
-  if (!isText(value.id) || !isText(value.sectionId) || !isText(value.prompt) || !isText(value.placeholder)) return null;
+  if (!isText(value.id) || !isText(value.sectionId) || !isText(value.prompt) || !isText(value.placeholder)) {
+    return null;
+  }
   const writes = writeList(value.writes);
   if (writes === null) return null;
   const follow = followOf(value.follow);
@@ -320,13 +317,18 @@ function nodeOf(value: unknown): IntakeNode | null {
   };
 }
 
-function followOf(value: unknown): IntakeNode['follow'] | null | undefined {
+function followOf(value: unknown): Follow | null | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || value.when !== 'short' || typeof value.maxChars !== 'number' || !isText(value.nodeId)) {
-    return null;
+  if (!isRecord(value) || !isText(value.nodeId)) return null;
+  if (value.when === 'short') {
+    if (typeof value.maxChars !== 'number' || !Number.isFinite(value.maxChars)) return null;
+    return { when: 'short', maxChars: value.maxChars, nodeId: value.nodeId };
   }
-  if (!Number.isFinite(value.maxChars)) return null;
-  return { when: 'short', maxChars: value.maxChars, nodeId: value.nodeId };
+  if (value.when === 'unless') {
+    if (!nonEmpty(value.text)) return null;
+    return { when: 'unless', text: value.text, nodeId: value.nodeId };
+  }
+  return null;
 }
 
 function writeList(value: unknown): Write[] | null {
@@ -360,6 +362,10 @@ function duplicateId(nodes: readonly IntakeNode[]): string | null {
 function stringList(value: unknown): string[] | null {
   if (!Array.isArray(value) || !value.every(isText)) return null;
   return value;
+}
+
+function hasSkip(value: Record<string, unknown>): boolean {
+  return value.skip !== undefined || value.skipLabel !== undefined;
 }
 
 function isListed<T extends string>(value: unknown, keys: readonly T[]): value is T {

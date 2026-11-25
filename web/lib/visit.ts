@@ -116,7 +116,7 @@ export function initialVisit(): Visit {
   return {
     role: 'parent',
     intake: initialGate(),
-    conversation: reduceConversation(intakeTree, initialConversation(), { type: 'start' }),
+    conversation: initialConversation(),
     card: blankCard(),
     cardTouched: false,
     visibility: {
@@ -331,47 +331,7 @@ function applyIntake(visit: Visit, event: GateEvent): Visit {
 function applyConversation(visit: Visit, event: ConversationEvent): Visit {
   const conversation = reduceConversation(intakeTree, visit.conversation, event);
   if (conversation === visit.conversation) return visit;
-  if (!resetsGate(event) || !staleGate(visit.intake)) return { ...visit, conversation };
-  return { ...visit, conversation, intake: { status: 'idle' } };
-}
-
-function resetsGate(event: ConversationEvent): boolean {
-  switch (event.type) {
-    case 'answer':
-    case 'skip':
-    case 'declineMedical':
-    case 'acceptMedical':
-    case 'reopen':
-      return true;
-    case 'start':
-    case 'beginFix':
-    case 'chooseSection':
-    case 'giveReason':
-    case 'leaveFix':
-    case 'finishFix':
-      return false;
-    default: {
-      const leftover: never = event;
-      return leftover;
-    }
-  }
-}
-
-function staleGate(gate: IntakeGate): boolean {
-  switch (gate.status) {
-    case 'draft':
-    case 'approving':
-    case 'error':
-    case 'submitting':
-      return true;
-    case 'idle':
-    case 'approved':
-      return false;
-    default: {
-      const leftover: never = gate;
-      return leftover;
-    }
-  }
+  return { ...visit, conversation };
 }
 
 function blankCard(): ProfileCard {
