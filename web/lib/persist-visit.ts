@@ -1,6 +1,7 @@
 import {
   BRIEF_FIELDS,
   briefLines,
+  showingExample,
   type BriefLine,
   type ChurchSetup,
   type ProfileCard,
@@ -72,11 +73,12 @@ export interface PersistPlan {
 }
 
 export function persistDispatch(before: Visit, after: Visit, scope: AccountScope): PersistPlan {
+  const example = showingExample(before) || showingExample(after);
   return {
-    answers: sameAnswers(before.conversation.answers, after.conversation.answers)
+    answers: example || sameAnswers(before.conversation.answers, after.conversation.answers)
       ? null
       : { organizationId: scope.organizationId, childId: scope.childId, answers: after.conversation.answers },
-    brief: sameBrief(before, after)
+    brief: example || sameBrief(before, after)
       ? null
       : {
           organizationId: scope.organizationId,
@@ -85,7 +87,7 @@ export function persistDispatch(before: Visit, after: Visit, scope: AccountScope
           visibility: after.visibility,
           cardTouched: after.cardTouched,
         },
-    publication: publicationChange(before, after, scope),
+    publication: example ? null : publicationChange(before, after, scope),
     notes:
       before.notes === after.notes
         ? null

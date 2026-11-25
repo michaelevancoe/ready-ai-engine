@@ -178,7 +178,7 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
         ...withdrawnBrief(),
       };
     case 'writeStory':
-      if (!briefAlreadyApproved(visit) || visit.story.phase === 'writing') return visit;
+      if (!briefAlreadyApproved(visit) || showingExample(visit) || visit.story.phase === 'writing') return visit;
       return { ...visit, story: { phase: 'writing' } };
     case 'noteStory':
       if (visit.story.phase === 'writing' || visit.brief.phase !== 'approved') return visit;
@@ -272,6 +272,12 @@ export function childHeading(name: string): string {
 
 export function briefAlreadyApproved(visit: Visit): boolean {
   return visit.intake.status === 'approved' || visit.brief.phase === 'approved';
+}
+
+export function showingExample(visit: Visit): boolean {
+  const talk = visit.conversation.talk;
+  if (talk.mode !== 'brief' && talk.mode !== 'approved') return false;
+  return talk.source.type === 'example';
 }
 
 export function checkInBrief(visit: Visit): CheckIn {

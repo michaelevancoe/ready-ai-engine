@@ -31,6 +31,30 @@ test('a role change and an in-flight lesson do not settle a row', () => {
   assert.equal(persistDispatch(approved, cleared, scope).lesson?.action, 'delete');
 });
 
+test('an example does not save or delete the account child brief', () => {
+  const child: Visit = {
+    ...initialVisit(),
+    card: { ...initialVisit().card, loves: 'Trains' },
+    brief: {
+      phase: 'approved',
+      lines: [{ field: 'loves', label: 'Loves', text: 'Trains' }],
+    },
+  };
+  const opened = reduceVisit(child, { type: 'conversation', event: { type: 'openExample', id: 'maya' } });
+  const openedPlan = persistDispatch(child, opened, scope);
+  assert.equal(openedPlan.brief, null);
+  assert.equal(openedPlan.publication, null);
+  assert.equal(openedPlan.answers, null);
+  const closed = reduceVisit(opened, { type: 'conversation', event: { type: 'leaveExample' } });
+  const closedPlan = persistDispatch(opened, closed, scope);
+  assert.equal(closedPlan.brief, null);
+  assert.equal(closedPlan.publication, null);
+  assert.equal(closedPlan.answers, null);
+  assert.equal(child.brief.phase, 'approved');
+  if (child.brief.phase !== 'approved') return;
+  assert.equal(child.brief.lines[0]?.text, 'Trains');
+});
+
 test('published lines omit medical and notes keep the child scope', () => {
   const start = initialVisit();
   const card = { ...start.card, loves: 'Trains', medical: 'Secret' };
