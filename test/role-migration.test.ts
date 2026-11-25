@@ -46,6 +46,7 @@ test('the sign-in migration is a file only and scripts do not apply it', () => {
     'coverage',
     'playwright-report',
     'test-results',
+    '.audit',
   ]);
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
