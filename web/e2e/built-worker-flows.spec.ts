@@ -94,6 +94,11 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(volunteer).toContainText('No brief yet');
   await save(page, 'flows-volunteer-withheld.png');
 
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await expect(page.getByText("Waiting on parent's brief")).toBeVisible();
+  await page.getByRole('heading', { name: 'Lesson for Rowan' }).click();
+  await expect(page.getByLabel('Lesson (fictional)')).toHaveCount(0);
+
   await page.getByRole('link', { name: 'Parent' }).click();
   await page.getByRole('button', { name: 'Fix something' }).click();
   await page.getByRole('button', { name: 'Sensory', exact: true }).click();
@@ -113,10 +118,9 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   expect(body.sensoryNotes).toBe('TICK-SOFTER-SEAT.');
   await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'A Sunday story for Rowan' })).toBeVisible();
-  await expect(
-    page.getByText('A short picture story about what Sunday will look like. Read it together before you go.'),
-  ).toBeVisible();
-  await expect(page.getByRole('link', { name: "Read Rowan's story" })).toBeVisible();
+  await expect(page.getByText('A short Sunday story about what Sunday will look like.')).toBeVisible();
+  await expect(page.getByText('picture story')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: "Read Rowan's story" })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
   const update = page.getByRole('region', { name: 'Sunday update' });
   await expect(update).toContainText('Waiting for an approved Sunday update.');
@@ -134,8 +138,9 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-volunteer-notes.png');
 
   await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: /Notes from Theo Park/ }).click();
   await expect(page.getByRole('region', { name: 'Internal notes' })).toContainText('TICK-AFTER-SUNDAY');
-  await page.getByRole('button', { name: 'Write the parent note', exact: true }).click();
+  await page.getByRole('button', { name: "Draft a note for Rowan's parent", exact: true }).click();
   const parentNote = page.getByRole('textbox', { name: 'Parent note' });
   await expect(parentNote).toHaveValue(/Sunday went well for Rowan\./);
   await expect(parentNote).not.toHaveValue(/TICK-AFTER-SUNDAY/);
@@ -148,8 +153,9 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(page.getByRole('button', { name: 'Write the parent note', exact: true })).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: /Notes from Theo Park/ }).click();
   await page.getByRole('textbox', { name: 'Parent note' }).fill('Sunday went well for Rowan. The quiet seat helped.\nTheo Park');
-  await page.getByRole('button', { name: 'Approve parent note', exact: true }).click();
+  await page.getByRole('button', { name: 'Approve and send to parent', exact: true }).click();
 
   await page.getByRole('link', { name: 'Parent' }).click();
   await expect(update).toContainText('Sunday went well for Rowan. The quiet seat helped.');
@@ -158,9 +164,10 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-parent-note.png');
 
   await page.getByRole('link', { name: 'Leader' }).click();
-  await expect(page.getByRole('heading', { name: 'Example Harbor Fellowship' })).toBeVisible();
-  await page.getByLabel('Fictional lesson').fill('TICK-LESSON-PLAN');
-  await page.getByRole('button', { name: 'Adapt lesson' }).click();
+  await expect(page.getByRole('heading', { name: 'Good morning, Devon Placeholder' })).toBeVisible();
+  await page.getByRole('button', { name: /Lesson for Rowan/ }).click();
+  await page.getByLabel('Lesson (fictional)').fill('TICK-LESSON-PLAN');
+  await page.getByRole('button', { name: 'Adapt for Rowan' }).click();
   const lesson = page.getByRole('region', { name: 'Lesson adaptation' });
   await expect(lesson.getByRole('list')).toContainText('TICK-LESSON-PLAN');
   await expect(lesson).not.toContainText('TICK-MEDICAL');
@@ -170,9 +177,147 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(page.getByRole('main')).not.toContainText('TICK-LESSON-PLAN');
 
   await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: /Lesson for Rowan/ }).click();
   await page.getByRole('button', { name: 'Approve lesson', exact: true }).click();
 
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('main')).toContainText('TICK-LESSON-PLAN');
   await save(page, 'flows-volunteer-lesson.png');
+});
+
+test('each example opens a brief for volunteer and a lesson for the leader', async ({ page }) => {
+  const examples = [
+    [/Rowan, 7/, 'Rowan loves Disney stories and quiet songs.', 'ROWAN, 7', 'Rowan Sampleton'],
+    [/Maya, 5/, 'Maya loves dinosaurs and digging in the sand table.', 'MAYA, 5', 'Maya'],
+    [/Jonah, 9/, 'Jonah loves Lego and building on the floor.', 'JONAH, 9', 'Jonah'],
+  ] as const;
+  for (const [button, line, eyebrow, heading] of examples) {
+    await page.goto('/');
+    await page.getByRole('button', { name: button }).click();
+    await page.getByRole('link', { name: 'Volunteer' }).click();
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+    const brief = page.getByRole('region', { name: 'Sunday brief' });
+    await expect(brief).toContainText(line);
+    await expect(brief).not.toContainText('Medical');
+    await expect(page.getByLabel('Notes after Sunday')).toBeVisible();
+    await page.getByRole('link', { name: 'Leader' }).click();
+    await expect(page.getByText("Waiting on parent's brief")).toHaveCount(0);
+    await expect(page.getByText('Ready to adapt')).toBeVisible();
+    await expect(page.getByText(`THIS SUNDAY · ${eyebrow}`)).toBeVisible();
+  }
+});
+
+test('reading a Sunday story stays on the page and try again recovers', async ({ page }) => {
+  let failures = 0;
+  await page.route('**/v1/drafts/social-story', async (route) => {
+    failures += 1;
+    if (failures === 1) {
+      await route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'generation_failed' }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Maya, 5/ }).click();
+  await expect(page.getByText('A short Sunday story about what Sunday will look like.')).toBeVisible();
+  await expect(page.getByText('picture story')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
+  await page.getByRole('button', { name: "Read Maya's story" }).click();
+  await expect(page.getByRole('button', { name: '← Maya is ready for Sunday' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "The story isn't ready yet" })).toBeVisible();
+  await expect(page.getByText("Nothing is lost, and Maya's brief is still approved.")).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('heading', { name: 'Sunday with Maya' })).toBeVisible();
+  await expect(page.getByText(/Maya arrives/)).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
+  await page.unroute('**/v1/drafts/social-story');
+
+  for (const [button, name] of [
+    [/Jonah, 9/, 'Jonah'],
+    [/Rowan, 7/, 'Rowan'],
+  ] as const) {
+    await page.goto('/');
+    await page.getByRole('button', { name: button }).click();
+    await page.getByRole('button', { name: `Read ${name}'s story` }).click();
+    await expect(page.getByRole('heading', { name: `Sunday with ${name}` })).toBeVisible();
+    await expect(page.getByText(new RegExp(`${name} arrives`))).toBeVisible();
+    expect(new URL(page.url()).hash).toBe('');
+    await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
+  }
+
+  await page.goto('/');
+  await answerTree(page, 'TICK-QUIET-ROOM');
+  await page.getByRole('button', { name: 'Looks right, approve' }).click();
+  await page.getByRole('button', { name: "Read Rowan's story" }).click();
+  await expect(page.getByRole('heading', { name: 'Sunday with Rowan' })).toBeVisible();
+  await expect(page.getByText(/Rowan arrives/)).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
+  await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
+});
+
+test('leader settings save, and back without saving keeps the church', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Rowan, 7/ }).click();
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: /Lesson for Rowan/ }).click();
+  await page.getByLabel('Lesson (fictional)').fill('TICK-LESSON-PLAN');
+  await page.getByRole('button', { name: 'Adapt for Rowan' }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Summary').fill('A quieter lesson.');
+  await page.getByRole('button', { name: 'Approve lesson', exact: true }).click();
+  await expect(page.getByText('Approved', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Volunteer' }).click();
+  await expect(page.getByRole('main')).toContainText('A quieter lesson.');
+
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: 'Church settings' }).click();
+  await page.getByLabel('Room').fill('North room');
+  await page.getByRole('button', { name: 'Leader home' }).click();
+  await expect(page.getByText('Harbor Room · Sunday 9:30')).toBeVisible();
+  await page.getByRole('button', { name: 'Church settings' }).click();
+  await expect(page.getByLabel('Room')).toHaveValue('Harbor Room');
+  await page.getByLabel('Room').fill('North room');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+  await expect(page.getByText('North room · Sunday 9:30')).toBeVisible();
+});
+
+test('a nonsense helps answer stays on the question until a real one', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start with a new child' }).click();
+  await send(page, 'He likes a quiet hello.', 'What does Rowan love');
+  await send(page, 'Trains.', 'What tends to overwhelm');
+  await send(page, 'Crowded doorways.', 'feel calm again');
+  const answer = page.getByRole('textbox', { name: 'Your answer' });
+  await answer.fill('banana purple 42');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('I want to make sure I understand. What usually helps Rowan settle')).toBeVisible();
+  await expect(page.locator('#current-question')).toContainText('feel calm again');
+  await expect(answer).toHaveValue('');
+  await expect(answer).toBeEnabled();
+  await expect(page.getByText('banana purple 42')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Skip' })).toHaveCount(0);
+  await answer.fill('A quiet corner and a heads-up before the next song.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('let you know what he needs').first()).toBeVisible();
+});
+
+test('a second nonsense helps answer advances', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start with a new child' }).click();
+  await send(page, 'He likes a quiet hello.', 'What does Rowan love');
+  await send(page, 'Trains.', 'What tends to overwhelm');
+  await send(page, 'Crowded doorways.', 'feel calm again');
+  const answer = page.getByRole('textbox', { name: 'Your answer' });
+  await answer.fill('banana purple 42');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('I want to make sure I understand')).toBeVisible();
+  await answer.fill('asdf qwerty zebra moonlight');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('anything else that calms Rowan').first()).toBeVisible();
 });

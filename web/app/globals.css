@@ -703,3 +703,54 @@ a.text-link {
   color: var(--terracotta);
   font-weight: 600;
 }
+
+.home-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  margin-top: 0.9rem;
+  text-align: left;
+}
+
+button.home-card {
+  border-radius: 1rem;
+  font-weight: 400;
+}
+
+.home-card h2 {
+  margin-top: 0.25rem;
+}
+
+.tag {
+  display: inline-block;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  background: var(--portrait);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+}
+
+.tag.waiting {
+  background: var(--overwhelms);
+  color: var(--terracotta);
+}
+
+.tag.ready {
+  background: var(--helps);
+  color: var(--focus);
+}
+
+.tag.approved {
+  background: var(--loves);
+  color: var(--green);
+}
+
+.notice {
+  background: var(--helps);
+  border-radius: 0.8rem;
+  padding: 0.7rem 0.8rem;
+  margin-top: 0.8rem;
+}

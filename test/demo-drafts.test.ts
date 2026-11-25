@@ -17,8 +17,10 @@ const labelStory =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
 
 const NEXT_QUESTION = 'How does Rowan usually let you know what he needs?';
+const CHILD_PRONOUN = /\b(?:he|she|him|his|her|hers|they|them|their|theirs)\b/iu;
+const ACK_USER = `Answer: Picture cards.\nSection: communication\nQuestion: ${NEXT_QUESTION}`;
 
-test('mock acknowledgement returns a line and does not fetch', async () => {
+test('mock acknowledgement judges the answer and does not fetch', async () => {
   let calls = 0;
   const demo = await DemoContext.open('1', {
     fetchImpl: async () => {
@@ -26,12 +28,57 @@ test('mock acknowledgement returns a line and does not fetch', async () => {
       throw new Error('mock must not fetch');
     },
   });
-  const response = await demo.handle(
-    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+  const nonsense = [
+    ['helps', 'banana purple 42'],
+    ['communication', 'asdf qwerty zebra moonlight'],
+    ['overwhelms', 'the moon is made of cheese muffins'],
+  ] as const;
+  for (const [nodeId, answer] of nonsense) {
+    const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId }));
+    assert.equal(response.status, 200, answer);
+    const body = (await response.json()) as { relevant: boolean; line: string; clarifyingPrompt: string };
+    assert.deepEqual(Object.keys(body).sort(), ['clarifyingPrompt', 'line', 'relevant']);
+    assert.equal(body.relevant, false, answer);
+    assert.equal(body.line, 'Thanks. That helps.', answer);
+    assert.equal(body.clarifyingPrompt.includes('?'), true, answer);
+    assert.equal(body.clarifyingPrompt.length <= 120, true, answer);
+    assert.equal(CHILD_PRONOUN.test(body.clarifyingPrompt), false, answer);
+  }
+  const helps = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'banana purple 42', nodeId: 'helps' }),
   );
+  assert.equal(
+    ((await helps.json()) as { clarifyingPrompt: string }).clarifyingPrompt,
+    'I want to make sure I understand. What usually helps Rowan settle when things feel like too much?',
+  );
+  const sensible = [
+    ['about', 'He likes a quiet hello.'],
+    ['loves', 'Trains.'],
+    ['overwhelms', 'Crowded doorways.'],
+    ['helps', 'A quiet corner and a heads-up before the next song.'],
+    ['communication', 'Picture cards.'],
+    ['sensory', 'TICK-QUIET-ROOM'],
+    ['toileting', 'Tells an adult'],
+    ['allergies', 'Food allergy'],
+    ['allergies-more', 'TICK-ALLERGY-PLAN'],
+    ['behavior', 'No, not usually'],
+    ['loves', 'Painted rocks'],
+    ['sensory', 'TICK-SOFTER-SEAT'],
+  ] as const;
+  for (const [nodeId, answer] of sensible) {
+    const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId }));
+    assert.equal(response.status, 200, answer);
+    assert.deepEqual(await response.json(), {
+      relevant: true,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt: '',
+    });
+  }
+  const medical = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'Peanuts.', sectionId: 'medical' }),
+  );
+  assert.equal(medical.status, 400);
   assert.equal(calls, 0);
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
 });
 
 test('a live acknowledgement records the intake schema and leaves out the next question', async () => {
@@ -45,34 +92,39 @@ test('a live acknowledgement records the intake schema and leaves out the next q
     const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
       const request = new Request(input, init);
       calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
-      return chatEnvelope({ line: 'Thanks for telling me.' });
+      return chatEnvelope({ relevant: true, line: 'Thanks for telling me.', clarifyingPrompt: '' });
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', nodeId: 'communication' }),
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { line: 'Thanks for telling me.' });
+    assert.deepEqual(await response.json(), {
+      relevant: true,
+      line: 'Thanks for telling me.',
+      clarifyingPrompt: '',
+    });
     const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
     assert.equal(calls[0]?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
-    assert.equal(calls[0]?.body.max_tokens, 60);
+    assert.equal(calls[0]?.body.max_tokens, 80);
     assert.equal(calls[0]?.body.model, 'workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
     assert.equal(user.includes('Picture cards.'), true);
     assert.equal(user.includes('communication'), true);
-    assert.equal(user.includes(NEXT_QUESTION), false);
+    assert.equal(user, ACK_USER);
     assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
+    assert.equal(logs.some((line) => line.includes('Picture cards.')), false);
   } finally {
     console.log = original;
   }
 });
 
 test('an acknowledgement longer than 500 characters is rejected before fetch', async () => {
-  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(501), sectionId: 'communication' });
+  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(501), nodeId: 'communication' });
   assert.equal(result.status, 400);
   assert.equal(result.calls, 0);
 });
 
-test('an unknown acknowledgement section is rejected before fetch', async () => {
-  const result = await rejectedAcknowledgement({ answer: 'Picture cards.', sectionId: 'nope' });
+test('an unknown acknowledgement node is rejected before fetch', async () => {
+  const result = await rejectedAcknowledgement({ answer: 'Picture cards.', nodeId: 'nope' });
   assert.equal(result.status, 400);
   assert.equal(result.calls, 0);
 });
@@ -80,7 +132,7 @@ test('an unknown acknowledgement section is rejected before fetch', async () => 
 test('an acknowledgement with an extra key is rejected before fetch', async () => {
   const result = await rejectedAcknowledgement({
     answer: 'Picture cards.',
-    sectionId: 'communication',
+    nodeId: 'communication',
     prompt: 'Write the next question.',
   });
   assert.equal(result.status, 400);
@@ -88,27 +140,36 @@ test('an acknowledgement with an extra key is rejected before fetch', async () =
 });
 
 test('an acknowledgement with a newline comes back as one line', async () => {
-  const demo = DemoContext.fromBindings(liveShell(), async () => chatEnvelope({ line: 'Thanks.\nThat helps.' }));
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({ relevant: true, line: 'Thanks.\nThat helps.', clarifyingPrompt: '' }),
+  );
   const response = await demo.handle(
-    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', nodeId: 'communication' }),
   );
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
+  assert.deepEqual(await response.json(), {
+    relevant: true,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt: '',
+  });
 });
 
 const PARENT_FALLBACK = "That's really helpful.";
 
 const ACKNOWLEDGEMENT_PROMPT = [
   'The data is fictional. Do not invent medical facts.',
-  'Write one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
+  'Return relevant, line, and clarifyingPrompt.',
+  'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
   'Do not restate or quote the answer.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
-  'Do not use a pronoun for the child.',
+  'Do not use a pronoun for the child in line or clarifyingPrompt.',
   "Use the child's name only if the answer includes it.",
-  'Do not ask a question.',
-  'Do not preview the next question.',
-  'Examples:',
+  'line must not ask a question and must not preview another question.',
+  'Set relevant to true only when the answer addresses the question.',
+  'When relevant is false, clarifyingPrompt is one short follow-up question.',
+  'When relevant is true, clarifyingPrompt is an empty string.',
+  'Examples of line:',
   "Thank you, that's really useful to know.",
   'Got it, that will help the volunteers.',
   'Thanks, that gives us a clearer picture.',
@@ -120,10 +181,10 @@ test('a good acknowledgement is returned unchanged', async () => {
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.equal(result.maxTokens, 60);
+  assert.equal(result.maxTokens, 80);
   assert.equal(result.system, ACKNOWLEDGEMENT_PROMPT);
-  assert.equal(result.user, 'Answer: Picture cards.\nSection: communication');
-  assert.deepEqual(result.body, { line });
+  assert.equal(result.user, ACK_USER);
+  assert.deepEqual(result.body, { relevant: true, line, clarifyingPrompt: '' });
 });
 
 test('an acknowledgement of 120 characters is returned unchanged', async () => {
@@ -132,21 +193,21 @@ test('an acknowledgement of 120 characters is returned unchanged', async () => {
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { line });
+  assert.deepEqual(result.body, { relevant: true, line, clarifyingPrompt: '' });
 });
 
 test('a cut-off acknowledgement falls back', async () => {
   const result = await acknowledgementFrom('Thank you for telling me tha');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
 });
 
 test('an acknowledgement with a non-Latin character falls back', async () => {
   const result = await acknowledgementFrom('Thank you, that helps噪.');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
 });
 
 test('an acknowledgement that names a diagnosis falls back', async () => {
@@ -154,7 +215,7 @@ test('an acknowledgement that names a diagnosis falls back', async () => {
     const result = await acknowledgementFrom(`Thank you for the note on ${word}.`);
     assert.equal(result.status, 200, word);
     assert.equal(result.calls, 1, word);
-    assert.deepEqual(result.body, { line: PARENT_FALLBACK }, word);
+    assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' }, word);
   }
 });
 
@@ -164,14 +225,14 @@ test('an acknowledgement longer than 120 characters falls back', async () => {
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
 });
 
 test('an acknowledgement with a question mark falls back', async () => {
   const result = await acknowledgementFrom('Really? That helps.');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
 });
 
 test('an acknowledgement that uses a child pronoun falls back', async () => {
@@ -179,7 +240,7 @@ test('an acknowledgement that uses a child pronoun falls back', async () => {
     const result = await acknowledgementFrom(line);
     assert.equal(result.status, 200, line);
     assert.equal(result.calls, 1, line);
-    assert.deepEqual(result.body, { line: PARENT_FALLBACK }, line);
+    assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' }, line);
   }
 });
 
@@ -188,7 +249,7 @@ test('an acknowledgement that repeats the answer falls back', async () => {
   const result = await acknowledgementFrom(line, line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { line: PARENT_FALLBACK });
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
 });
 
 test('a live acknowledgement asks for sixty tokens and leaves the next question out', async () => {
@@ -203,22 +264,26 @@ test('a live acknowledgement asks for sixty tokens and leaves the next question 
     const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
       const request = new Request(input, init);
       calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
-      return chatEnvelope({ line: 'Thanks. That helps.' });
+      return chatEnvelope({ relevant: true, line: 'Thanks. That helps.', clarifyingPrompt: '' });
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', nodeId: 'communication' }),
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { line: 'Thanks. That helps.' });
+    assert.deepEqual(await response.json(), {
+      relevant: true,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt: '',
+    });
     const call = calls[0];
     const user = call?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
-    assert.equal(call?.body.max_tokens, 60);
+    assert.equal(call?.body.max_tokens, 80);
     assert.equal(call?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
     assert.equal(call?.headers.get('cf-aig-collect-log-payload'), 'false');
     assert.equal(user.includes('Picture cards.'), true);
     assert.equal(user.includes('communication'), true);
     assert.equal(user.includes(planted), false);
-    assert.equal(user.includes(NEXT_QUESTION), false);
+    assert.equal(user, ACK_USER);
     assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
     assert.equal(logs.some((line) => line.includes('Picture cards.')), false);
     const safe = logs
@@ -251,14 +316,20 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
       throw new Error('down');
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', sectionId: 'communication' }),
+      post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', nodeId: 'communication' }),
     );
-    assert.equal(response.status, 502);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      relevant: true,
+      line: "That's really helpful.",
+      clarifyingPrompt: '',
+    });
     assert.ok(calls.length >= 1);
     const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
     assert.equal(calls[0]?.body.response_format?.json_schema?.name, 'intake_acknowledgement');
-    assert.equal(user.includes(NEXT_QUESTION), false);
+    assert.equal(user, ACK_USER);
     assert.equal(logs.some((line) => line.includes('"endpoint":"intake.profile"')), true);
+    assert.equal(logs.some((line) => line.includes('Picture cards.')), false);
   } finally {
     console.error = original;
   }
@@ -669,10 +740,10 @@ async function acknowledgementFrom(line: string, answer = 'Picture cards.'): Pro
     const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
       const request = new Request(input, init);
       calls.push({ headers: request.headers, body: JSON.parse(await request.text()) as GatewayCall['body'] });
-      return chatEnvelope({ line });
+      return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
     });
     const response = await demo.handle(
-      post('/v1/drafts/acknowledgement', { answer, sectionId: 'communication' }),
+      post('/v1/drafts/acknowledgement', { answer, nodeId: 'communication' }),
     );
     const call = calls[0];
     return {

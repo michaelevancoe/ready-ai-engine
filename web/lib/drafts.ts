@@ -28,12 +28,19 @@ export function postSundayUpdate(notes: string, childName: string): Promise<Draf
   return post('/v1/drafts/sunday-update', { notes, childName }, readUpdate);
 }
 
-export type AckPost = { readonly kind: 'line'; readonly text: string } | { readonly kind: 'error' };
+export type AckPost =
+  | {
+      readonly kind: 'line';
+      readonly relevant: boolean;
+      readonly line: string;
+      readonly clarifyingPrompt: string;
+    }
+  | { readonly kind: 'error' };
 
-export function postAcknowledgement(answer: string, sectionId: string): Promise<AckPost> {
-  return post('/v1/drafts/acknowledgement', { answer, sectionId }, readAcknowledgement).then((result) => {
+export function postAcknowledgement(answer: string, nodeId: string): Promise<AckPost> {
+  return post('/v1/drafts/acknowledgement', { answer, nodeId }, readAcknowledgement).then((result) => {
     if (!result.ok) return { kind: 'error' };
-    return { kind: 'line', text: result.value };
+    return { kind: 'line', ...result.value };
   });
 }
 
@@ -95,9 +102,12 @@ function readUpdate(value: unknown): SundayUpdate | null {
   return { body: value.body };
 }
 
-function readAcknowledgement(value: unknown): string | null {
-  if (!isRecord(value) || !isBounded(value.line, 1, 160)) return null;
-  return value.line;
+function readAcknowledgement(
+  value: unknown,
+): { relevant: boolean; line: string; clarifyingPrompt: string } | null {
+  if (!isRecord(value) || typeof value.relevant !== 'boolean' || !isBounded(value.line, 1, 160)) return null;
+  if (typeof value.clarifyingPrompt !== 'string' || value.clarifyingPrompt.length > 400) return null;
+  return { relevant: value.relevant, line: value.line, clarifyingPrompt: value.clarifyingPrompt };
 }
 
 function isBounded(value: unknown, min: number, max: number): value is string {

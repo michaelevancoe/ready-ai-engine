@@ -11,6 +11,9 @@ export type JsonSchema =
       maxLength?: number;
     }
   | {
+      type: 'boolean';
+    }
+  | {
       type: 'array';
       items: JsonSchema;
       minItems?: number;
@@ -29,6 +32,8 @@ export function validateJson(schema: JsonSchema, value: unknown): boolean {
         (schema.minLength === undefined || value.length >= schema.minLength) &&
         (schema.maxLength === undefined || value.length <= schema.maxLength)
       );
+    case 'boolean':
+      return typeof value === 'boolean';
     case 'array': {
       if (!Array.isArray(value)) return false;
       if (schema.minItems !== undefined && value.length < schema.minItems) return false;

@@ -31,7 +31,7 @@ import { isRecord, type JsonSchema } from '../src/schema.ts';
 import { fictionalDemoEnv } from '../src/demo-env.ts';
 import { sessionAuthVerifier, sessionToken } from '../src/session-auth.ts';
 import { ACK_FALLBACK } from '../web/lib/acknowledgement.ts';
-import { SECTION_IDS } from '../web/lib/intake-tree.ts';
+import { intakeTree, isSectionId, type SectionId } from '../web/lib/intake-tree.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
 import { liveDemoBindings, mergeDemoEnv, parseDevVars } from './live-env.ts';
 
@@ -57,9 +57,11 @@ const ANSWER_KEYS = [
 export class DemoContext {
   private readonly store: MemoryStore;
   private readonly deps: AppDeps;
+  private readonly mock: boolean;
 
-  private constructor(env: WorkerBindings, fetchImpl: typeof fetch) {
+  private constructor(env: WorkerBindings, fetchImpl: typeof fetch, mock: boolean) {
     assertAdapterAllowed(env, 'memory');
+    this.mock = mock;
     this.store = churchStore();
     this.deps = {
       env,
@@ -80,9 +82,9 @@ export class DemoContext {
     const mode = demoModelMode(env.READY_DEMO_MODEL);
     switch (mode) {
       case 'mock':
-        return new DemoContext(fictionalDemoEnv, mockGateway);
+        return new DemoContext(fictionalDemoEnv, mockGateway, true);
       case 'live':
-        return new DemoContext(liveDemoBindings(env), fetchImpl);
+        return new DemoContext(liveDemoBindings(env), fetchImpl, false);
       default: {
         const unexpected: never = mode;
         return unexpected;
@@ -100,14 +102,14 @@ export class DemoContext {
       },
       'memory',
     );
-    if (options?.fromEnvironment !== true) return new DemoContext(fictionalDemoEnv, mockGateway);
+    if (options?.fromEnvironment !== true) return new DemoContext(fictionalDemoEnv, mockGateway, true);
     const merged = mergeDemoEnv(devVarsLayer(options), shell ?? process.env);
     const mode = demoModelMode(options.model !== undefined ? options.model : merged.READY_DEMO_MODEL);
     switch (mode) {
       case 'mock':
-        return new DemoContext(fictionalDemoEnv, mockGateway);
+        return new DemoContext(fictionalDemoEnv, mockGateway, true);
       case 'live':
-        return new DemoContext(liveDemoBindings(merged), options.fetchImpl ?? globalThis.fetch);
+        return new DemoContext(liveDemoBindings(merged), options.fetchImpl ?? globalThis.fetch, false);
       default: {
         const unexpected: never = mode;
         return unexpected;
@@ -161,13 +163,27 @@ export class DemoContext {
   private async handleAcknowledgement(request: Request): Promise<Response> {
     const parsed = await parsedBody(request, parseAcknowledgementRequest);
     if (parsed instanceof Response) return parsed;
-    return this.completeDraft(
-      acknowledgementMessages(parsed),
-      intakeAcknowledgementSchemaName,
-      acknowledgementSchema,
-      (value) => parseAcknowledgement(value, parsed.answer),
-      60,
-    );
+    if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
+    try {
+      const value = await generate({
+        endpoint: 'intake.profile',
+        messages: acknowledgementMessages(parsed),
+        schemaName: intakeAcknowledgementSchemaName,
+        schema: acknowledgementSchema,
+        parse: (value) => parseAcknowledgement(value, parsed),
+        env: this.deps.env,
+        fetch: this.deps.fetch,
+        log: this.deps.log,
+        maxTokens: 80,
+      });
+      return json(value, 200);
+    } catch (error) {
+      if (error instanceof GenerateError) {
+        return json({ relevant: true, line: ACK_FALLBACK, clarifyingPrompt: '' }, 200);
+      }
+      if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+      throw error;
+    }
   }
 
   private async handleSundayUpdate(request: Request): Promise<Response> {
@@ -345,9 +361,9 @@ function mockDraft(name: string, content: string): unknown | null {
       return mockSundayUpdate(parsed.childName, parsed.notes);
     }
     case intakeAcknowledgementSchemaName: {
-      const answer = acknowledgementAnswer(content);
-      if (answer === null) return null;
-      return { line: 'Thanks. That helps.' };
+      const read = readAcknowledgementContent(content);
+      if (read === null) return null;
+      return mockAcknowledgement(read.answer, read.sectionId);
     }
     default:
       return null;
@@ -417,38 +433,47 @@ const intakeAcknowledgementSchemaName = 'intake_acknowledgement';
 const acknowledgementSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['line'],
+  required: ['relevant', 'line', 'clarifyingPrompt'],
   properties: {
+    relevant: { type: 'boolean' },
     line: { type: 'string', minLength: 1, maxLength: 120 },
+    clarifyingPrompt: { type: 'string', minLength: 0, maxLength: 120 },
   },
 } satisfies JsonSchema;
 
-function parseAcknowledgementRequest(value: unknown): { answer: string; sectionId: (typeof SECTION_IDS)[number] } | null {
-  if (!isRecord(value)) return null;
-  const keys = Object.keys(value);
-  if (keys.length !== 2 || !Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'sectionId')) return null;
-  if (typeof value.answer !== 'string') return null;
-  const answer = value.answer.trim();
-  if (answer.length < 1 || answer.length > 500) return null;
-  if (!isAcknowledgementSection(value.sectionId)) return null;
-  return { answer, sectionId: value.sectionId };
+interface AckRequest {
+  readonly answer: string;
+  readonly nodeId: string;
+  readonly sectionId: SectionId;
+  readonly question: string;
 }
 
-function isAcknowledgementSection(value: unknown): value is (typeof SECTION_IDS)[number] {
-  return typeof value === 'string' && SECTION_IDS.some((id) => id === value);
+function parseAcknowledgementRequest(value: unknown): AckRequest | null {
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.length !== 2 || !Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'nodeId')) return null;
+  if (typeof value.answer !== 'string' || typeof value.nodeId !== 'string') return null;
+  const answer = value.answer.trim();
+  if (answer.length < 1 || answer.length > 500) return null;
+  const node = intakeTree.nodes.find((item) => item.id === value.nodeId);
+  if (node === undefined || !isSectionId(node.sectionId)) return null;
+  return { answer, nodeId: node.id, sectionId: node.sectionId, question: node.prompt };
 }
 
 const ACKNOWLEDGEMENT_PROMPT = [
   'The data is fictional. Do not invent medical facts.',
-  'Write one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
+  'Return relevant, line, and clarifyingPrompt.',
+  'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
   'Do not restate or quote the answer.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
-  'Do not use a pronoun for the child.',
+  'Do not use a pronoun for the child in line or clarifyingPrompt.',
   "Use the child's name only if the answer includes it.",
-  'Do not ask a question.',
-  'Do not preview the next question.',
-  'Examples:',
+  'line must not ask a question and must not preview another question.',
+  'Set relevant to true only when the answer addresses the question.',
+  'When relevant is false, clarifyingPrompt is one short follow-up question.',
+  'When relevant is true, clarifyingPrompt is an empty string.',
+  'Examples of line:',
   "Thank you, that's really useful to know.",
   'Got it, that will help the volunteers.',
   'Thanks, that gives us a clearer picture.',
@@ -459,42 +484,249 @@ const ACK_BLOCKED = ['autism', 'aphasia', 'diagnos', 'disorder', 'disabilit', 'i
 
 const CHILD_PRONOUN = /\b(?:he|she|him|his|her|hers|they|them|their|theirs)\b/iu;
 
-function acknowledgementMessages(request: { answer: string; sectionId: (typeof SECTION_IDS)[number] }): {
-  role: 'system' | 'user';
-  content: string;
-}[] {
+const STOPWORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'to',
+  'of',
+  'is',
+  'are',
+  'was',
+  'be',
+  'it',
+  'in',
+  'on',
+  'for',
+  'with',
+  'when',
+  'what',
+  'how',
+  'that',
+  'this',
+  'i',
+  'you',
+  'he',
+  'she',
+  'they',
+  'his',
+  'her',
+  'not',
+  'no',
+  'usually',
+  'very',
+  'like',
+  'likes',
+]);
+
+const CARE = new Set([
+  'quiet',
+  'hello',
+  'train',
+  'trains',
+  'crowded',
+  'doorway',
+  'doorways',
+  'corner',
+  'heads',
+  'song',
+  'picture',
+  'cards',
+  'card',
+  'adult',
+  'allergy',
+  'allergies',
+  'food',
+  'bathroom',
+  'headphone',
+  'headphones',
+  'calm',
+  'loud',
+  'warning',
+  'seat',
+  'rock',
+  'rocks',
+  'painted',
+  'lego',
+  'dinosaur',
+  'peanut',
+  'disney',
+  'break',
+  'point',
+  'words',
+  'sign',
+  'reminder',
+  'transition',
+  'light',
+  'lights',
+  'snack',
+  'church',
+  'room',
+  'volunteer',
+  'help',
+  'helps',
+  'hurt',
+  'run',
+  'upset',
+  'tell',
+  'tells',
+  'need',
+  'needs',
+  'know',
+  'settle',
+  'space',
+  'object',
+  'grown',
+  'change',
+  'changes',
+  'music',
+  'soft',
+  'softer',
+]);
+
+const NONSENSE = new Set([
+  'banana',
+  'purple',
+  'zebra',
+  'moonlight',
+  'moon',
+  'cheese',
+  'muffin',
+  'muffins',
+  'qwerty',
+  'asdf',
+]);
+
+const HELPS_PROMPT =
+  'I want to make sure I understand. What usually helps Rowan settle when things feel like too much?';
+
+function cannedPrompt(sectionId: SectionId): string {
+  switch (sectionId) {
+    case 'helps':
+      return HELPS_PROMPT;
+    case 'about':
+      return 'I want to make sure I understand. How would you describe Rowan in a sentence or two?';
+    case 'loves':
+      return 'I want to make sure I understand. What does Rowan love, at church or at home?';
+    case 'overwhelms':
+      return 'I want to make sure I understand. What tends to overwhelm Rowan at church or in a new place?';
+    case 'communication':
+      return 'I want to make sure I understand. How does Rowan usually let you know what is needed?';
+    case 'sensory':
+      return 'I want to make sure I understand. What sensory things should a volunteer know?';
+    case 'toileting':
+      return 'I want to make sure I understand. How does Rowan usually say the bathroom is needed?';
+    case 'allergies':
+      return 'I want to make sure I understand. Are there any allergies a volunteer should know?';
+    case 'behavior':
+      return 'I want to make sure I understand. When Rowan is very upset, what helps in that moment?';
+    default: {
+      const leftover: never = sectionId;
+      return leftover;
+    }
+  }
+}
+
+function judgeRelevance(answer: string): boolean {
+  const tokens = answer.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
+  if (tokens.some((token) => token === 'tick' || token.startsWith('tick'))) return true;
+  const content = tokens.filter((token) => !STOPWORDS.has(token));
+  if (content.some((token) => CARE.has(token))) return true;
+  if (content.length === 0) return true;
+  if (content.some((token) => /^\d+$/u.test(token))) return false;
+  if (content.some((token) => token.length >= 4 && !/[aeiou]/u.test(token))) return false;
+  let nonsense = 0;
+  for (const token of content) {
+    if (NONSENSE.has(token)) nonsense += 1;
+  }
+  return nonsense < 2;
+}
+
+function mockAcknowledgement(answer: string, sectionId: SectionId): {
+  relevant: boolean;
+  line: string;
+  clarifyingPrompt: string;
+} {
+  const relevant = judgeRelevance(answer);
+  return {
+    relevant,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt: relevant ? '' : cannedPrompt(sectionId),
+  };
+}
+
+function acknowledgementMessages(request: AckRequest): { role: 'system' | 'user'; content: string }[] {
   return [
     { role: 'system', content: ACKNOWLEDGEMENT_PROMPT },
-    { role: 'user', content: `Answer: ${request.answer}\nSection: ${request.sectionId}` },
+    {
+      role: 'user',
+      content: `Answer: ${request.answer}\nSection: ${request.sectionId}\nQuestion: ${request.question}`,
+    },
   ];
 }
 
-function acknowledgementAnswer(content: string): string | null {
+function readAcknowledgementContent(content: string): { answer: string; sectionId: SectionId } | null {
   const marker = 'Answer: ';
   const section = '\nSection: ';
+  const question = '\nQuestion: ';
   if (!content.startsWith(marker)) return null;
   const at = content.indexOf(section);
   if (at < marker.length) return null;
   const answer = content.slice(marker.length, at).trim();
-  return answer.length === 0 ? null : answer;
+  if (answer.length === 0) return null;
+  const rest = content.slice(at + section.length);
+  const questionAt = rest.indexOf(question);
+  const sectionId = (questionAt < 0 ? rest : rest.slice(0, questionAt)).trim();
+  if (!isSectionId(sectionId)) return null;
+  return { answer, sectionId };
 }
 
-function parseAcknowledgement(value: unknown, answer: string): { line: string } {
-  if (!isRecord(value) || typeof value.line !== 'string') throw new SchemaRejected();
-  const line = value.line.replace(/[\r\n]+/gu, ' ').replace(/ {2,}/gu, ' ').trim();
+function parseAcknowledgement(
+  value: unknown,
+  request: AckRequest,
+): { relevant: boolean; line: string; clarifyingPrompt: string } {
+  if (
+    !isRecord(value) ||
+    typeof value.line !== 'string' ||
+    typeof value.relevant !== 'boolean' ||
+    typeof value.clarifyingPrompt !== 'string'
+  ) {
+    throw new SchemaRejected();
+  }
+  const line = oneLine(value.line);
   if (line.length < 1) throw new SchemaRejected();
-  return { line: acknowledgementAccepted(line, answer) ? line : ACK_FALLBACK };
+  const relevant = judgeRelevance(request.answer);
+  const prompt = oneLine(value.clarifyingPrompt);
+  return {
+    relevant,
+    line: lineAccepted(line, request.answer) ? line : ACK_FALLBACK,
+    clarifyingPrompt: relevant ? '' : promptAccepted(prompt, request.answer) ? prompt : cannedPrompt(request.sectionId),
+  };
 }
 
-function acknowledgementAccepted(line: string, answer: string): boolean {
-  if (line.length > 120) return false;
+function oneLine(value: string): string {
+  return value.replace(/[\r\n]+/gu, ' ').replace(/ {2,}/gu, ' ').trim();
+}
+
+function lineAccepted(line: string, answer: string): boolean {
+  if (!surfaceAccepted(line, answer)) return false;
   if (!line.endsWith('.') && !line.endsWith('!')) return false;
-  if (line.includes('?')) return false;
-  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(line)) return false;
-  const lower = line.toLowerCase();
+  return !line.includes('?');
+}
+
+function promptAccepted(prompt: string, answer: string): boolean {
+  return surfaceAccepted(prompt, answer);
+}
+
+function surfaceAccepted(text: string, answer: string): boolean {
+  if (text.length < 1 || text.length > 120) return false;
+  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text)) return false;
+  const lower = text.toLowerCase();
   if (ACK_BLOCKED.some((word) => lower.includes(word))) return false;
-  if (CHILD_PRONOUN.test(line)) return false;
-  return !restatesAnswer(line, answer);
+  if (CHILD_PRONOUN.test(text)) return false;
+  return !restatesAnswer(text, answer);
 }
 
 function restatesAnswer(line: string, answer: string): boolean {
