@@ -32,6 +32,7 @@ test('mock acknowledgement judges the answer and does not fetch', async () => {
     ['helps', 'banana purple 42'],
     ['communication', 'asdf qwerty zebra moonlight'],
     ['overwhelms', 'the moon is made of cheese muffins'],
+    ['helps', 'pizza rocket sandwich'],
   ] as const;
   for (const [nodeId, answer] of nonsense) {
     const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId }));
@@ -64,6 +65,14 @@ test('mock acknowledgement judges the answer and does not fetch', async () => {
     ['behavior', 'No, not usually'],
     ['loves', 'Painted rocks'],
     ['sensory', 'TICK-SOFTER-SEAT'],
+    ['helps', 'not sure'],
+    ['helps', 'nothing special'],
+    ['loves', 'A pizza sandwich'],
+    ['loves', 'Cheese sandwich'],
+    ['loves', 'A ham sandwich and pizza'],
+    ['loves', 'Trains, banana, and purple'],
+    ['helps', 'A quiet corner and a cheese muffin'],
+    ['allergies', 'Allergic to pizza and cheese'],
   ] as const;
   for (const [nodeId, answer] of sensible) {
     const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId }));
@@ -157,6 +166,8 @@ test('an acknowledgement with a newline comes back as one line', async () => {
 const PARENT_FALLBACK = "That's really helpful.";
 
 const ACKNOWLEDGEMENT_PROMPT = [
+  "Ready helps parents of children with special needs prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
+  'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
   'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
@@ -166,9 +177,15 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Do not use a pronoun for the child in line or clarifyingPrompt.',
   "Use the child's name only if the answer includes it.",
   'line must not ask a question and must not preview another question.',
-  'Set relevant to true only when the answer addresses the question.',
+  'Set relevant to true only when the answer addresses the asked question.',
+  'Random, unrelated, joke, or keyboard-mash words are not relevant, even when they are real words.',
+  'An answer that addresses the question is relevant even when it is short, messy, or misspelled, including "I don\'t know", "not sure", and "nothing special".',
   'When relevant is false, clarifyingPrompt is one short follow-up question.',
   'When relevant is true, clarifyingPrompt is an empty string.',
+  'Relevant: "A quiet corner." for "What helps Rowan feel calm again when things get to be too much?"',
+  'Relevant: "not sure" for "What helps Rowan feel calm again when things get to be too much?"',
+  'Not relevant: "pizza rocket sandwich" for "What helps Rowan feel calm again when things get to be too much?"',
+  'Not relevant: "asdf qwerty" for "What helps Rowan feel calm again when things get to be too much?"',
   'Examples of line:',
   "Thank you, that's really useful to know.",
   'Got it, that will help the volunteers.',
@@ -265,6 +282,47 @@ test('a live off-topic answer keeps the model not-relevant verdict', async () =>
     relevant: false,
     line: 'Thanks. That helps.',
     clarifyingPrompt: prompt,
+  });
+});
+
+test('a live care answer overrides a model not-relevant verdict', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({
+      relevant: false,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt: 'I want to make sure I understand. What does that have to do with Sunday?',
+    }),
+  );
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'A quiet corner', nodeId: 'helps' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    relevant: true,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt: '',
+  });
+});
+
+test('a live quiet corner and cheese muffin answer overrides a model not-relevant verdict', async () => {
+  const demo = DemoContext.fromBindings(liveShell(), async () =>
+    chatEnvelope({
+      relevant: false,
+      line: 'Thanks. That helps.',
+      clarifyingPrompt: 'I want to make sure I understand. What does that have to do with Sunday?',
+    }),
+  );
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', {
+      answer: 'A quiet corner and a cheese muffin',
+      nodeId: 'helps',
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    relevant: true,
+    line: 'Thanks. That helps.',
+    clarifyingPrompt: '',
   });
 });
 
