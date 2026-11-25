@@ -3,6 +3,7 @@ import type { WorkerBindings } from '../src/bindings.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import {
   DEMO_VOLUNTEER_NAME,
+  fallbackSocialStory,
   lessonMessages,
   lessonSchema,
   lessonSchemaName,
@@ -18,6 +19,7 @@ import {
   sundayUpdateMessages,
   sundayUpdateSchema,
   sundayUpdateSchemaName,
+  type StoryChurch,
 } from '../src/demo-drafts.ts';
 import { ConfigError, GenerateError, SchemaRejected } from '../src/errors.ts';
 import { generate } from '../src/generate.ts';
@@ -151,7 +153,23 @@ export class DemoContext {
   private async handleSocialStory(request: Request): Promise<Response> {
     const parsed = await parsedBody(request, parseSocialStoryRequest);
     if (parsed instanceof Response) return parsed;
-    return this.completeDraft(socialStoryMessages(parsed), socialStorySchemaName, socialStorySchema, parseSocialStory);
+    try {
+      const draft = await generate({
+        endpoint: 'intake.profile',
+        messages: socialStoryMessages(parsed),
+        schemaName: socialStorySchemaName,
+        schema: socialStorySchema,
+        parse: (value) => parseSocialStory(value, parsed),
+        env: this.deps.env,
+        fetch: this.deps.fetch,
+        log: this.deps.log,
+      });
+      return json({ ...draft, source: 'model' }, 200);
+    } catch (error) {
+      if (error instanceof GenerateError) return json(fallbackSocialStory(parsed), 200);
+      if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+      throw error;
+    }
   }
 
   private async handleLesson(request: Request): Promise<Response> {
@@ -348,7 +366,7 @@ function mockDraft(name: string, content: string): unknown | null {
     case socialStorySchemaName: {
       const parsed = readSocial(content);
       if (parsed === null) return null;
-      return mockSocialStory(parsed.childName, parsed.lines);
+      return mockSocialStory(parsed.childName, parsed.church);
     }
     case lessonSchemaName: {
       const parsed = readLesson(content);
@@ -397,12 +415,50 @@ function readLabeled(text: string): { text: string }[] | null {
   return lines;
 }
 
-function readSocial(content: string): { childName: string; lines: { text: string }[] } | null {
+const SOCIAL_CHURCH_LABELS = ['Church', 'Service', 'Room', 'Leader', 'Plan'] as const;
+
+function readSocial(content: string): { childName: string; church: StoryChurch; lines: { text: string }[] } | null {
   const head = readChild(content);
   if (head === null) return null;
-  const lines = readLabeled(head.rest);
-  if (lines === null || lines.length < 1) return null;
-  return { childName: head.childName, lines };
+  const rows = head.rest.split('\n');
+  const values: string[] = [];
+  let index = 0;
+  for (let labelIndex = 0; labelIndex < SOCIAL_CHURCH_LABELS.length; labelIndex += 1) {
+    const label = SOCIAL_CHURCH_LABELS[labelIndex];
+    const row = rows[index];
+    const prefix = `${label}: `;
+    if (label === undefined || row === undefined || !row.startsWith(prefix)) return null;
+    let value = row.slice(prefix.length);
+    index += 1;
+    const nextLabel = SOCIAL_CHURCH_LABELS[labelIndex + 1];
+    while (index < rows.length) {
+      const next = rows[index];
+      if (next === undefined) break;
+      if (nextLabel !== undefined) {
+        if (next.startsWith(`${nextLabel}: `)) break;
+      } else if (isLabeledRow(next)) {
+        break;
+      }
+      value += `\n${next}`;
+      index += 1;
+    }
+    values.push(value);
+  }
+  const name = values[0];
+  const service = values[1];
+  const room = values[2];
+  const leader = values[3];
+  const plan = values[4];
+  if (name === undefined || service === undefined || room === undefined || leader === undefined || plan === undefined) {
+    return null;
+  }
+  const lines = readLabeled(rows.slice(index).join('\n'));
+  if (lines === null) return null;
+  return { childName: head.childName, church: { name, service, room, leader, plan }, lines };
+}
+
+function isLabeledRow(row: string): boolean {
+  return row.indexOf(': ') > 0;
 }
 
 function readSunday(content: string): { childName: string; notes: string } | null {
@@ -802,9 +858,11 @@ function clip(value: string, max: number): string {
   return value.slice(0, max);
 }
 
-function mockSocialStory(childName: string, lines: { text: string }[]): { title: string; body: string } {
-  const told = lines.map((line) => line.text).join(' ');
-  const body = `${childName} arrives and finds a quiet place in the room. ${told}`.slice(0, 2000);
+function mockSocialStory(childName: string, church: StoryChurch): { title: string; body: string } {
+  const body = `${childName} arrives at ${church.name}. ${childName} goes to ${church.room}. ${church.leader} says hello.`.slice(
+    0,
+    2000,
+  );
   return { title: `Sunday with ${childName}`.slice(0, 120), body };
 }
 

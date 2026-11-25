@@ -1,5 +1,6 @@
+import { sundayStorySentences } from '../../src/sunday-story-text.ts';
 import type { ChurchPhotoSet, ChurchPhotoSlot } from './ready-store.ts';
-import { childPreferredName, type ChurchSetup, type Visit } from './visit.ts';
+import { childPreferredName, type Visit } from './visit.ts';
 
 export interface SundayStoryCover {
   readonly step: 'cover';
@@ -54,6 +55,7 @@ export function sundayStoryPages(visit: Visit): readonly [
 ] {
   const name = childPreferredName(visit);
   const church = visit.church;
+  const [outside, doors, desk, classroom, helper, quiet, pickup] = sundayStorySentences(church);
   return [
     {
       step: 'cover',
@@ -62,13 +64,13 @@ export function sundayStoryPages(visit: Visit): readonly [
       subtitle: 'A story to read together before Sunday',
       slot: 'cover',
     },
-    { step: 1, slot: 'outside', text: arrival(church) },
-    { step: 2, slot: 'doors', text: 'You walk in the front doors. A greeter smiles and says hello.' },
-    { step: 3, slot: 'desk', text: 'At the welcome desk, you check in and get a name tag.' },
-    { step: 4, slot: 'classroom', text: classroom(church) },
-    { step: 5, slot: 'helper', text: `${church.leader} and the helpers are there to help you.` },
-    { step: 6, slot: 'quiet', text: 'If you need a break, there is a quiet spot in the room.' },
-    { step: 7, slot: 'pickup', text: 'When it is over, your grown-up comes back to pick you up.' },
+    { step: 1, slot: 'outside', text: outside },
+    { step: 2, slot: 'doors', text: doors },
+    { step: 3, slot: 'desk', text: desk },
+    { step: 4, slot: 'classroom', text: classroom },
+    { step: 5, slot: 'helper', text: helper },
+    { step: 6, slot: 'quiet', text: quiet },
+    { step: 7, slot: 'pickup', text: pickup },
   ];
 }
 
@@ -84,28 +86,6 @@ export function resolveStoryPicture(
   const sample = (samples ?? STORY_SAMPLES)[photo];
   if (sample !== undefined) return { kind: 'photo', source: 'sample', src: sample.src, alt: sample.alt };
   return drawingPicture(photo);
-}
-
-function arrival(church: ChurchSetup): string {
-  const service = church.service.trim();
-  const place = `you and your grown-up go to ${church.name}.`;
-  if (service === '') return `You and your grown-up go to ${church.name}.`;
-  const split = service.search(/\s/u);
-  if (split === -1) return `On ${service}, ${place}`;
-  const day = service.slice(0, split);
-  const time = service.slice(split).trim();
-  return `On ${day} at ${time}, ${place}`;
-}
-
-function classroom(church: ChurchSetup): string {
-  return `You go to the ${church.room}. You will have ${planClause(church.plan)}`;
-}
-
-function planClause(plan: string): string {
-  const trimmed = plan.trim();
-  const lowered = `${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
-  if (/[.!?]$/u.test(lowered)) return lowered;
-  return `${lowered}.`;
 }
 
 function photoSlot(slot: SundayStoryPage['slot']): ChurchPhotoSlot | null {

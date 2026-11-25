@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useSyncExternalStore, type FormEvent } from 'react';
+import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { approvedValue, checkInBrief, childHeading, childPreferredName } from '../../lib/visit';
+import { PrivacyNote } from '../privacy-note';
 import { useReadyStore } from '../visit-shell';
 
 export default function VolunteerPage() {
@@ -43,6 +45,7 @@ export default function VolunteerPage() {
       {brief.status === 'approved' ? (
         <section aria-label="Sunday brief">
           <h2>Sunday brief</h2>
+          <PrivacyNote variant="line" text={volunteerCheckInPrivacy(childPreferredName(visit))} />
           {brief.lines.length === 0 ? <p>No shared lines.</p> : null}
           {brief.lines.map((line) => (
             <article key={line.field} className="line" data-field={line.field}>

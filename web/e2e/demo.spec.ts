@@ -26,7 +26,7 @@ test('approve a draft that includes the typed sensory note', async ({ page }) =>
   await page.goto('/');
   await expect(page.getByText("Demo: fictional data only. Please don't enter real child information.")).toBeVisible();
   await answerTree(page, 'TICK-QUIET-ROOM');
-  await expect(page.getByRole('heading', { name: "Rowan's brief" })).toBeVisible();
+  await expect(page.getByRole('heading', { name: "Rowan's brief", exact: true })).toBeVisible();
   await expect(page.getByText('TICK-QUIET-ROOM')).toBeVisible();
   await save(page, 'demo-draft.png');
   await page.getByRole('button', { name: 'Looks right, approve' }).click();

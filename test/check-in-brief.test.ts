@@ -176,7 +176,7 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   visit = reduceVisit(visit, { type: 'writeStory' });
   visit = reduceVisit(visit, {
     type: 'storyReady',
-    value: { title: 'Sunday with Rowan', body: 'TICK-QUIET-ROOM' },
+    value: { title: 'Sunday with Rowan', body: 'TICK-QUIET-ROOM', source: 'model' },
   });
   visit = reduceVisit(visit, { type: 'approveStory' });
   assert.equal(visit.story.phase, 'approved');
@@ -403,14 +403,14 @@ test('noteStory ignores a story that is still being written', () => {
   assert.equal(
     reduceVisit(writing, {
       type: 'noteStory',
-      value: { title: 'Sunday with Rowan', body: 'A quiet room.' },
+      value: { title: 'Sunday with Rowan', body: 'A quiet room.', source: 'model' },
     }),
     writing,
   );
   visit = reduceVisit(writing, { type: 'storyFailed', message: 'The draft could not be written. Try again.' });
   visit = reduceVisit(visit, {
     type: 'noteStory',
-    value: { title: 'Sunday with Rowan', body: 'A quiet room.' },
+    value: { title: 'Sunday with Rowan', body: 'A quiet room.', source: 'model' },
   });
   assert.equal(visit.story.phase, 'ready');
   assert.deepEqual(checkInBrief(visit), lines);

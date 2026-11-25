@@ -7,6 +7,7 @@ import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/draft
 import { approveProfile, submitIntake } from '../lib/desk';
 import { intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
+import { parentReviewPrivacy, parentStartPrivacy, storyPrivacy } from '../lib/privacy-note';
 import { initialReader, reduceReader, type Reader } from '../lib/story-reader';
 import {
   approvedValue,
@@ -17,6 +18,7 @@ import {
   type Visit,
   type VisitEvent,
 } from '../lib/visit';
+import { PrivacyNote } from './privacy-note';
 import { SundayPrint } from './sunday-print';
 import { useAccountChurch, useChurchPhotos, useVisit } from './visit-shell';
 
@@ -149,6 +151,7 @@ export default function Page() {
       {view.kind === 'start' ? (
         <StartScreen
           view={view}
+          churchName={visit.church.name}
           onBegin={() => dispatch({ type: 'conversation', event: { type: 'beginIntake' } })}
           onExample={(id) => dispatch({ type: 'conversation', event: { type: 'openExample', id } })}
         />
@@ -168,6 +171,8 @@ export default function Page() {
       {view.kind === 'brief' ? (
         <BriefScreen
           view={view}
+          churchName={visit.church.name}
+          leader={visit.church.leader}
           savedTitle={view.actions === 'intake' ? savedTitle : null}
           pending={pending}
           error={visit.intake.status === 'error' ? visit.intake.message : null}
@@ -183,10 +188,12 @@ export default function Page() {
 
 function StartScreen({
   view,
+  churchName,
   onBegin,
   onExample,
 }: {
   view: Extract<AskView, { kind: 'start' }>;
+  churchName: string;
   onBegin: () => void;
   onExample: (id: Extract<AskView, { kind: 'start' }>['examples'][number]['id']) => void;
 }) {
@@ -199,6 +206,7 @@ function StartScreen({
           ? "Start a new child with Ready's guided questions, or open a finished example to see the whole flow."
           : `Signed in to ${church}. Only your family's children show here.`}
       </p>
+      <PrivacyNote variant="full" note={parentStartPrivacy(churchName)} />
       <button type="button" className="primary" onClick={onBegin}>
         Start with a new child
       </button>
@@ -451,6 +459,8 @@ function QuestionScreen({
 
 function BriefScreen({
   view,
+  churchName,
+  leader,
   savedTitle,
   pending,
   error,
@@ -459,6 +469,8 @@ function BriefScreen({
   dispatch,
 }: {
   view: Extract<AskView, { kind: 'brief' }>;
+  churchName: string;
+  leader: string;
   savedTitle: string | null;
   pending: boolean;
   error: string | null;
@@ -535,6 +547,10 @@ function BriefScreen({
         </article>
       ))}
       {error === null ? null : <p role="alert">{error}</p>}
+      <PrivacyNote
+        variant="full"
+        note={parentReviewPrivacy({ name: brief.name, leader, churchName })}
+      />
       <button type="button" className="approve" disabled={pending} onClick={onApprove}>
         Looks right, approve
       </button>
@@ -615,7 +631,14 @@ function ApprovedScreen({
     const id = request.current + 1;
     request.current = id;
     setReader({ phase: 'writing' });
-    const result = await postSocialStory(brief.lines, childPreferredName(visit));
+    const church = visit.church;
+    const result = await postSocialStory(brief.lines, childPreferredName(visit), {
+      name: church.name,
+      service: church.service,
+      room: church.room,
+      leader: church.leader,
+      plan: church.plan,
+    });
     if (request.current !== id) return;
     if (!result.ok) {
       setReader(reduceReader({ phase: 'writing' }, { type: 'fail' }));
@@ -670,10 +693,16 @@ function ApprovedScreen({
           <>
             <p className="eyebrow">A Sunday story for {view.name}</p>
             <h1>{reader.title}</h1>
-            <p className="hint">Written by Ready, from the approved brief.</p>
+            <p className="drafted">
+              <Spark /> {storyPrivacy({ name: view.name, room: visit.church.room, source: reader.source }).pill}
+            </p>
             {reader.paragraphs.map((paragraph, index) => (
               <p key={`${index}-${paragraph}`}>{paragraph}</p>
             ))}
+            <PrivacyNote
+              variant="line"
+              text={storyPrivacy({ name: view.name, room: visit.church.room, source: reader.source }).line}
+            />
             <p className="hint">Read it together before you go.</p>
           </>
         ) : null}

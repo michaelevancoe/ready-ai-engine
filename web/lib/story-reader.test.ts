@@ -6,6 +6,7 @@ import { checkInBrief, initialVisit, reduceVisit } from './visit.ts';
 const story = {
   title: 'Sunday with Maya',
   body: 'Maya arrives and finds a quiet place.\n\nA warning comes before the next song.',
+  source: 'model' as const,
 };
 
 test('a saved story opens on the title and a failed request can be tried again', () => {
@@ -18,6 +19,7 @@ test('a saved story opens on the title and a failed request can be tried again',
   const shown = reduceReader(writing, { type: 'loaded', value: story });
   assert.equal(shown.phase, 'shown');
   if (shown.phase !== 'shown') return;
+  assert.equal(shown.source, 'model');
   assert.equal(shown.title, 'Sunday with Maya');
   assert.deepEqual(shown.paragraphs, [
     'Maya arrives and finds a quiet place.',
@@ -42,10 +44,26 @@ test('noteStory stores prose for an approved example and leaves the brief lines 
   assert.deepEqual(checkInBrief(noted), checkInBrief(example));
   const again = reduceVisit(noted, {
     type: 'noteStory',
-    value: { title: 'Sunday with Maya', body: 'One quiet room.' },
+    value: { title: 'Sunday with Maya', body: 'One quiet room.', source: 'model' },
   });
   assert.equal(again.story.phase, 'ready');
   if (again.story.phase !== 'ready') return;
   assert.equal(again.story.value.body, 'One quiet room.');
   assert.deepEqual(checkInBrief(again), checkInBrief(example));
+});
+
+test('a fallback story stays source fallback on the shown reader', () => {
+  const writing = reduceReader(initialReader(), { type: 'open', saved: null });
+  const shown = reduceReader(writing, {
+    type: 'loaded',
+    value: {
+      title: 'Sunday with Maya',
+      body: 'Maya arrives and finds a quiet place.',
+      source: 'fallback',
+    },
+  });
+  assert.equal(shown.phase, 'shown');
+  if (shown.phase !== 'shown') return;
+  assert.equal(shown.source, 'fallback');
+  assert.deepEqual(shown.paragraphs, ['Maya arrives and finds a quiet place.']);
 });

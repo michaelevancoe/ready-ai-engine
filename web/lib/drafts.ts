@@ -1,3 +1,4 @@
+import { SUNDAY_STORY_BODY_MAX } from '../../src/sunday-story-text.ts';
 import type { BriefLine, LessonAdaptation, SocialStory, SundayUpdate } from './visit';
 
 export type DraftResult<T> =
@@ -9,11 +10,36 @@ const DOWN = 'The local demo is not running.';
 const CHECK = 'Check the answers and try again.';
 const REQUEST = 'The request failed.';
 
+const STORY_LINE_FIELDS = new Set<BriefLine['field']>([
+  'loves',
+  'overwhelms',
+  'whatHelps',
+  'communication',
+  'sensory',
+  'toileting',
+  'calming',
+]);
+
 export function postSocialStory(
   lines: readonly BriefLine[],
   childName: string,
+  church: {
+    readonly name: string;
+    readonly service: string;
+    readonly room: string;
+    readonly leader: string;
+    readonly plan: string;
+  },
 ): Promise<DraftResult<SocialStory>> {
-  return post('/v1/drafts/social-story', { lines: wireLines(lines), childName }, readStory);
+  return post(
+    '/v1/drafts/social-story',
+    {
+      lines: wireLines(lines.filter((line) => STORY_LINE_FIELDS.has(line.field))),
+      childName,
+      church,
+    },
+    readStory,
+  );
 }
 
 export function postLesson(
@@ -82,8 +108,20 @@ function messageFor(value: unknown): string {
 }
 
 function readStory(value: unknown): SocialStory | null {
-  if (!isRecord(value) || !isBounded(value.title, 1, 120) || !isBounded(value.body, 1, 2000)) return null;
-  return { title: value.title, body: value.body };
+  if (!isRecord(value) || !isBounded(value.title, 1, 120) || !isBounded(value.body, 1, SUNDAY_STORY_BODY_MAX)) return null;
+  const source = storySource(value.source);
+  if (source === null) return null;
+  return { title: value.title, body: value.body, source };
+}
+
+function storySource(value: unknown): 'model' | 'fallback' | null {
+  switch (value) {
+    case 'model':
+    case 'fallback':
+      return value;
+    default:
+      return null;
+  }
 }
 
 function readLesson(value: unknown): LessonAdaptation | null {

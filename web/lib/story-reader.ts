@@ -4,7 +4,12 @@ export type Reader =
   | { readonly phase: 'closed' }
   | { readonly phase: 'writing' }
   | { readonly phase: 'failed' }
-  | { readonly phase: 'shown'; readonly title: string; readonly paragraphs: readonly string[] };
+  | {
+      readonly phase: 'shown';
+      readonly title: string;
+      readonly paragraphs: readonly string[];
+      readonly source: 'model' | 'fallback';
+    };
 
 export type ReaderEvent =
   | { readonly type: 'open'; readonly saved: SocialStory | null }
@@ -47,5 +52,10 @@ export function reduceReader(reader: Reader, event: ReaderEvent): Reader {
 }
 
 function shown(value: SocialStory): Reader {
-  return { phase: 'shown', title: value.title, paragraphs: storyParagraphs(value.body) };
+  return {
+    phase: 'shown',
+    title: value.title,
+    paragraphs: storyParagraphs(value.body),
+    source: value.source,
+  };
 }
