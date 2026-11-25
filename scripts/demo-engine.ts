@@ -150,7 +150,7 @@ export class DemoContext {
       acknowledgementMessages(parsed),
       intakeAcknowledgementSchemaName,
       acknowledgementSchema,
-      parseAcknowledgement,
+      (value) => parseAcknowledgement(value, parsed.answer),
       60,
     );
   }
@@ -434,6 +434,8 @@ const ACKNOWLEDGEMENT_PROMPT = [
 
 const ACK_BLOCKED = ['autism', 'aphasia', 'diagnos', 'disorder', 'disabilit', 'impair', 'individuals'];
 
+const CHILD_PRONOUN = /\b(?:he|she|him|his|her|hers|they|them|their|theirs)\b/iu;
+
 function acknowledgementMessages(request: { answer: string; sectionId: (typeof SECTION_IDS)[number] }): {
   role: 'system' | 'user';
   content: string;
@@ -454,20 +456,35 @@ function acknowledgementAnswer(content: string): string | null {
   return answer.length === 0 ? null : answer;
 }
 
-function parseAcknowledgement(value: unknown): { line: string } {
+function parseAcknowledgement(value: unknown, answer: string): { line: string } {
   if (!isRecord(value) || typeof value.line !== 'string') throw new SchemaRejected();
   const line = value.line.replace(/[\r\n]+/gu, ' ').replace(/ {2,}/gu, ' ').trim();
   if (line.length < 1) throw new SchemaRejected();
-  return { line: acknowledgementAccepted(line) ? line : ACK_FALLBACK };
+  return { line: acknowledgementAccepted(line, answer) ? line : ACK_FALLBACK };
 }
 
-function acknowledgementAccepted(line: string): boolean {
+function acknowledgementAccepted(line: string, answer: string): boolean {
   if (line.length > 120) return false;
   if (!line.endsWith('.') && !line.endsWith('!')) return false;
   if (line.includes('?')) return false;
   if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(line)) return false;
   const lower = line.toLowerCase();
-  return !ACK_BLOCKED.some((word) => lower.includes(word));
+  if (ACK_BLOCKED.some((word) => lower.includes(word))) return false;
+  if (CHILD_PRONOUN.test(line)) return false;
+  return !restatesAnswer(line, answer);
+}
+
+function restatesAnswer(line: string, answer: string): boolean {
+  const lineText = plain(line);
+  const answerText = plain(answer);
+  if (lineText.length === 0 || answerText.length === 0) return false;
+  if (lineText === answerText) return true;
+  if (answerText.length >= 12 && lineText.includes(answerText)) return true;
+  return lineText.length >= 12 && answerText.includes(lineText);
+}
+
+function plain(value: string): string {
+  return value.toLowerCase().replace(/[.!?]+$/u, '').replace(/\s+/gu, ' ').trim();
 }
 
 function clip(value: string, max: number): string {
