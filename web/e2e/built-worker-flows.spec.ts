@@ -14,10 +14,58 @@ async function tailGap(page: Page): Promise<number> {
   });
 }
 
+async function send(page: Page, text: string, next: string): Promise<void> {
+  await page.getByRole('textbox', { name: 'Your answer' }).fill(text);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText(next).first()).toBeVisible();
+}
+
 async function save(page: Page, name: string): Promise<void> {
   if (!existsSync(artifacts)) return;
   await page.screenshot({ path: `${artifacts}/${name}`, fullPage: true });
 }
+
+test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start with a new child' }).click();
+  await send(page, 'He likes a quiet hello.', 'What does Rowan love');
+  await send(page, 'Trains.', 'What tends to overwhelm');
+  await send(page, 'Crowded doorways.', 'feel calm again');
+  await send(page, 'A quiet corner and a heads-up before the next song.', 'let you know what he needs');
+  await send(page, 'Picture cards.', 'What sensory things');
+  await send(page, 'TICK-QUIET-ROOM', 'need the bathroom');
+  await send(page, 'Tells an adult', 'any allergies');
+  await send(page, 'Food allergy', 'what should a volunteer do');
+  await send(page, 'TICK-ALLERGY-PLAN', 'hurt himself or others');
+  await send(page, 'No, not usually', "Rowan's brief");
+  await page.getByRole('button', { name: 'Looks right, approve' }).click();
+  await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
+  await page.getByRole('link', { name: 'Volunteer' }).click();
+  const allergies = page.locator('[data-field="allergies"]');
+  await expect(allergies.getByRole('heading', { name: 'Allergies & health' })).toBeVisible();
+  await expect(allergies).toContainText('TICK-ALLERGY-PLAN');
+});
+
+test('approving again replaces Trains on the volunteer brief', async ({ page }) => {
+  await page.goto('/');
+  await answerTree(page, 'TICK-QUIET-ROOM');
+  await page.getByRole('button', { name: 'Looks right, approve' }).click();
+  await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
+  await page.getByRole('link', { name: 'Volunteer' }).click();
+  await expect(page.getByRole('region', { name: 'Sunday brief' })).toContainText('Trains.');
+  await page.getByRole('link', { name: 'Parent' }).click();
+  await page.getByRole('button', { name: "View Rowan's brief" }).click();
+  await page.getByRole('button', { name: 'Fix something' }).click();
+  await page.getByRole('button', { name: 'Loves', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('Painted rocks');
+  await page.getByRole('button', { name: 'Save fix and see the brief' }).click();
+  await page.getByRole('button', { name: 'Looks right, approve' }).click();
+  await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
+  await page.getByRole('link', { name: 'Volunteer' }).click();
+  const brief = page.getByRole('region', { name: 'Sunday brief' });
+  await expect(brief).toContainText('Painted rocks');
+  await expect(brief).not.toContainText('Trains.');
+});
 
 test('a parent approves a brief before volunteer and leader see it', async ({ page }) => {
   await page.goto('/');

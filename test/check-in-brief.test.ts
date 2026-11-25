@@ -352,6 +352,32 @@ test('seeded intake lines gain a space between glued sentences', () => {
   assert.equal(visit.card.whatHelps, 'corner. A warning before the music starts in the room.');
 });
 
+test('approving again replaces the loves line from the new answer', () => {
+  let visit = approveIntake(initialVisit(), { loves: 'Trains.' });
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  const first = checkInBrief(visit);
+  assert.equal(first.status, 'approved');
+  if (first.status !== 'approved') return;
+  assert.equal(
+    first.lines.some((line) => line.text.includes('Trains.')),
+    true,
+  );
+
+  visit = reduceVisit(visit, { type: 'conversation', event: { type: 'chooseSection', sectionId: 'loves' } });
+  visit = say(visit, 'Painted rocks');
+  visit = reduceVisit(visit, { type: 'approveBrief' });
+  const second = checkInBrief(visit);
+  assert.equal(second.status, 'approved');
+  if (second.status !== 'approved') return;
+  const loves = second.lines.find((line) => line.field === 'loves')?.text ?? '';
+  assert.equal(loves.includes('Painted rocks'), true);
+  assert.equal(loves.includes('Trains.'), false);
+  assert.equal(
+    second.lines.some((line) => line.text.includes('Trains.')),
+    false,
+  );
+});
+
 test('saveCard replaces seeded overwhelms and the brief keeps the new line', () => {
   let visit = approveIntake(initialVisit());
   visit = reduceVisit(visit, {

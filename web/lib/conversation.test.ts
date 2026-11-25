@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   initialConversation,
+  joinSpoken,
   parentBrief,
   presentAsk,
   project,
@@ -130,6 +131,16 @@ test('fixing communication returns to the brief and marks that card', () => {
   assert.equal(brief.cards.find((card) => card.sectionId === 'communication')?.text, 'Picture cards and a nod.');
   assert.equal(brief.cards.find((card) => card.sectionId === 'sensory')?.updated, false);
   assert.equal(brief.cards.find((card) => card.sectionId === 'behavior')?.label, 'Safety & calming');
+});
+
+test('joinSpoken puts a full stop between a typed answer and a chip', () => {
+  assert.equal(joinSpoken('Soft voice', 'A quiet corner'), 'Soft voice. A quiet corner.');
+  assert.equal(joinSpoken('Soft voice.', 'A quiet corner'), 'Soft voice. A quiet corner.');
+  assert.equal(joinSpoken('Soft voice!', 'A quiet corner'), 'Soft voice! A quiet corner.');
+  assert.equal(joinSpoken('Soft voice?', 'A quiet corner'), 'Soft voice? A quiet corner.');
+  assert.equal(joinSpoken('', 'A quiet corner'), 'A quiet corner.');
+  assert.equal(joinSpoken('', 'Already done.'), 'Already done.');
+  assert.equal(joinSpoken('Soft voice', 'A quiet corner.'), 'Soft voice. A quiet corner.');
 });
 
 test('a joined primary answer ends with a full stop', () => {

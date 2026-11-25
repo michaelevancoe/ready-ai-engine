@@ -53,6 +53,8 @@ test('the tree name is Rowan Sampleton and the card seeds from the answers', () 
 
 test('an allergy answer leaves medical empty', () => {
   const visit = approveIntake(initialVisit(), 'Peanuts');
+  assert.equal(visit.card.allergies, 'Peanuts. A volunteer avoids peanuts.');
+  assert.equal(visit.visibility.allergies, true);
   assert.equal(visit.card.medical, '');
   assert.equal(visit.visibility.medical, false);
   assert.equal(childPreferredName(visit), 'Rowan');
