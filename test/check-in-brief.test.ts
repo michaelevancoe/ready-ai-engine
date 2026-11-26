@@ -28,6 +28,8 @@ const HELPS = 'A warning before music, with a quiet seat nearby.';
 
 function approveIntake(visit: Visit, lines: TreeLines = {}): Visit {
   let next = reduceVisit(visit, { type: 'conversation', event: { type: 'beginIntake' } });
+  next = say(next, lines.name ?? 'Rowan');
+  next = say(next, lines.age ?? '7');
   next = say(next, lines.about ?? 'He likes a quiet hello.');
   next = say(next, lines.loves ?? 'Quiet blocks.');
   next = say(next, lines.overwhelms ?? 'Surprise loud songs.');
@@ -50,6 +52,8 @@ function approveIntake(visit: Visit, lines: TreeLines = {}): Visit {
 }
 
 interface TreeLines {
+  readonly name?: string;
+  readonly age?: string;
   readonly about?: string;
   readonly loves?: string;
   readonly overwhelms?: string;
@@ -288,7 +292,7 @@ test('withdrawing the brief clears an approved lesson and keeps the parent note'
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
   visit = reduceVisit(visit, { type: 'writeUpdate' });
   visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Sunday went well for Rowan.' } });
-  visit = reduceVisit(visit, { type: 'approveUpdate', body: 'Sunday went well for Rowan.\nTheo Park' });
+  visit = reduceVisit(visit, { type: 'approveUpdate', body: 'Sunday went well for Rowan.\nJordan Ellis' });
   visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
   visit = reduceVisit(visit, {
     type: 'lessonReady',
@@ -301,7 +305,7 @@ test('withdrawing the brief clears an approved lesson and keeps the parent note'
   assert.equal(checkInBrief(visit).status, 'withheld');
   assert.equal(visit.lesson.phase, 'idle');
   assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
-  assert.equal(approvedValue(visit.update)?.body, 'Sunday went well for Rowan.\nTheo Park');
+  assert.equal(approvedValue(visit.update)?.body, 'Sunday went well for Rowan.\nJordan Ellis');
 });
 
 test('withdrawing the brief clears the lesson and keeps the typed lesson', () => {
@@ -334,6 +338,8 @@ test('withdrawing the brief clears the lesson and keeps the typed lesson', () =>
 
 test('a correction keeps a draft', () => {
   let visit = reduceVisit(initialVisit(), { type: 'conversation', event: { type: 'beginIntake' } });
+  visit = say(visit, 'Rowan');
+  visit = say(visit, '7');
   visit = say(visit, 'He likes a quiet hello.');
   visit = say(visit, 'Quiet blocks.');
   visit = say(visit, 'Surprise loud songs.');
@@ -489,7 +495,7 @@ test('a restored publication republishes an edited answer without a new intake',
     },
   };
   assert.equal(restored.intake.status, 'idle');
-  let visit = reduceVisit(restored, { type: 'conversation', event: { type: 'viewBrief' } });
+  let visit = reduceVisit(restored, { type: 'conversation', event: { type: 'reviseBrief' } });
   visit = reduceVisit(visit, { type: 'conversation', event: { type: 'chooseSection', sectionId: 'loves' } });
   visit = say(visit, 'Quiet trains');
   visit = reduceVisit(visit, { type: 'approveBrief' });

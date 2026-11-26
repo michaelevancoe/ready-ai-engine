@@ -51,3 +51,14 @@ test('privacy notes use the default church, leader, room, and child', () => {
     "Shared by Rowan's parent for this Sunday's team only. Care notes are in the parent's own words.",
   );
 });
+
+test('a readonly review drops the until-you-approve bullet', () => {
+  const note = parentReviewPrivacy({ name, leader, churchName, readonly: true });
+  assert.equal(
+    note.bullets.includes('Nothing is shared until you approve. You can fix anything first.'),
+    false,
+  );
+  assert.equal(note.bullets.includes("Ms. Dana and this Sunday's volunteers at Example Harbor Fellowship. No one else."), true);
+  const draft = parentReviewPrivacy({ name, leader, churchName });
+  assert.equal(draft.bullets.includes('Nothing is shared until you approve. You can fix anything first.'), true);
+});

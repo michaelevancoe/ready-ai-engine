@@ -17,6 +17,8 @@ function say(visit: Visit, text: string): Visit {
 
 function approveIntake(visit: Visit, allergies = 'No known allergies'): Visit {
   let next = reduceVisit(visit, { type: 'conversation', event: { type: 'beginIntake' } });
+  next = say(next, 'Rowan');
+  next = say(next, '7');
   next = say(next, 'He likes a quiet hello.');
   next = say(next, 'Quiet blocks.');
   next = say(next, 'Surprise loud songs.');
@@ -39,11 +41,11 @@ function approveIntake(visit: Visit, allergies = 'No known allergies'): Visit {
   });
 }
 
-test('the tree name is Rowan Sampleton and the card seeds from the answers', () => {
+test('the heading is the child name and the card seeds from the answers', () => {
   const visit = approveIntake(initialVisit());
   assert.equal(childPreferredName(visit), 'Rowan');
-  assert.equal(childHeading(childPreferredName(visit)), 'Rowan Sampleton');
-  assert.equal(childHeading('Rowan'), 'Rowan Sampleton');
+  assert.equal(childHeading(childPreferredName(visit)), 'Rowan');
+  assert.equal(childHeading('Rowan'), 'Rowan');
   assert.equal(visit.card.loves, 'Quiet blocks.');
   assert.equal(visit.card.communication, 'Picture cards.');
   assert.equal(visit.card.sensory, 'TICK-QUIET-ROOM.');
