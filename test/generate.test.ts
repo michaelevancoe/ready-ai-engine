@@ -95,6 +95,51 @@ test('retries once after a gateway error', async () => {
   assert.equal(calls[1]?.model, 'openai/dummy-primary-model-not-real');
 });
 
+test('waits once after a 429 before the second fetch', async () => {
+  const starts: number[] = [];
+  let attempt = 0;
+  const profile = await generate({
+    endpoint: 'intake.profile',
+    messages,
+    schemaName: childProfileSchemaName,
+    schema: childProfileSchema,
+    parse: parseChildProfile,
+    env: testEnv,
+    fetch: async () => {
+      starts.push(performance.now());
+      attempt += 1;
+      if (attempt === 1) return new Response('rate limited', { status: 429 });
+      return chatEnvelope(sampleProfile());
+    },
+  });
+  assert.deepEqual(profile, sampleProfile());
+  assert.equal(starts.length, 2);
+  const gap = (starts[1] ?? 0) - (starts[0] ?? 0);
+  assert.equal(gap >= 300, true, `gap ${gap}`);
+});
+
+test('a persistent gateway failure makes three calls', async () => {
+  let calls = 0;
+  const pending = generate({
+    endpoint: 'intake.profile',
+    messages,
+    schemaName: childProfileSchemaName,
+    schema: childProfileSchema,
+    parse: parseChildProfile,
+    env: testEnv,
+    fetch: async () => {
+      calls += 1;
+      return new Response('nope', { status: 429 });
+    },
+  });
+  await assert.rejects(pending, (error: unknown) => {
+    assert.ok(error instanceof GenerateError);
+    assert.equal(error.reason, 'gateway');
+    return true;
+  });
+  assert.equal(calls, 3);
+});
+
 test('falls back to the second configured model after the primary retry fails', async () => {
   const { calls, logs, result } = await run((seen) => {
     if (seen.length < 3) return new Response('nope', { status: 502 });

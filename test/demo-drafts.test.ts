@@ -749,6 +749,13 @@ test('parseSocialStory accepts a short prose body', () => {
   });
 });
 
+test('parseSocialStory rejects a care-plan title', () => {
+  assert.throws(
+    () => parseSocialStory({ title: "Rowan's Sunday Plan", body: safeBody }, rowanInput),
+    SchemaRejected,
+  );
+});
+
 test('parseSundayUpdate rejects the notes and the notes plus only the child name', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   assert.throws(() => parseSundayUpdate({ body: notes }, notes, 'Juniper'), SchemaRejected);
@@ -820,6 +827,25 @@ test('a dict story body fails the existing generation retry', async () => {
   assert.equal(missingName.status, 200);
   assert.equal(missingName.calls, 3);
   assert.deepEqual(missingName.payload, { title: 'Sunday with Al', body: fallbackBody, source: 'fallback' });
+  const clean = await generated(
+    '/v1/drafts/social-story',
+    { lines: [sensory], childName: 'Rowan', church: harbor },
+    { title: 'Sunday with Rowan', body: safeBody },
+  );
+  assert.equal(clean.status, 200);
+  assert.equal(clean.calls, 1);
+  assert.deepEqual(clean.payload, { title: 'Sunday with Rowan', body: safeBody, source: 'model' });
+});
+
+test('a care-plan story title fails the existing generation retry', async () => {
+  const planned = await generated(
+    '/v1/drafts/social-story',
+    { lines: [sensory], childName: 'Rowan', church: harbor },
+    { title: "Rowan's Sunday Plan", body: safeBody },
+  );
+  assert.equal(planned.status, 200);
+  assert.equal(planned.calls, 3);
+  assert.deepEqual(planned.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
   const clean = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
@@ -1189,13 +1215,149 @@ test('socialStoryMessages leaves tone and leaving lines out of the model input',
   assert.equal(user.includes('run off'), false);
 });
 
-test('storySafety accepts the grounded Rowan story', () => {
+test('socialStoryMessages asks for a short story read aloud to the child', () => {
+  const parsed = parseSocialStoryRequest({
+    childName: 'Rowan',
+    church: harbor,
+    lines: [{ field: 'loves', label: 'Loves', text: 'Quiet songs.' }],
+  });
+  assert.ok(parsed);
+  if (parsed === null) return;
+  const system = socialStoryMessages(parsed).find((message) => message.role === 'system')?.content ?? '';
+  const phrases = [
+    'third person',
+    'preferred name',
+    'church plan',
+    'calm and positive',
+    'Sometimes songs are loud.',
+    'No labels or medical words.',
+    'leaving the room',
+    'names that appear in the input',
+    "use the child's name instead of he or she",
+    'Never use these words:',
+    'Write it as a short story read aloud to the child, in 5 to 8 short sentences, under 90 words, in short paragraphs.',
+    'The title is a story title such as "Rowan\'s Sunday at Harbor Room", never a Plan or Supporting.',
+    'Describe only what the church plan says will happen. Do not promise seats, sound levels, songs, or activities beyond the plan.',
+    'Do not use the words support, accommodation, ensure, engage, or upset.',
+  ];
+  for (const phrase of phrases) {
+    assert.equal(system.includes(phrase), true, phrase);
+  }
+});
+
+test('storySafety rejects a care-plan title', () => {
+  for (const title of ["Rowan's Sunday Plan", 'Supporting Rowan', "ROWAN'S SUNDAY PLAN"]) {
+    assert.equal(storySafety({ title, body: safeBody }, rowanInput), false, title);
+  }
+});
+
+test('storySafety accepts a story title', () => {
+  for (const title of ["Rowan's Sunday at Harbor Room", 'Planting with Rowan', 'Explanation for Rowan']) {
+    assert.equal(storySafety({ title, body: safeBody }, rowanInput), true, title);
+  }
+  assert.equal(
+    storySafety(
+      { title: 'Sunday with Rowan', body: `${safeBody} The plan is quiet, supporting the song.` },
+      rowanInput,
+    ),
+    true,
+  );
+});
+
+test('storySafety rejects care-plan voice words', () => {
+  for (const word of ['support', 'supports', 'accommodation', 'ensure', 'engage', 'upset']) {
+    assert.equal(
+      storySafety({ title: 'Sunday with Rowan', body: `${safeBody} ${word}.` }, rowanInput),
+      false,
+      word,
+    );
+    assert.equal(
+      storySafety({ title: `${word} with Rowan`, body: safeBody }, rowanInput),
+      false,
+      `title ${word}`,
+    );
+  }
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Support.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'UPSET with Rowan', body: safeBody }, rowanInput), false);
+});
+
+test('storySafety keeps supporter and upsetting', () => {
+  for (const word of ['supporter', 'upsetting', 'ensures', 'engagement', 'accommodations', 'planned']) {
+    assert.equal(
+      storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan sees ${word}.` }, rowanInput),
+      true,
+      word,
+    );
+  }
+});
+
+test('storySafety rejects a body longer than 90 words', () => {
+  const sits = (words: number) => `Rowan ${'sits '.repeat(words - 2)}sits.`;
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: sits(90) }, rowanInput), true);
+  assert.equal(
+    storySafety({ title: 'Sunday with Rowan', body: `Hello, world. ${sits(88)}` }, rowanInput),
+    true,
+  );
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: sits(91) }, rowanInput), false);
+});
+
+test('storySafety rejects a body longer than eight sentences', () => {
+  const pass = [
+    'On Sunday, Rowan goes to Example Harbor Fellowship.',
+    'Rowan walks to Harbor Room.',
+    'Ms. Dana says hello.',
+    'Rowan sits.',
+    'Rowan listens.',
+    'Rowan smiles.',
+    'Rowan waves.',
+    'Rowan goes home.',
+  ].join('\n\n');
+  const fail = [
+    'On Sunday, Rowan goes to Example Harbor Fellowship.',
+    'Rowan walks to Harbor Room.',
+    'Rowan sits.',
+    'Rowan listens.',
+    'Rowan smiles.',
+    'Rowan waves.',
+    'Rowan claps.',
+    'Rowan reads.',
+    'Rowan goes home.',
+  ].join(' ');
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: pass }, rowanInput), true);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: fail }, rowanInput), false);
+});
+
+test('storySafety counts an ellipsis as one sentence', () => {
+  const body = [
+    'Rowan waits... then sits down at Example Harbor Fellowship.',
+    'Rowan walks to Harbor Room.',
+    'Rowan sits.',
+    'Rowan listens.',
+    'Rowan smiles.',
+    'Rowan waves.',
+    'Rowan claps.',
+    'Rowan goes home.',
+  ].join(' ');
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body }, rowanInput), true);
+});
+
+test('storySafety rejects the long grounded Rowan story', () => {
   const body = [
     'On Sunday at 9:30, Rowan and his grown-up go to Example Harbor Fellowship.',
     'Rowan walks to Harbor Room. Ms. Dana is there to say hello.',
     'First there is a short welcome. Then everyone sings one song. Rowan likes quiet songs.',
     'Next there is a quiet activity. Rowan can sit in a soft seat away from bright lights. If Rowan needs a quiet break, a grown-up will help.',
     "When it is over, Rowan's grown-up comes back to Harbor Room, and it is time to go home.",
+  ].join('\n\n');
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body }, rowanInput), false);
+});
+
+test('storySafety accepts the grounded Rowan story', () => {
+  const body = [
+    'On Sunday at 9:30, Rowan and his grown-up go to Example Harbor Fellowship.',
+    'Rowan walks to Harbor Room. Ms. Dana says hello.',
+    'There is a short welcome, one song, and a quiet activity.',
+    "When it is over, Rowan's grown-up comes back.",
   ].join('\n\n');
   assert.equal(storySafety({ title: 'Sunday with Rowan', body }, rowanInput), true);
 });
