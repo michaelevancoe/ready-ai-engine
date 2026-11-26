@@ -9,13 +9,18 @@ export interface SundaySentenceChurch {
 const CHURCH_FIELD_MAX = 200;
 const CHURCH_PLAN_MAX = 2000;
 
-export const SUNDAY_STORY_BODY_MAX = sundayStorySentences({
+const fullestChurch = {
   name: 'n'.repeat(CHURCH_FIELD_MAX),
   service: 's'.repeat(CHURCH_FIELD_MAX),
   room: 'r'.repeat(CHURCH_FIELD_MAX),
   leader: 'l'.repeat(CHURCH_FIELD_MAX),
   plan: 'p'.repeat(CHURCH_PLAN_MAX),
-}).join('\n\n').length;
+};
+
+export const SUNDAY_STORY_BODY_MAX = Math.max(
+  joinedLength(sundayStorySentences(fullestChurch)),
+  joinedLength(sundayFallbackSentences(fullestChurch)),
+);
 
 export function sundayStorySentences(
   church: SundaySentenceChurch,
@@ -29,6 +34,31 @@ export function sundayStorySentences(
     'If you need a break, there is a quiet spot in the room.',
     'When it is over, your grown-up comes back to pick you up.',
   ];
+}
+
+export function sundayFallbackSentences(
+  church: SundaySentenceChurch,
+): readonly [string, string, string, string, string, string, string] {
+  return [
+    arrival(church),
+    'You walk in the front doors, and a greeter smiles and says hello.',
+    classroom(church),
+    `${church.leader} and the helpers are there to help you.`,
+    'If you need a break, there is a quiet spot in the room.',
+    'When it is over, your grown-up comes back for you.',
+    welcome(church.leader),
+  ];
+}
+
+function joinedLength(sentences: readonly string[]): number {
+  return sentences.join('\n\n').length;
+}
+
+function welcome(leader: string): string {
+  const name = leader.trim();
+  if (name === '') return 'We are glad you came.';
+  const verb = /\band\b/iu.test(name) ? 'are' : 'is';
+  return `${name} ${verb} glad you came.`;
 }
 
 function arrival(church: SundaySentenceChurch): string {
