@@ -65,6 +65,15 @@ test('a Sunday story is a cover plus seven steps in order', () => {
   );
 });
 
+test('the welcome line agrees with one leader or two', () => {
+  const visit = initialVisit();
+  assert.equal(stepText(withChurch(visit, { leader: 'Ms. Dana' }), 7), 'Ms. Dana is glad you came.');
+  assert.equal(stepText(withChurch(visit, { leader: 'Amanda' }), 7), 'Amanda is glad you came.');
+  assert.equal(stepText(withChurch(visit, { leader: 'Dana and Lee' }), 7), 'Dana and Lee are glad you came.');
+  assert.equal(stepText(withChurch(visit, { leader: '' }), 7), 'We are glad you came.');
+  assert.equal(stepText(withChurch(visit, { leader: '   ' }), 7), 'We are glad you came.');
+});
+
 test('the arrival sentence splits a day and time, and a plan keeps its ending mark', () => {
   const visit = initialVisit();
   assert.equal(
