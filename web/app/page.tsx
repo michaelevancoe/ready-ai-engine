@@ -515,7 +515,13 @@ function BriefScreen({
             Back to questions
           </button>
         ) : (
-          <span />
+          <button
+            type="button"
+            className="back"
+            onClick={() => dispatch({ type: 'conversation', event: { type: 'backToApproved' } })}
+          >
+            ← {brief.name} is ready for Sunday
+          </button>
         )}
         {readonly ? (
           <p className="guided">Approved</p>
@@ -528,7 +534,7 @@ function BriefScreen({
       <h1>{brief.name}&apos;s brief</h1>
       <p className="lede">
         {readonly
-          ? `This is what ${brief.name}'s volunteers will read.`
+          ? `Approved. This is what ${leader} and this Sunday's volunteers read.`
           : `This is what ${brief.name}'s volunteers will read. Approve it, or tell Ready what to fix.`}
       </p>
       <article className="brief-card identity">
@@ -591,6 +597,20 @@ function BriefScreen({
           {pending ? sharing.button : 'Looks right, approve'}
         </button>
       )}
+      {readonly && view.canLeave ? (
+        <>
+          <p className="hint">
+            {brief.name} is a built-in example. This brief is already approved, so there is nothing to approve here.
+          </p>
+          <button
+            type="button"
+            className="text"
+            onClick={() => dispatch({ type: 'conversation', event: { type: 'leaveExample' } })}
+          >
+            Back to the start
+          </button>
+        </>
+      ) : null}
       {readonly || pending ? null : (
         <>
           <button type="button" onClick={() => setPicking((open) => !open)}>
@@ -787,6 +807,15 @@ function ApprovedScreen({
           onClick={() => dispatch({ type: 'conversation', event: { type: 'reviseBrief' } })}
         >
           Something changed? Update the brief
+        </button>
+      ) : null}
+      {view.canLeave ? (
+        <button
+          type="button"
+          className="text"
+          onClick={() => dispatch({ type: 'conversation', event: { type: 'leaveExample' } })}
+        >
+          Back to the start
         </button>
       ) : null}
       </div>

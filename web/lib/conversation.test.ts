@@ -463,11 +463,13 @@ test('an example brief stays approved when it is viewed and closed', () => {
     assert.equal(ready.kind, 'approved');
     if (ready.kind !== 'approved') return;
     assert.equal(ready.canRevise, false, id);
+    assert.equal(ready.canLeave, true, id);
     const viewed = reduceConversation(intakeTree, opened, { type: 'viewBrief' });
     const brief = presentAsk(intakeTree, viewed);
     assert.equal(brief.kind, 'brief');
     if (brief.kind !== 'brief') return;
     assert.equal(brief.actions, 'readonly', id);
+    assert.equal(brief.canLeave, true, id);
     const back = reduceConversation(intakeTree, viewed, { type: 'backToApproved' });
     const returned = presentAsk(intakeTree, back);
     assert.equal(returned.kind, 'approved', id);
@@ -485,6 +487,24 @@ test('an example brief stays approved when it is viewed and closed', () => {
   assert.equal(approved.kind, 'approved');
   if (approved.kind !== 'approved') return;
   assert.equal(approved.canRevise, true);
+  assert.equal(approved.canLeave, false);
+});
+
+test('leaving an example returns to the start and clears its brief', () => {
+  const ids = ['rowan', 'maya', 'jonah'] as const satisfies readonly ExampleId[];
+  for (const id of ids) {
+    let opened = reduceVisit(initialVisit(), { type: 'conversation', event: { type: 'openExample', id } });
+    assert.equal(checkInBrief(opened).status, 'approved', id);
+    opened = reduceVisit(opened, { type: 'conversation', event: { type: 'leaveExample' } });
+    assert.equal(presentAsk(intakeTree, opened.conversation).kind, 'start', id);
+    assert.equal(checkInBrief(opened).status, 'withheld', id);
+
+    let viewed = reduceVisit(initialVisit(), { type: 'conversation', event: { type: 'openExample', id } });
+    viewed = reduceVisit(viewed, { type: 'conversation', event: { type: 'viewBrief' } });
+    viewed = reduceVisit(viewed, { type: 'conversation', event: { type: 'leaveExample' } });
+    assert.equal(presentAsk(intakeTree, viewed.conversation).kind, 'start', id);
+    assert.equal(checkInBrief(viewed).status, 'withheld', id);
+  }
 });
 
 function begin(): Conversation {

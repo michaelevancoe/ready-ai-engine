@@ -90,8 +90,15 @@ export type AskView =
       readonly kind: 'brief';
       readonly brief: ParentBrief;
       readonly actions: 'draft' | 'readonly';
+      readonly canLeave: boolean;
     }
-  | { readonly kind: 'approved'; readonly name: string; readonly headline: string; readonly canRevise: boolean };
+  | {
+      readonly kind: 'approved';
+      readonly name: string;
+      readonly headline: string;
+      readonly canRevise: boolean;
+      readonly canLeave: boolean;
+    };
 
 export interface IntakePost {
   readonly preferredName: string;
@@ -180,6 +187,7 @@ export function presentAsk(tree: IntakeTree, conversation: Conversation): AskVie
         kind: 'brief',
         brief: parentBrief(tree, conversation),
         actions: briefActions(conversation.talk),
+        canLeave: conversation.talk.source.type === 'example',
       };
     case 'approved':
       return approvedView(conversation);
@@ -435,7 +443,13 @@ function approvedView(conversation: Conversation): AskView {
   if (conversation.talk.mode !== 'approved') return startView();
   const source = conversation.talk.source;
   const name = source.type === 'example' ? exampleBrief(source.id).name : intakeChild(conversation).preferredName;
-  return { kind: 'approved', name, headline: `${name} is ready for Sunday`, canRevise: source.type === 'intake' };
+  return {
+    kind: 'approved',
+    name,
+    headline: `${name} is ready for Sunday`,
+    canRevise: source.type === 'intake',
+    canLeave: source.type === 'example',
+  };
 }
 
 function briefActions(talk: Extract<Talk, { mode: 'brief' }>): 'draft' | 'readonly' {
