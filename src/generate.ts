@@ -34,6 +34,8 @@ interface Attempt {
 
 const MAX_RESPONSE_CHARS = 100_000;
 
+const GATEWAY_RETRY_DELAY_MS = 300;
+
 function report(log: ((event: SafeLog) => void) | undefined, event: SafeLog): void {
   (log ?? emitSafe)(event);
 }
@@ -116,6 +118,7 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
   ];
 
   let lastReason: GenerateFailure = 'gateway';
+  let waitedForGateway = false;
   for (const [index, step] of plan.entries()) {
     const base = {
       endpoint: input.endpoint,
@@ -153,6 +156,12 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
         outcome: reason === 'schema' ? 'schema_rejected' : 'error',
       });
       if (index === plan.length - 1) throw new GenerateError(lastReason);
+      if (reason === 'gateway' && !waitedForGateway) {
+        waitedForGateway = true;
+        await new Promise((resolve) => {
+          setTimeout(resolve, GATEWAY_RETRY_DELAY_MS);
+        });
+      }
     }
   }
   throw new GenerateError(lastReason);
