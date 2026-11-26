@@ -22,12 +22,12 @@ export function sundayStorySentences(
 ): readonly [string, string, string, string, string, string, string] {
   return [
     arrival(church),
-    'You walk in the front doors. A greeter smiles and says hello.',
+    'You walk in the front doors, and a greeter smiles and says hello.',
     'At the welcome desk, you check in and get a name tag.',
     classroom(church),
     `${church.leader} and the helpers are there to help you.`,
     'If you need a break, there is a quiet spot in the room.',
-    'When it is over, your grown-up comes back to pick you up.',
+    `${church.leader} is glad you came.`,
   ];
 }
 
