@@ -38,6 +38,26 @@ const rowanLines = [
   { text: 'Rowan does not usually hurt himself or run off.' },
 ];
 const rowanInput = { childName: 'Rowan', church: harbor, lines: rowanLines };
+const mayaLines = [
+  { text: 'Maya loves dinosaurs and digging in the sand table.' },
+  { text: 'Sudden loud songs overwhelm Maya.' },
+  { text: 'A warning before a change helps Maya.' },
+  { text: 'Maya tells an adult with short sentences.' },
+  { text: 'Maya prefers a dim corner when the room is loud.' },
+  { text: 'Maya tells an adult and needs a reminder at transitions.' },
+  { text: 'Maya sometimes needs a quiet lap and does not run off.' },
+];
+const jonahLines = [
+  { text: 'Jonah loves Lego and building on the floor.' },
+  { text: 'A rushed transition overwhelms Jonah.' },
+  { text: 'A picture of the next activity helps Jonah.' },
+  { text: 'Jonah uses picture cards.' },
+  { text: 'Jonah likes a firm seat and a predictable sound level.' },
+  { text: 'Jonah uses a sign or picture when he needs the bathroom.' },
+  { text: 'Jonah stays with the group when an adult shows him a calm card.' },
+];
+const mayaInput = { childName: 'Maya', church: harbor, lines: mayaLines };
+const jonahInput = { childName: 'Jonah', church: harbor, lines: jonahLines };
 const fallbackBody = [
   'On Sunday at 9:30, you and your grown-up go to Example Harbor Fellowship.',
   'You walk in the front doors. A greeter smiles and says hello.',
@@ -927,7 +947,11 @@ test('storySafety rejects banned words, worried tone, and leaving phrases', () =
 });
 
 test('storySafety rejects unknown names, the wrong child, and a missing name', () => {
-  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Theo waves.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met Theo.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met "Theo".` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met... Theo.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met A. Theo.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} J. Lee waves.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Mrs. Lee waves.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Grace Chapel is nearby.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Maya sings.` }, rowanInput), false);
@@ -980,6 +1004,189 @@ test('storySafety rejects a pronoun the lines do not use', () => {
     ),
     false,
   );
+});
+
+test('storySafety accepts a title, sentence starts, and common capitals', () => {
+  const grounded =
+    'On Sunday, Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.';
+  assert.equal(storySafety({ title: 'Rowan Goes to Church', body: grounded }, rowanInput), true);
+  assert.equal(storySafety({ title: 'A Happy Sunday', body: grounded }, rowanInput), true);
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'Today Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'On Sunday, Rowan goes to Example Harbor Fellowship. They sing one song in Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Theo waves.` }, rowanInput), true);
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: '"Today Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello."',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'Ms. Dana says “hello.” Bible time is quiet. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: '(Bible time is quiet.) Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'On the 1st. Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'On Sunday, Rowan goes to Example Harbor Fellowship and hears Music at Church. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  for (const word of ['Inside', 'Soon', 'Later', 'Afterward', 'Finally', 'Now', 'Here', 'This', 'That', 'Everything']) {
+    assert.equal(
+      storySafety(
+        {
+          title: 'Sunday with Rowan',
+          body: `On Sunday, Rowan goes to Example Harbor Fellowship and sees ${word} there. Rowan walks to Harbor Room. Ms. Dana says hello.`,
+        },
+        rowanInput,
+      ),
+      true,
+      word,
+    );
+  }
+});
+
+test('storySafety judges sentence-start He, His, and She only by the pronoun rule', () => {
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Maya',
+        body: 'She walks to Harbor Room. Maya goes to Example Harbor Fellowship. Ms. Dana says hello.',
+      },
+      mayaInput,
+    ),
+    false,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Jonah',
+        body: 'His Lego stays home. Jonah goes to Example Harbor Fellowship. Jonah walks to Harbor Room. Ms. Dana says hello.',
+      },
+      jonahInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'On Sunday, Rowan goes to Example Harbor Fellowship and sees His seat in Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+});
+
+test('storySafety accepts a third-person story for Rowan, Maya, and Jonah', () => {
+  const stories = [
+    [
+      rowanInput,
+      'Rowan Goes to Church',
+      'Today Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello. They sing one song. Afterward Rowan goes home.',
+    ],
+    [
+      mayaInput,
+      'Sunday with Maya',
+      'Today Maya goes to Example Harbor Fellowship. Maya walks to Harbor Room. Ms. Dana says hello. They sing one song. Inside Harbor Room, Maya finds a quiet corner.',
+    ],
+    [
+      jonahInput,
+      'Sunday with Jonah',
+      'His Lego stays home. Today Jonah goes to Example Harbor Fellowship. Jonah walks to Harbor Room. Ms. Dana says hello. They sing one song.',
+    ],
+  ] as const;
+  for (const [input, title, body] of stories) {
+    assert.equal(storySafety({ title, body }, input), true, input.childName);
+  }
+});
+
+test('socialStoryMessages leaves tone and leaving lines out of the model input', () => {
+  const parsed = parseSocialStoryRequest({
+    childName: 'Rowan',
+    church: harbor,
+    lines: [
+      { field: 'loves', label: 'Loves', text: 'Rowan loves Disney stories and quiet songs.' },
+      { field: 'overwhelms', label: 'Overwhelms', text: 'A crowded doorway overwhelms Rowan.' },
+      { field: 'calming', label: 'Safety & calming', text: 'Rowan does not usually hurt himself or run off.' },
+      { field: 'toileting', label: 'Toileting', text: 'Rowan tells an adult when he needs the bathroom.' },
+    ],
+  });
+  assert.ok(parsed);
+  if (parsed === null) return;
+  assert.equal(
+    parsed.lines.some((line) => line.text.includes('run off')),
+    true,
+  );
+  const messages = socialStoryMessages(parsed);
+  const system = messages.find((message) => message.role === 'system')?.content ?? '';
+  const user = messages.find((message) => message.role === 'user')?.content ?? '';
+  assert.equal(system.includes("use the child's name instead of he or she"), true);
+  assert.equal(system.includes('Never use these words:'), true);
+  assert.equal(system.includes('allergy'), true);
+  assert.equal(system.includes('overwhelm'), true);
+  assert.equal(system.includes('run off'), true);
+  assert.equal(user.includes('Rowan loves Disney stories and quiet songs.'), true);
+  assert.equal(user.includes('when he needs the bathroom'), true);
+  assert.equal(user.includes(harbor.name), true);
+  assert.equal(user.includes(harbor.room), true);
+  assert.equal(user.includes(harbor.leader), true);
+  assert.equal(user.includes(harbor.plan), true);
+  assert.equal(user.includes('overwhelms Rowan'), false);
+  assert.equal(user.includes('hurt himself'), false);
+  assert.equal(user.includes('run off'), false);
 });
 
 test('storySafety accepts the grounded Rowan story', () => {
