@@ -95,6 +95,10 @@ const SOCIAL_STORY_RULES = [
   'Never suggest leaving the room or the group.',
   'Use only names that appear in the input.',
   'Return JSON with title and body, and write the body as prose rather than a dict.',
+  'Write it as a short story read aloud to the child, in 5 to 8 short sentences, under 90 words, in short paragraphs.',
+  'The title is a story title such as "Rowan\'s Sunday at Harbor Room", never a Plan or Supporting.',
+  'Describe only what the church plan says will happen. Do not promise seats, sound levels, songs, or activities beyond the plan.',
+  'Do not use the words support, accommodation, ensure, engage, or upset.',
 ].join(' ');
 
 const LESSON_RULES = [
@@ -411,6 +415,10 @@ const MALE_PRONOUNS = ['he', 'him', 'his', 'himself'] as const;
 
 const FEMALE_PRONOUNS = ['she', 'her', 'hers', 'herself'] as const;
 
+const STORY_VOICE_WORDS = ['support', 'supports', 'accommodation', 'ensure', 'engage', 'upset'] as const;
+
+const STORY_VOICE_TITLE_WORDS = ['plan', 'supporting'] as const;
+
 export function storySafety(
   story: { readonly title: string; readonly body: string },
   input: {
@@ -423,6 +431,8 @@ export function storySafety(
   if (listed(text, STORY_LABEL_WORDS) || listed(text, STORY_TONE_WORDS) || listed(text, STORY_LEAVING_PHRASES)) {
     return false;
   }
+  if (usesAny(story.title, STORY_VOICE_TITLE_WORDS) || usesAny(text, STORY_VOICE_WORDS)) return false;
+  if (sentenceCount(story.body) > 8 || wordCount(story.body) > 90) return false;
   if (!properNounsAllowed(story.title, story.body, input)) return false;
   if (!preferredNameAppears(text, input.childName)) return false;
   if (otherChildNamed(text, input.childName)) return false;
@@ -527,6 +537,48 @@ function abbreviationBefore(text: string, periodIndex: number): boolean {
   if (!NAME_ABBREVIATIONS.has(word.toLowerCase())) return false;
   const before = text[start];
   return before === undefined || !/[\p{L}\p{N}]/u.test(before);
+}
+
+function ellipsisDot(text: string, index: number): boolean {
+  if (text[index] !== '.') return false;
+  let before = index - 1;
+  while (before >= 0 && text[before] === ' ') before -= 1;
+  if (text[before] === '.') return true;
+  let after = index + 1;
+  while (after < text.length && text[after] === ' ') after += 1;
+  return text[after] === '.';
+}
+
+function sentenceCount(body: string): number {
+  const text = body.trim();
+  let count = 0;
+  let lastEnd = -1;
+  for (let index = 0; index < text.length; index += 1) {
+    const mark = text[index];
+    if (mark !== '.' && mark !== '!' && mark !== '?') continue;
+    if (mark === '.' && ellipsisDot(text, index)) continue;
+    const next = text[index + 1];
+    if (next === '.' || next === '!' || next === '?') continue;
+    if (mark === '.' && abbreviationBefore(text, index)) continue;
+    if (mark === '.' && /\p{N}/u.test(text[index - 1] ?? '') && /\p{N}/u.test(next ?? '')) continue;
+    count += 1;
+    lastEnd = index;
+  }
+  if (lastEnd < 0) return hasLetterOrNumber(text) ? 1 : 0;
+  if (hasLetterOrNumber(text.slice(lastEnd + 1))) count += 1;
+  return count;
+}
+
+function wordCount(body: string): number {
+  let count = 0;
+  for (const token of body.split(/\s+/u)) {
+    if (hasLetterOrNumber(token)) count += 1;
+  }
+  return count;
+}
+
+function hasLetterOrNumber(text: string): boolean {
+  return /[\p{L}\p{N}]/u.test(text);
 }
 
 function otherChildNamed(text: string, childName: string): boolean {
