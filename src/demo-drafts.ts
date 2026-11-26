@@ -539,6 +539,16 @@ function abbreviationBefore(text: string, periodIndex: number): boolean {
   return before === undefined || !/[\p{L}\p{N}]/u.test(before);
 }
 
+function ellipsisDot(text: string, index: number): boolean {
+  if (text[index] !== '.') return false;
+  let before = index - 1;
+  while (before >= 0 && text[before] === ' ') before -= 1;
+  if (text[before] === '.') return true;
+  let after = index + 1;
+  while (after < text.length && text[after] === ' ') after += 1;
+  return text[after] === '.';
+}
+
 function sentenceCount(body: string): number {
   const text = body.trim();
   let count = 0;
@@ -546,9 +556,9 @@ function sentenceCount(body: string): number {
   for (let index = 0; index < text.length; index += 1) {
     const mark = text[index];
     if (mark !== '.' && mark !== '!' && mark !== '?') continue;
+    if (mark === '.' && ellipsisDot(text, index)) continue;
     const next = text[index + 1];
     if (next === '.' || next === '!' || next === '?') continue;
-    if (mark === '.' && text[index - 1] === '.') continue;
     if (mark === '.' && abbreviationBefore(text, index)) continue;
     if (mark === '.' && /\p{N}/u.test(text[index - 1] ?? '') && /\p{N}/u.test(next ?? '')) continue;
     count += 1;

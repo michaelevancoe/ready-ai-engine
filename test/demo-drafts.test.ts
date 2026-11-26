@@ -1338,7 +1338,18 @@ test('storySafety counts an ellipsis as one sentence', () => {
     'Rowan claps.',
     'Rowan goes home.',
   ].join(' ');
+  const spaced = [
+    'On Sunday, Rowan goes to Example Harbor Fellowship.',
+    'Rowan walks to Harbor Room.',
+    'Ms. Dana says hello.',
+    'Rowan sits . . . quietly.',
+    'Rowan listens.',
+    'Rowan smiles.',
+    'Rowan waves.',
+    'Rowan goes home.',
+  ].join('\n\n');
   assert.equal(storySafety({ title: 'Sunday with Rowan', body }, rowanInput), true);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: spaced }, rowanInput), true);
 });
 
 test('storySafety rejects the long grounded Rowan story', () => {
