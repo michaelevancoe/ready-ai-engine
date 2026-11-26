@@ -254,12 +254,12 @@ function AfterCard({
 }) {
   const empty = notes.trim() === '';
   const tag = empty ? 'plain' : sent ? 'approved' : 'ready';
-  const label = empty ? 'No notes yet' : sent ? 'Sent to parent' : 'Notes from Theo';
+  const label = empty ? 'No notes yet' : sent ? 'Sent to parent' : 'Notes from Jordan';
   const body = (
     <>
-      <h2>Notes from Theo Park</h2>
+      <h2>Notes from Jordan Ellis</h2>
       {empty ? (
-        <p>No notes yet. Theo adds them after class, then you can draft a note for {name}&apos;s parent.</p>
+        <p>No notes yet. Jordan adds them after class, then you can draft a note for {name}&apos;s parent.</p>
       ) : null}
       <span className={tagClass(tag)}>{label}</span>
     </>
@@ -443,7 +443,7 @@ function AfterScreen({
       <section aria-label="Internal notes">
         <h2>Internal notes</h2>
         <p>{visit.notes}</p>
-        <p>Only Theo Park and {visit.church.leader} see this.</p>
+        <p>Only Jordan Ellis and {visit.church.leader} see this.</p>
       </section>
       {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
       {visit.update.phase === 'idle' || visit.update.phase === 'failed' || visit.update.phase === 'writing' ? (
@@ -468,7 +468,7 @@ function AfterScreen({
       {visit.update.phase === 'approved' ? (
         <>
           <p className="draft-text">{visit.update.value.body}</p>
-          <p>The parent sees only this note, never Theo&apos;s internal notes.</p>
+          <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
         </>
       ) : null}
     </main>

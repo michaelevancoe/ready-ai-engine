@@ -96,7 +96,10 @@ test('no known allergies closes the follow-up and any other allergy answer opens
   assert.equal(open.talk.mode, 'ask');
   if (open.talk.mode !== 'ask') return;
   assert.equal(open.talk.nodeId, 'allergies-more');
-  assert.equal(promptOf(open), 'What happens, and what should a volunteer do?');
+  assert.equal(
+    promptOf(open),
+    'One more about allergies and health: what happens for Rowan, and what should a volunteer do?',
+  );
   const closed = say(atAllergies(), 'No known allergies');
   assert.equal(closed.answers['allergies-more'], undefined);
   assert.equal(promptOf(closed), BEHAVIOR);
@@ -292,7 +295,7 @@ test('Theo at age 8 is the brief, and name and age need no acknowledgement', () 
     assert.equal(prompt.includes('Theo'), true, prompt);
     assert.equal(prompt.includes('Rowan'), false, prompt);
   }
-  const finished = finish(beginNamed('Theo', '8'));
+  const finished = finish(named('Theo', '8'));
   assert.equal(finished.talk.mode, 'brief');
   if (finished.talk.mode !== 'brief') return;
   assert.equal(finished.talk.review, 'draft');
@@ -359,7 +362,7 @@ test('each answer lands in its own card and the name stays out of the summary', 
     allergiesMore: 'ALLERGY-MORE-TOKEN',
     behavior: 'CALM-TOKEN',
   };
-  const finished = finish(beginNamed('Theo', '8'), {
+  const finished = finish(named('Theo', '8'), {
     about: tokens.about,
     loves: tokens.loves,
     overwhelms: tokens.overwhelms,
@@ -487,10 +490,6 @@ function begin(): Conversation {
 
 function named(name = 'Rowan', age = '7'): Conversation {
   return say(say(begin(), name), age);
-}
-
-function beginNamed(name: string, age: string): Conversation {
-  return named(name, age);
 }
 
 function say(conversation: Conversation, text: string): Conversation {

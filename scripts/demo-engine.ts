@@ -664,7 +664,7 @@ const NONSENSE = new Set([
   'asdf',
 ]);
 
-function cannedPrompt(sectionId: SectionId, name: string = intakeTree.child.preferredName): string {
+function cannedPrompt(sectionId: SectionId, name = 'Rowan'): string {
   const asked = named(sectionId, name);
   if (asked.length <= 120 && !CHILD_PRONOUN.test(asked)) return asked;
   const shorter = `I want to make sure I understand. Could you say a little more about ${name}?`;

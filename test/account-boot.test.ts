@@ -128,6 +128,8 @@ test('saved answers reopen on the next question', async () => {
       return Response.json([
         {
           answers: {
+            name: { kind: 'answered', text: 'Rowan' },
+            age: { kind: 'answered', text: '7' },
             about: { kind: 'answered', text: 'He is quiet.' },
             loves: { kind: 'answered', text: 'Quiet trains' },
           },

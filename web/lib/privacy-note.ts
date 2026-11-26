@@ -25,12 +25,13 @@ export function parentReviewPrivacy(input: {
   readonly name: string;
   readonly leader: string;
   readonly churchName: string;
+  readonly readonly?: boolean;
 }): PrivacyFull {
   return {
     title: `Who sees ${input.name}'s brief`,
     bullets: [
       `${input.leader} and this Sunday's volunteers at ${input.churchName}. No one else.`,
-      'Nothing is shared until you approve. You can fix anything first.',
+      ...(input.readonly === true ? [] : ['Nothing is shared until you approve. You can fix anything first.']),
       `Care notes you write, like allergies, go to ${input.name}'s leaders exactly as you wrote them.`,
       `The story ${input.name} reads stays simple and label-free. Medical details stay out.`,
       'This demo uses made-up children. Nothing is saved to a database.',

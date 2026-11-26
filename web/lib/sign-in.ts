@@ -23,8 +23,8 @@ export const CHURCHES: readonly ChurchOption[] = [
     name: 'Riverside Fellowship',
     ministry: 'Riverside Kids',
     role: 'Volunteer',
-    person: 'Theo Park',
-    initial: 'T',
+    person: 'Jordan Ellis',
+    initial: 'J',
   },
 ];
 
