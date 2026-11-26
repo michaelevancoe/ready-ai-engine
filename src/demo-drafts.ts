@@ -1,6 +1,6 @@
 import { SchemaRejected } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
-import { sundayStorySentences } from './sunday-story-text.ts';
+import { sundayFallbackSentences } from './sunday-story-text.ts';
 
 const BRIEF_FIELDS = [
   'loves',
@@ -672,7 +672,7 @@ export function fallbackSocialStory(request: SocialStoryRequest): {
 } {
   return {
     title: `Sunday with ${request.childName}`.slice(0, 120),
-    body: sundayStorySentences(request.church).join('\n\n'),
+    body: sundayFallbackSentences(request.church).join('\n\n'),
     source: 'fallback',
   };
 }
