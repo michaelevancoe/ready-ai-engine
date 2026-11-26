@@ -506,23 +506,27 @@ function properNounsAllowed(
   return true;
 }
 
+const SENTENCE_SKIP = new Set([' ', '\t', '\r', '"', "'", '\u201C', '\u201D', '\u2018', '\u2019', '(', ')']);
+
 function isSentenceStart(text: string, index: number): boolean {
   let cursor = index - 1;
-  while (cursor >= 0 && (text[cursor] === ' ' || text[cursor] === '\t' || text[cursor] === '\r')) cursor -= 1;
+  while (cursor >= 0 && SENTENCE_SKIP.has(text[cursor] ?? '')) cursor -= 1;
   if (cursor < 0) return true;
   const previous = text[cursor];
   if (previous === '\n' || previous === '!' || previous === '?') return true;
-  if (previous === '"' || previous === "'" || previous === '\u201C' || previous === '\u2018') {
-    return isSentenceStart(text, cursor);
-  }
-  if (previous === '.') return !abbreviationBefore(text, cursor);
-  return false;
+  if (previous !== '.') return false;
+  if (text[cursor - 1] === '.') return false;
+  return !abbreviationBefore(text, cursor);
 }
 
 function abbreviationBefore(text: string, periodIndex: number): boolean {
   let start = periodIndex - 1;
   while (start >= 0 && /\p{L}/u.test(text[start] ?? '')) start -= 1;
-  return NAME_ABBREVIATIONS.has(text.slice(start + 1, periodIndex).toLowerCase());
+  const word = text.slice(start + 1, periodIndex);
+  if (word.length === 1) return true;
+  if (!NAME_ABBREVIATIONS.has(word.toLowerCase())) return false;
+  const before = text[start];
+  return before === undefined || !/[\p{L}\p{N}]/u.test(before);
 }
 
 function otherChildNamed(text: string, childName: string): boolean {

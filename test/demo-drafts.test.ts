@@ -949,6 +949,9 @@ test('storySafety rejects banned words, worried tone, and leaving phrases', () =
 test('storySafety rejects unknown names, the wrong child, and a missing name', () => {
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met Theo.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met "Theo".` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met... Theo.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Rowan met A. Theo.` }, rowanInput), false);
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} J. Lee waves.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Mrs. Lee waves.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Grace Chapel is nearby.` }, rowanInput), false);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: `${safeBody} Maya sings.` }, rowanInput), false);
@@ -1034,6 +1037,36 @@ test('storySafety accepts a title, sentence starts, and common capitals', () => 
       {
         title: 'Sunday with Rowan',
         body: '"Today Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello."',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'Ms. Dana says “hello.” Bible time is quiet. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: '(Bible time is quiet.) Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.',
+      },
+      rowanInput,
+    ),
+    true,
+  );
+  assert.equal(
+    storySafety(
+      {
+        title: 'Sunday with Rowan',
+        body: 'On the 1st. Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.',
       },
       rowanInput,
     ),
