@@ -71,7 +71,7 @@ const fallbackBody = [
 const labelStory =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
 
-const NEXT_QUESTION = 'How does Rowan usually let you know what he needs?';
+const NEXT_QUESTION = 'How does {child} usually let you know what {child} needs?';
 const CHILD_PRONOUN = /\b(?:he|she|him|his|her|hers|they|them|their|theirs)\b/iu;
 const ACK_USER = `Answer: Picture cards.\nSection: communication\nQuestion: ${NEXT_QUESTION}`;
 
@@ -646,7 +646,7 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   assertCall(
     calls[2],
     'sunday_update',
-    'Child: Rowan\nVolunteer: Theo Park\nNotes:\nTICK-AFTER-SUNDAY',
+    'Child: Rowan\nVolunteer: Jordan Ellis\nNotes:\nTICK-AFTER-SUNDAY',
   );
   const storySystem = systemText(calls[0]);
   assert.equal(storySystem.includes('rather than a dict'), true);
@@ -666,7 +666,7 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   const updateSystem = systemText(calls[2]);
   assert.equal(updateSystem.includes('your own words'), true);
   assert.equal(updateSystem.includes('Do not copy the notes.'), true);
-  assert.equal(updateSystem.includes('Theo Park'), true);
+  assert.equal(updateSystem.includes('Jordan Ellis'), true);
   assert.equal(updateSystem.includes("[Volunteer's Name]"), true);
   const storyText = JSON.stringify(await story.json());
   assert.equal(storyText.includes(testEnv.AI_GATEWAY_TOKEN), false);
@@ -681,7 +681,7 @@ test('the Sunday update user message is plain text', async () => {
   assert.equal(update.status, 200);
   assert.equal(calls.length, 1);
   const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content;
-  assert.equal(user, 'Child: Rowan\nVolunteer: Theo Park\nNotes:\nTICK-AFTER-SUNDAY');
+  assert.equal(user, 'Child: Rowan\nVolunteer: Jordan Ellis\nNotes:\nTICK-AFTER-SUNDAY');
 });
 
 test('a failed draft does not return the gateway body', async () => {
@@ -725,7 +725,7 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);
-  assert.equal(note.body.endsWith('Theo Park'), true);
+  assert.equal(note.body.endsWith('Jordan Ellis'), true);
   assert.equal(note.body.includes('['), false);
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');

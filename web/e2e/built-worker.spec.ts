@@ -8,10 +8,10 @@ test('a new question is announced after send', async ({ page }) => {
   await expect(log).toHaveAttribute('aria-live', 'polite');
   const answer = page.getByRole('textbox', { name: 'Your answer' });
   await expect(answer).toHaveAttribute('aria-describedby', 'current-question');
-  await expect(page.locator('#current-question')).toContainText('how would you describe Rowan');
-  await answer.fill('He likes a quiet hello.');
+  await expect(page.locator('#current-question')).toContainText('What name does your child go by at church?');
+  await answer.fill('Rowan');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.locator('#current-question')).toContainText('What does Rowan love');
+  await expect(page.locator('#current-question')).toContainText('How old is Rowan');
 });
 
 test('the built page hydrates and submits intake without a GET navigation', async ({ page }) => {

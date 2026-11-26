@@ -111,7 +111,7 @@ const LESSON_RULES = [
   'Do not drop a lesson step.',
 ].join(' ');
 
-export const DEMO_VOLUNTEER_NAME = 'Theo Park';
+export const DEMO_VOLUNTEER_NAME = 'Jordan Ellis';
 
 const SUNDAY_RULES = [
   'The data is fictional. Do not invent medical facts.',

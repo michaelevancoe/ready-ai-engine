@@ -31,13 +31,14 @@ export type Write =
 
 export type Follow =
   | { readonly when: 'short'; readonly maxChars: number; readonly nodeId: string }
-  | { readonly when: 'unless'; readonly text: string; readonly nodeId: string };
+  | { readonly when: 'allergy'; readonly nodeId: string };
 
 export interface IntakeNode {
   readonly id: string;
   readonly sectionId: string;
   readonly prompt: string;
   readonly placeholder: string;
+  readonly check?: 'name' | 'age';
   readonly follow?: Follow;
   readonly chips?: readonly string[];
   readonly closeChip?: string;
@@ -53,7 +54,6 @@ export interface IntakeSection {
 
 export interface IntakeTree {
   readonly placeholderNote: string;
-  readonly child: { readonly preferredName: 'Rowan'; readonly ageYears: 7 };
   readonly parentName: 'Avery';
   readonly sections: readonly IntakeSection[];
   readonly nodes: readonly IntakeNode[];
@@ -80,10 +80,9 @@ const TYPE_ANSWER = 'Type your answer...';
 
 const RAW = {
   placeholderNote: PLACEHOLDER_NOTE,
-  child: { preferredName: 'Rowan', ageYears: 7 },
   parentName: 'Avery',
   sections: [
-    { id: 'about', title: 'About Rowan', nodeId: 'about', reviewLabel: 'Summary' },
+    { id: 'about', title: 'About your child', nodeId: 'name', reviewLabel: 'Summary' },
     { id: 'loves', title: 'Loves', nodeId: 'loves', reviewLabel: 'Loves' },
     { id: 'overwhelms', title: 'Overwhelms', nodeId: 'overwhelms', reviewLabel: 'Overwhelms' },
     { id: 'helps', title: 'What helps', nodeId: 'helps', reviewLabel: 'What helps' },
@@ -95,23 +94,40 @@ const RAW = {
   ],
   nodes: [
     {
+      id: 'name',
+      sectionId: 'about',
+      prompt: 'What name does your child go by at church?',
+      placeholder: TYPE_ANSWER,
+      check: 'name',
+      writes: [],
+    },
+    {
+      id: 'age',
+      sectionId: 'about',
+      prompt: 'How old is {child}?',
+      placeholder: TYPE_ANSWER,
+      check: 'age',
+      chips: ['6', '7', '8', '9'],
+      writes: [],
+    },
+    {
       id: 'about',
       sectionId: 'about',
-      prompt: 'To start: how would you describe Rowan in a sentence or two?',
+      prompt: 'To start: how would you describe {child} in a sentence or two?',
       placeholder: TYPE_ANSWER,
       writes: [{ target: 'summary' }, { target: 'post', key: 'supportNeeds' }],
     },
     {
       id: 'loves',
       sectionId: 'loves',
-      prompt: 'What does Rowan love, at church or at home?',
+      prompt: 'What does {child} love, at church or at home?',
       placeholder: TYPE_ANSWER,
       writes: [{ target: 'card', key: 'loves' }],
     },
     {
       id: 'overwhelms',
       sectionId: 'overwhelms',
-      prompt: 'What tends to overwhelm Rowan at church or in new places?',
+      prompt: 'What tends to overwhelm {child} at church or in new places?',
       placeholder: TYPE_ANSWER,
       writes: [
         { target: 'post', key: 'whatToAvoid' },
@@ -121,7 +137,7 @@ const RAW = {
     {
       id: 'helps',
       sectionId: 'helps',
-      prompt: 'What helps Rowan feel calm again when things get to be too much?',
+      prompt: 'What helps {child} feel calm again when things get to be too much?',
       placeholder: TYPE_ANSWER,
       follow: { when: 'short', maxChars: 40, nodeId: 'helps-more' },
       writes: [
@@ -133,7 +149,7 @@ const RAW = {
       id: 'helps-more',
       sectionId: 'helps',
       prompt:
-        'Is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?',
+        'One more about what helps: is there anything else that calms {child}, like a quiet spot or a heads-up before changes?',
       placeholder: 'Add a little more...',
       chips: ['A quiet corner', 'A heads-up before changes'],
       closeChip: "That's everything",
@@ -145,7 +161,7 @@ const RAW = {
     {
       id: 'communication',
       sectionId: 'communication',
-      prompt: 'How does Rowan usually let you know what he needs?',
+      prompt: 'How does {child} usually let you know what {child} needs?',
       placeholder: TYPE_ANSWER,
       writes: [
         { target: 'post', key: 'supportNeeds' },
@@ -155,7 +171,7 @@ const RAW = {
     {
       id: 'sensory',
       sectionId: 'sensory',
-      prompt: 'What sensory things should volunteers know about Rowan at church?',
+      prompt: 'What sensory things should volunteers know about {child} at church?',
       placeholder: TYPE_ANSWER,
       writes: [
         { target: 'post', key: 'sensoryNotes' },
@@ -165,7 +181,7 @@ const RAW = {
     {
       id: 'toileting',
       sectionId: 'toileting',
-      prompt: 'How does Rowan usually let you know they need the bathroom?',
+      prompt: 'How does {child} usually let you know they need the bathroom?',
       placeholder: TYPE_ANSWER,
       chips: ['Tells an adult', 'Uses a sign or picture', 'Needs reminders', 'Needs help in the bathroom'],
       writes: [{ target: 'card', key: 'toileting' }],
@@ -173,16 +189,16 @@ const RAW = {
     {
       id: 'allergies',
       sectionId: 'allergies',
-      prompt: 'Does Rowan have any allergies, to food, medicine, or anything else?',
+      prompt: 'Does {child} have any allergies, to food, medicine, or anything else?',
       placeholder: TYPE_ANSWER,
       chips: ['No known allergies', 'Food allergy', 'Medicine allergy', 'Something else'],
-      follow: { when: 'unless', text: 'No known allergies', nodeId: 'allergies-more' },
+      follow: { when: 'allergy', nodeId: 'allergies-more' },
       writes: [{ target: 'card', key: 'allergies' }],
     },
     {
       id: 'allergies-more',
       sectionId: 'allergies',
-      prompt: 'What happens, and what should a volunteer do?',
+      prompt: 'One more about allergies and health: what happens for {child}, and what should a volunteer do?',
       placeholder: TYPE_ANSWER,
       writes: [{ target: 'card', key: 'allergies' }],
     },
@@ -190,7 +206,7 @@ const RAW = {
       id: 'behavior',
       sectionId: 'behavior',
       prompt:
-        'When Rowan is very upset, does he ever hurt himself or others, or run off? If so, what helps in that moment?',
+        'When {child} is very upset, does {child} ever hurt himself or others, or run off? If so, what helps in that moment?',
       placeholder: TYPE_ANSWER,
       chips: ['No, not usually', 'Sometimes runs off', 'Sometimes hits or bites', 'Let me explain'],
       writes: [{ target: 'card', key: 'calming' }],
@@ -203,9 +219,6 @@ export const intakeTree = ship(RAW);
 export function parseIntakeTree(input: unknown): TreeParse {
   if (!isRecord(input)) return fail('invalid-tree');
   if (input.placeholderNote !== PLACEHOLDER_NOTE) return fail('invalid-tree');
-  if (!isRecord(input.child) || input.child.preferredName !== 'Rowan' || input.child.ageYears !== 7) {
-    return fail('invalid-tree');
-  }
   if (input.parentName !== 'Avery') return fail('invalid-tree');
   if (input.medicalOffer !== undefined) return fail('medical-offer');
   if (hasSkip(input)) return fail('skip');
@@ -226,11 +239,7 @@ export function parseIntakeTree(input: unknown): TreeParse {
     if (!sectionIds.has(node.sectionId)) return fail(`unknown-section:${node.sectionId}`);
     if (node.follow !== undefined && !ids.has(node.follow.nodeId)) return fail(`unknown-node:${node.follow.nodeId}`);
   }
-  const reachable = new Set<string>();
-  for (const section of sections) reachable.add(section.nodeId);
-  for (const node of nodes) {
-    if (node.follow !== undefined) reachable.add(node.follow.nodeId);
-  }
+  const reachable = reachableIds(sections, nodes);
   for (const node of nodes) {
     if (!reachable.has(node.id)) return fail(`unreachable-node:${node.id}`);
   }
@@ -238,7 +247,6 @@ export function parseIntakeTree(input: unknown): TreeParse {
     ok: true,
     tree: {
       placeholderNote: PLACEHOLDER_NOTE,
-      child: { preferredName: 'Rowan', ageYears: 7 },
       parentName: 'Avery',
       sections,
       nodes,
@@ -318,6 +326,8 @@ function nodeOf(value: unknown): IntakeNode | null {
   if (writes === null) return null;
   const follow = followOf(value.follow);
   if (value.follow !== undefined && follow === null) return null;
+  const check = checkOf(value.check);
+  if (value.check !== undefined && check === null) return null;
   const chips = value.chips === undefined ? undefined : stringList(value.chips);
   if (value.chips !== undefined && chips === null) return null;
   if (value.closeChip !== undefined && !isText(value.closeChip)) return null;
@@ -328,6 +338,7 @@ function nodeOf(value: unknown): IntakeNode | null {
     prompt: value.prompt,
     placeholder: value.placeholder,
     ...(follow === undefined ? {} : { follow }),
+    ...(check === undefined || check === null ? {} : { check }),
     ...(chips === undefined ? {} : { chips }),
     ...(value.closeChip === undefined ? {} : { closeChip: value.closeChip }),
     writes,
@@ -341,9 +352,47 @@ function followOf(value: unknown): Follow | null | undefined {
     if (typeof value.maxChars !== 'number' || !Number.isFinite(value.maxChars)) return null;
     return { when: 'short', maxChars: value.maxChars, nodeId: value.nodeId };
   }
-  if (value.when === 'unless') {
-    if (!nonEmpty(value.text)) return null;
-    return { when: 'unless', text: value.text, nodeId: value.nodeId };
+  if (value.when === 'allergy') return { when: 'allergy', nodeId: value.nodeId };
+  return null;
+}
+
+function checkOf(value: unknown): 'name' | 'age' | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'name' || value === 'age') return value;
+  return null;
+}
+
+function reachableIds(sections: readonly IntakeSection[], nodes: readonly IntakeNode[]): Set<string> {
+  const targets = new Set(nodes.flatMap((node) => (node.follow === undefined ? [] : [node.follow.nodeId])));
+  const reachable = new Set(sections.map((section) => section.nodeId));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const node of nodes) {
+      if (!reachable.has(node.id)) continue;
+      const followId = node.follow?.nodeId;
+      if (followId !== undefined && !reachable.has(followId)) {
+        reachable.add(followId);
+        grew = true;
+      }
+      const next = nextPlain(nodes, node, targets);
+      if (next !== null && !reachable.has(next)) {
+        reachable.add(next);
+        grew = true;
+      }
+    }
+  }
+  return reachable;
+}
+
+function nextPlain(nodes: readonly IntakeNode[], node: IntakeNode, targets: ReadonlySet<string>): string | null {
+  const start = nodes.findIndex((item) => item.id === node.id);
+  for (let index = start + 1; index < nodes.length; index += 1) {
+    const candidate = nodes[index];
+    if (candidate === undefined) return null;
+    if (targets.has(candidate.id)) continue;
+    if (candidate.sectionId !== node.sectionId) return null;
+    return candidate.id;
   }
   return null;
 }
@@ -391,10 +440,6 @@ function isListed<T extends string>(value: unknown, keys: readonly T[]): value i
 
 function isText(value: unknown): value is string {
   return typeof value === 'string';
-}
-
-function nonEmpty(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,4 +1,12 @@
-import { initialConversation, project, reduceConversation, type Conversation, type ConversationEvent } from './conversation.ts';
+import {
+  UNANSWERED_CHILD,
+  answeredChild,
+  initialConversation,
+  project,
+  reduceConversation,
+  type Conversation,
+  type ConversationEvent,
+} from './conversation.ts';
 import { initialGate, reduceGate, type GateEvent, type IntakeGate } from './desk.ts';
 import { exampleBrief, exampleProfile, type ExampleId } from './example-briefs.ts';
 import { intakeTree } from './intake-tree.ts';
@@ -216,7 +224,7 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
       return { ...visit, update: { phase: 'approved', value: { body } } };
     }
     case 'saveChurch':
-      return { ...visit, church: event.church };
+      return saveChurch(visit, event.church);
     case 'setLesson':
       if (visit.lessonSource === event.source) return visit;
       return { ...visit, lessonSource: event.source, lesson: { phase: 'idle' } };
@@ -257,18 +265,28 @@ export function exampleLines(id: ExampleId, visibility: Visibility): BriefLine[]
 export function childPreferredName(visit: Visit): string {
   const example = talkExample(visit.conversation);
   if (example !== null) return exampleBrief(example).name;
-  return intakeTree.child.preferredName;
+  return answeredChild(visit.conversation)?.preferredName ?? UNANSWERED_CHILD.preferredName;
 }
 
 export function childAgeYears(visit: Visit): number {
   const example = talkExample(visit.conversation);
   if (example !== null) return exampleBrief(example).ageYears;
-  return intakeTree.child.ageYears;
+  return answeredChild(visit.conversation)?.ageYears ?? UNANSWERED_CHILD.ageYears;
 }
 
 export function childHeading(name: string): string {
-  if (name === 'Rowan') return 'Rowan Sampleton';
   return name;
+}
+
+export function volunteerRoster(
+  visit: Visit,
+): readonly { readonly heading: string; readonly status: 'Brief ready' | 'No brief yet' }[] {
+  return [
+    {
+      heading: `${childPreferredName(visit)}, ${childAgeYears(visit)}`,
+      status: checkInBrief(visit).status === 'approved' ? 'Brief ready' : 'No brief yet',
+    },
+  ];
 }
 
 export function briefAlreadyApproved(visit: Visit): boolean {
@@ -339,6 +357,17 @@ export function reviewValue<T>(gate: ReviewGate<T>): T | null {
       return leftover;
     }
   }
+}
+
+function saveChurch(visit: Visit, church: ChurchSetup): Visit {
+  const changed =
+    visit.church.name !== church.name ||
+    visit.church.service !== church.service ||
+    visit.church.room !== church.room ||
+    visit.church.leader !== church.leader ||
+    visit.church.plan !== church.plan;
+  if (!changed) return { ...visit, church };
+  return { ...visit, church, story: { phase: 'idle' } };
 }
 
 function withdrawnBrief(): Pick<Visit, 'brief' | 'story' | 'lesson'> {

@@ -4,7 +4,7 @@ import { intakeTree, parseIntakeTree, type IntakeTree, type Write } from './inta
 
 const NOTE = 'Questions are placeholders pending a professional question set.';
 const BEHAVIOR =
-  'When Rowan is very upset, does he ever hurt himself or others, or run off? If so, what helps in that moment?';
+  'When {child} is very upset, does {child} ever hurt himself or others, or run off? If so, what helps in that moment?';
 
 test('the shipped tree parses nine required sections', () => {
   const parsed = parseIntakeTree(intakeTree);
@@ -23,9 +23,8 @@ test('the shipped tree parses nine required sections', () => {
   assert.equal(helps.maxChars, 40);
   assert.equal(helps.nodeId, 'helps-more');
   const allergies = parsed.tree.nodes.find((node) => node.id === 'allergies')?.follow;
-  assert.equal(allergies?.when, 'unless');
-  if (allergies?.when !== 'unless') return;
-  assert.equal(allergies.text, 'No known allergies');
+  assert.equal(allergies?.when, 'allergy');
+  if (allergies?.when !== 'allergy') return;
   assert.equal(allergies.nodeId, 'allergies-more');
   assert.equal(parsed.tree.nodes.find((node) => node.id === 'behavior')?.prompt, BEHAVIOR);
   assert.equal(parsed.tree.sections.find((section) => section.id === 'behavior')?.title, 'Behavior & safety');
@@ -84,7 +83,35 @@ test('a section node id and a node section id must exist, and node ids are uniqu
   });
   assert.equal(duplicate.ok, false);
   if (duplicate.ok) return;
-  assert.equal(duplicate.error, 'duplicate-node:about');
+  assert.equal(duplicate.error, 'duplicate-node:name');
+});
+
+test('the about section starts with the child name and age', () => {
+  assert.deepEqual(
+    intakeTree.nodes.slice(0, 3).map((node) => node.id),
+    ['name', 'age', 'about'],
+  );
+  assert.equal(intakeTree.sections[0]?.title, 'About your child');
+  assert.equal(intakeTree.sections[0]?.nodeId, 'name');
+  assert.equal(intakeTree.sections.length, 9);
+  const name = intakeTree.nodes[0];
+  const age = intakeTree.nodes[1];
+  assert.equal(name?.prompt, 'What name does your child go by at church?');
+  assert.equal(name?.check, 'name');
+  assert.equal(name?.writes.length, 0);
+  assert.equal(name?.chips, undefined);
+  assert.equal(name?.follow, undefined);
+  assert.equal(age?.prompt, 'How old is {child}?');
+  assert.equal(age?.check, 'age');
+  assert.deepEqual(age?.chips, ['6', '7', '8', '9']);
+  assert.equal(age?.writes.length, 0);
+  assert.equal(age?.follow, undefined);
+  assert.equal('child' in intakeTree, false);
+  assert.equal(intakeTree.parentName, 'Avery');
+  for (const node of intakeTree.nodes) {
+    assert.equal(node.prompt.includes('Rowan'), false, node.id);
+    assert.equal(/\b(?:he|his)\b/iu.test(node.prompt), false, node.id);
+  }
 });
 
 test('a medical offer, an optional section, and a skip are rejected', () => {

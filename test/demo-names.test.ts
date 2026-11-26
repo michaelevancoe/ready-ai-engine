@@ -30,6 +30,15 @@ function sourceFiles(directory: string): string[] {
   return found;
 }
 
+test('Theo Park does not appear in web or src TypeScript', () => {
+  const files = [...sourceFiles(join(root, 'web')), ...sourceFiles(join(root, 'src'))].filter(
+    (path) => path.endsWith('.ts') || path.endsWith('.tsx'),
+  );
+  for (const path of files) {
+    assert.equal(readFileSync(path, 'utf8').includes('Theo Park'), false, path);
+  }
+});
+
 test('Eli and Sam Rivera do not appear in the demo copy', () => {
   const paths = [
     join(root, 'README.md'),

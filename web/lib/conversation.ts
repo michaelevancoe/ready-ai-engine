@@ -16,9 +16,9 @@ export type BriefSource = { readonly type: 'intake' } | { readonly type: 'exampl
 
 export type Talk =
   | { readonly mode: 'start' }
-  | { readonly mode: 'ask'; readonly nodeId: string }
-  | { readonly mode: 'brief'; readonly source: BriefSource }
-  | { readonly mode: 'fix'; readonly sectionId: SectionId; readonly nodeId: string }
+  | { readonly mode: 'ask'; readonly nodeId: string; readonly notice?: string }
+  | { readonly mode: 'brief'; readonly source: BriefSource; readonly review: 'draft' | 'approved' }
+  | { readonly mode: 'fix'; readonly sectionId: SectionId; readonly nodeId: string; readonly notice?: string }
   | { readonly mode: 'approved'; readonly source: BriefSource };
 
 export type NodeAnswer = { readonly kind: 'answered'; readonly text: string };
@@ -37,6 +37,8 @@ export type ConversationEvent =
   | { readonly type: 'chooseSection'; readonly sectionId: string }
   | { readonly type: 'approve' }
   | { readonly type: 'viewBrief' }
+  | { readonly type: 'reviseBrief' }
+  | { readonly type: 'backToApproved' }
   | { readonly type: 'reopenQuestions' };
 
 export interface BriefCard {
@@ -76,6 +78,8 @@ export type AskView =
       readonly chips: readonly string[];
       readonly closeChip: string | null;
       readonly exactChip: string | null;
+      readonly chipsAlone: boolean;
+      readonly notice: string | null;
       readonly priorAnswer: string | null;
       readonly followAnswer: string | null;
       readonly fixing: boolean;
@@ -85,9 +89,16 @@ export type AskView =
   | {
       readonly kind: 'brief';
       readonly brief: ParentBrief;
-      readonly actions: 'intake' | 'example';
+      readonly actions: 'draft' | 'readonly';
+      readonly canLeave: boolean;
     }
-  | { readonly kind: 'approved'; readonly name: string; readonly headline: string };
+  | {
+      readonly kind: 'approved';
+      readonly name: string;
+      readonly headline: string;
+      readonly canRevise: boolean;
+      readonly canLeave: boolean;
+    };
 
 export interface IntakePost {
   readonly preferredName: string;
@@ -151,6 +162,10 @@ export function reduceConversation(tree: IntakeTree, conversation: Conversation,
       return approve(conversation);
     case 'viewBrief':
       return viewBrief(conversation);
+    case 'reviseBrief':
+      return reviseBrief(conversation);
+    case 'backToApproved':
+      return backToApproved(conversation);
     case 'reopenQuestions':
       return reopenQuestions(tree, conversation);
     default: {
@@ -171,10 +186,11 @@ export function presentAsk(tree: IntakeTree, conversation: Conversation): AskVie
       return {
         kind: 'brief',
         brief: parentBrief(tree, conversation),
-        actions: conversation.talk.source.type === 'example' ? 'example' : 'intake',
+        actions: briefActions(conversation.talk),
+        canLeave: conversation.talk.source.type === 'example',
       };
     case 'approved':
-      return approvedView(tree, conversation.talk.source);
+      return approvedView(conversation);
     default: {
       const leftover: never = conversation.talk;
       return leftover;
@@ -185,11 +201,12 @@ export function presentAsk(tree: IntakeTree, conversation: Conversation): AskVie
 export function parentBrief(tree: IntakeTree, conversation: Conversation): ParentBrief {
   const source = briefSource(conversation);
   if (source?.type === 'example') return exampleParentBrief(source.id);
+  const child = intakeChild(conversation);
   return {
-    name: tree.child.preferredName,
-    ageYears: tree.child.ageYears,
+    name: child.preferredName,
+    ageYears: child.ageYears,
     summary: sectionProse(tree, conversation, 'about'),
-    photos: [tree.child.preferredName, 'His headphones', 'Quiet corner'],
+    photos: [child.preferredName, 'Headphones', 'Quiet corner'],
     cards: tree.sections.flatMap((section) => {
       if (section.id === 'about') return [];
       return [
@@ -205,10 +222,11 @@ export function parentBrief(tree: IntakeTree, conversation: Conversation): Paren
 }
 
 export function project(tree: IntakeTree, conversation: Conversation): Projection {
+  const child = intakeChild(conversation);
   return {
     post: {
-      preferredName: tree.child.preferredName,
-      ageYears: tree.child.ageYears,
+      preferredName: child.preferredName,
+      ageYears: child.ageYears,
       sensoryNotes: joined(tree, conversation, (write) => write.target === 'post' && write.key === 'sensoryNotes'),
       supportNeeds: joined(tree, conversation, (write) => write.target === 'post' && write.key === 'supportNeeds'),
       whatHelps: joined(tree, conversation, (write) => write.target === 'post' && write.key === 'whatHelps'),
@@ -226,6 +244,51 @@ export function project(tree: IntakeTree, conversation: Conversation): Projectio
       medical: '',
     },
   };
+}
+
+export const UNANSWERED_CHILD = { preferredName: 'Rowan', ageYears: 7 } as const;
+
+const NAME_NOTICE = 'Use 1 to 40 letters, spaces, hyphens, or apostrophes.';
+const AGE_NOTICE = 'Use a whole number from 0 to 18.';
+const NAME_PATTERN = /^(?=.*\p{L})[\p{L} '\u2019-]+$/u;
+
+export function answeredChild(conversation: Conversation): { preferredName: string; ageYears: number } | null {
+  const name = conversation.answers.name;
+  const age = conversation.answers.age;
+  if (name === undefined || age === undefined) return null;
+  const preferredName = checkedName(name.text);
+  const ageYears = checkedAge(age.text);
+  if (preferredName === null || ageYears === null) return null;
+  return { preferredName, ageYears };
+}
+
+export function answerNeedsAck(tree: IntakeTree, nodeId: string): boolean {
+  const node = nodeById(tree, nodeId);
+  return node?.check !== 'name' && node?.check !== 'age';
+}
+
+function intakeChild(conversation: Conversation): { preferredName: string; ageYears: number } {
+  return answeredChild(conversation) ?? UNANSWERED_CHILD;
+}
+
+function invalidNotice(check: 'name' | 'age', text: string): string | null {
+  if (check === 'name') return checkedName(text) === null ? NAME_NOTICE : null;
+  return checkedAge(text) === null ? AGE_NOTICE : null;
+}
+
+function checkedName(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.length < 1 || trimmed.length > 40) return null;
+  if (!NAME_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+function checkedAge(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^(?:0|[1-9]\d*)$/u.test(trimmed)) return null;
+  const age = Number(trimmed);
+  if (age > 18) return null;
+  return age;
 }
 
 function beginIntake(tree: IntakeTree, conversation: Conversation): Conversation {
@@ -264,18 +327,31 @@ function approve(conversation: Conversation): Conversation {
 
 function viewBrief(conversation: Conversation): Conversation {
   if (conversation.talk.mode !== 'approved') return conversation;
-  return { ...conversation, talk: { mode: 'brief', source: conversation.talk.source } };
+  return { ...conversation, talk: { mode: 'brief', source: conversation.talk.source, review: 'approved' } };
+}
+
+function reviseBrief(conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'approved' || conversation.talk.source.type !== 'intake') return conversation;
+  return { ...conversation, talk: { mode: 'brief', source: { type: 'intake' }, review: 'draft' } };
+}
+
+function backToApproved(conversation: Conversation): Conversation {
+  if (conversation.talk.mode !== 'brief') return conversation;
+  return { ...conversation, talk: { mode: 'approved', source: conversation.talk.source } };
 }
 
 function reopenQuestions(tree: IntakeTree, conversation: Conversation): Conversation {
-  if (conversation.talk.mode !== 'brief' || conversation.talk.source.type !== 'intake') return conversation;
+  if (conversation.talk.mode !== 'brief' || conversation.talk.review !== 'draft') return conversation;
+  if (conversation.talk.source.type !== 'intake') return conversation;
   const first = tree.sections[0];
   if (first === undefined) return conversation;
   return { ...conversation, talk: { mode: 'ask', nodeId: first.nodeId } };
 }
 
 function chooseSection(tree: IntakeTree, conversation: Conversation, sectionId: string): Conversation {
-  if (conversation.talk.mode === 'brief' && conversation.talk.source.type !== 'intake') return conversation;
+  if (conversation.talk.mode === 'brief' && (conversation.talk.source.type !== 'intake' || conversation.talk.review !== 'draft')) {
+    return conversation;
+  }
   if (conversation.talk.mode !== 'brief' && conversation.talk.mode !== 'fix') return conversation;
   if (!isSectionId(sectionId)) return conversation;
   const section = sectionById(tree, sectionId);
@@ -284,13 +360,18 @@ function chooseSection(tree: IntakeTree, conversation: Conversation, sectionId: 
 }
 
 function commitAnswer(tree: IntakeTree, conversation: Conversation, text: string): Conversation {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return conversation;
   if (conversation.talk.mode !== 'ask' && conversation.talk.mode !== 'fix') return conversation;
   const node = nodeById(tree, conversation.talk.nodeId);
   if (node === undefined) return conversation;
   const section = sectionById(tree, node.sectionId);
   if (section === undefined) return conversation;
+  const trimmed = text.trim();
+  if (node.check !== undefined) {
+    const notice = invalidNotice(node.check, trimmed);
+    if (notice !== null) return { ...conversation, talk: { ...conversation.talk, notice } };
+  } else if (trimmed.length === 0) {
+    return conversation;
+  }
   const followId = openedFollow(tree, node, trimmed);
   const answers = dropClosedFollow({ ...conversation.answers, [node.id]: { kind: 'answered', text: trimmed } }, node, followId);
   if (followId !== null) {
@@ -299,16 +380,15 @@ function commitAnswer(tree: IntakeTree, conversation: Conversation, text: string
     }
     return { ...conversation, talk: { mode: 'ask', nodeId: followId }, answers };
   }
-  if (conversation.talk.mode === 'fix') {
-    return {
-      talk: { mode: 'brief', source: { type: 'intake' } },
-      answers,
-      updated: appendUpdated(conversation.updated, conversation.talk.sectionId),
-    };
+  if (isFollowTarget(tree, node.id)) return finishSection(tree, conversation, section, answers);
+  const nextId = nextInSection(tree, node);
+  if (nextId !== null) {
+    if (conversation.talk.mode === 'fix') {
+      return { ...conversation, talk: { mode: 'fix', sectionId: conversation.talk.sectionId, nodeId: nextId }, answers };
+    }
+    return { ...conversation, talk: { mode: 'ask', nodeId: nextId }, answers };
   }
-  const next = nextSection(tree, section.id);
-  if (next === undefined) return { talk: { mode: 'brief', source: { type: 'intake' } }, answers, updated: conversation.updated };
-  return { ...conversation, talk: { mode: 'ask', nodeId: next.nodeId }, answers };
+  return finishSection(tree, conversation, section, answers);
 }
 
 function startView(): AskView {
@@ -330,18 +410,25 @@ function questionView(tree: IntakeTree, conversation: Conversation): AskView {
   if (node === undefined || section === undefined) return startView();
   const index = tree.sections.findIndex((item) => item.id === section.id) + 1;
   const fixing = conversation.talk.mode === 'fix';
+  const mark = isFollowTarget(tree, node.id)
+    ? `${section.title.toUpperCase()} · ONE MORE`
+    : fixing
+      ? `${section.title} · FIX`
+      : `${section.title} · REQUIRED`;
   return {
     kind: 'question',
     nodeId: node.id,
     prompt: fill(node.prompt, tree, conversation, node.id),
     progress: `Section ${index} of ${tree.sections.length} · ${section.title}`,
-    mark: fixing ? `${section.title} · FIX` : `${section.title} · REQUIRED`,
+    mark,
     index,
     total: tree.sections.length,
     placeholder: node.placeholder,
     chips: node.chips ?? [],
     closeChip: node.closeChip ?? null,
-    exactChip: node.follow?.when === 'unless' ? node.follow.text : null,
+    exactChip: node.chips?.includes('No known allergies') === true ? 'No known allergies' : null,
+    chipsAlone: node.check === 'age',
+    notice: conversation.talk.notice ?? null,
     priorAnswer: answerText(conversation, node.id),
     followAnswer: node.follow === undefined ? null : answerText(conversation, node.follow.nodeId),
     fixing,
@@ -352,9 +439,22 @@ function questionView(tree: IntakeTree, conversation: Conversation): AskView {
   };
 }
 
-function approvedView(tree: IntakeTree, source: BriefSource): AskView {
-  const name = source.type === 'example' ? exampleBrief(source.id).name : tree.child.preferredName;
-  return { kind: 'approved', name, headline: `${name} is ready for Sunday` };
+function approvedView(conversation: Conversation): AskView {
+  if (conversation.talk.mode !== 'approved') return startView();
+  const source = conversation.talk.source;
+  const name = source.type === 'example' ? exampleBrief(source.id).name : intakeChild(conversation).preferredName;
+  return {
+    kind: 'approved',
+    name,
+    headline: `${name} is ready for Sunday`,
+    canRevise: source.type === 'intake',
+    canLeave: source.type === 'example',
+  };
+}
+
+function briefActions(talk: Extract<Talk, { mode: 'brief' }>): 'draft' | 'readonly' {
+  if (talk.source.type === 'example' || talk.review === 'approved') return 'readonly';
+  return 'draft';
 }
 
 function exampleParentBrief(id: ExampleId): ParentBrief {
@@ -394,6 +494,47 @@ function nextSection(tree: IntakeTree, sectionId: SectionId): IntakeSection | un
   return tree.sections[index + 1];
 }
 
+function finishSection(
+  tree: IntakeTree,
+  conversation: Conversation,
+  section: IntakeSection,
+  answers: Conversation['answers'],
+): Conversation {
+  if (conversation.talk.mode === 'fix') {
+    return {
+      talk: { mode: 'brief', source: { type: 'intake' }, review: 'draft' },
+      answers,
+      updated: appendUpdated(conversation.updated, conversation.talk.sectionId),
+    };
+  }
+  const next = nextSection(tree, section.id);
+  if (next === undefined) {
+    return { talk: { mode: 'brief', source: { type: 'intake' }, review: 'draft' }, answers, updated: conversation.updated };
+  }
+  return { ...conversation, talk: { mode: 'ask', nodeId: next.nodeId }, answers };
+}
+
+function nextInSection(tree: IntakeTree, node: IntakeNode): string | null {
+  const targets = followTargets(tree);
+  const start = tree.nodes.findIndex((item) => item.id === node.id);
+  for (let index = start + 1; index < tree.nodes.length; index += 1) {
+    const candidate = tree.nodes[index];
+    if (candidate === undefined) return null;
+    if (targets.has(candidate.id)) continue;
+    if (candidate.sectionId !== node.sectionId) return null;
+    return candidate.id;
+  }
+  return null;
+}
+
+function isFollowTarget(tree: IntakeTree, nodeId: string): boolean {
+  return followTargets(tree).has(nodeId);
+}
+
+function followTargets(tree: IntakeTree): Set<string> {
+  return new Set(tree.nodes.flatMap((node) => (node.follow === undefined ? [] : [node.follow.nodeId])));
+}
+
 function openedFollow(tree: IntakeTree, node: IntakeNode, text: string): string | null {
   const follow = node.follow;
   if (follow === undefined) return null;
@@ -402,17 +543,31 @@ function openedFollow(tree: IntakeTree, node: IntakeNode, text: string): string 
   return follow.nodeId;
 }
 
+const NONE_PHRASES = new Set([
+  'no',
+  'none',
+  'nothing',
+  'no allergies',
+  'no known allergies',
+  'not that we know',
+  'nothing else',
+]);
+
 function followOpens(follow: Follow, text: string): boolean {
   switch (follow.when) {
     case 'short':
       return text.trim().length <= follow.maxChars;
-    case 'unless':
-      return text.trim() !== follow.text;
+    case 'allergy':
+      return !NONE_PHRASES.has(normalizeAnswer(text));
     default: {
       const leftover: never = follow;
       return leftover;
     }
   }
+}
+
+function normalizeAnswer(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/gu, ' ').replace(/[.!?]+$/u, '');
 }
 
 function dropClosedFollow(
@@ -430,7 +585,7 @@ function dropClosedFollow(
 function sectionProse(tree: IntakeTree, conversation: Conversation, sectionId: string): string {
   const parts: string[] = [];
   for (const node of tree.nodes) {
-    if (node.sectionId !== sectionId) continue;
+    if (node.sectionId !== sectionId || node.writes.length === 0) continue;
     const text = answerText(conversation, node.id);
     if (text === null) continue;
     parts.push(finishSentence(text));
@@ -473,7 +628,16 @@ function answerText(conversation: Conversation, nodeId: string): string | null {
 }
 
 function fill(template: string, tree: IntakeTree, conversation: Conversation, nodeId: string): string {
-  return template.replaceAll('{parent}', tree.parentName).replaceAll('{prior}', priorFor(tree, conversation, nodeId));
+  return template
+    .replaceAll('{child}', spokenChild(conversation))
+    .replaceAll('{parent}', tree.parentName)
+    .replaceAll('{prior}', priorFor(tree, conversation, nodeId));
+}
+
+function spokenChild(conversation: Conversation): string {
+  const answer = conversation.answers.name;
+  if (answer === undefined) return 'your child';
+  return checkedName(answer.text) ?? 'your child';
 }
 
 function priorFor(tree: IntakeTree, conversation: Conversation, nodeId: string): string {

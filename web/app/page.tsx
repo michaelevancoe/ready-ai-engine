@@ -2,7 +2,16 @@
 
 import { useEffect, useRef, useState, type Dispatch } from 'react';
 import { decideAck, type AckResult } from '../lib/acknowledgement';
-import { joinSpoken, presentAsk, project, reduceConversation, type AskView, type Conversation } from '../lib/conversation';
+import { pendingApprovalCopy } from '../lib/approve-copy';
+import {
+  answerNeedsAck,
+  joinSpoken,
+  presentAsk,
+  project,
+  reduceConversation,
+  type AskView,
+  type Conversation,
+} from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
 import { approveProfile, submitIntake } from '../lib/desk';
 import { intakeTree, type SectionId } from '../lib/intake-tree';
@@ -53,9 +62,16 @@ export default function Page() {
     const current = visit.conversation;
     if (current.talk.mode !== 'ask' && current.talk.mode !== 'fix') return;
     const answer = text.trim();
-    if (answer.length === 0) return;
     const nodeId = current.talk.nodeId;
+    if (answer.length === 0 && answerNeedsAck(intakeTree, nodeId)) return;
     const fixing = current.talk.mode === 'fix';
+    if (!answerNeedsAck(intakeTree, nodeId)) {
+      const next = reduceConversation(intakeTree, current, { type: 'answer', text: answer });
+      const stayed = sameQuestion(current, next);
+      if (!fixing && !stayed && answer.length > 0) setSpoken(answer);
+      dispatch({ type: 'conversation', event: { type: 'answer', text: answer } });
+      return;
+    }
     if (!fixing) setSpoken(answer);
     settling.current = true;
     const tokenId = token.current + 1;
@@ -106,11 +122,7 @@ export default function Page() {
   }
 
   async function onApprove(): Promise<void> {
-    if (view.kind !== 'brief' || busy.current) return;
-    if (view.actions === 'example') {
-      dispatch({ type: 'conversation', event: { type: 'approve' } });
-      return;
-    }
+    if (view.kind !== 'brief' || view.actions !== 'draft' || busy.current) return;
     if (briefAlreadyApproved(visit)) {
       dispatch({ type: 'approveBrief' });
       dispatch({ type: 'conversation', event: { type: 'approve' } });
@@ -158,6 +170,7 @@ export default function Page() {
       ) : null}
       {view.kind === 'question' ? (
         <QuestionScreen
+          key={view.nodeId}
           ask={view}
           locked={locked}
           readyLine={readyLine}
@@ -173,7 +186,7 @@ export default function Page() {
           view={view}
           churchName={visit.church.name}
           leader={visit.church.leader}
-          savedTitle={view.actions === 'intake' ? savedTitle : null}
+          savedTitle={view.actions === 'draft' ? savedTitle : null}
           pending={pending}
           error={visit.intake.status === 'error' ? visit.intake.message : null}
           fixed={visit.conversation.updated.length > 0}
@@ -369,6 +382,11 @@ function QuestionScreen({
         <article className="question-card">
           <p className="eyebrow">{ask.mark}</p>
           <h2 id="current-question">{ask.prompt}</h2>
+          {ask.notice === null ? null : (
+            <p className="notice" role="status">
+              {ask.notice}
+            </p>
+          )}
           {ask.followAnswer === null ? null : <p>{ask.followAnswer}</p>}
         </article>
       </div>
@@ -480,13 +498,15 @@ function BriefScreen({
 }) {
   const [picking, setPicking] = useState(false);
   const brief = view.brief;
+  const readonly = view.actions === 'readonly';
+  const sharing = pendingApprovalCopy(leader, brief.name);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
   return (
     <section aria-label="Brief">
       <div className="top-bar">
-        {view.actions === 'intake' ? (
+        {view.actions === 'draft' ? (
           <button
             type="button"
             className="back"
@@ -495,15 +515,27 @@ function BriefScreen({
             Back to questions
           </button>
         ) : (
-          <span />
+          <button
+            type="button"
+            className="back"
+            onClick={() => dispatch({ type: 'conversation', event: { type: 'backToApproved' } })}
+          >
+            ← {brief.name} is ready for Sunday
+          </button>
         )}
-        <p className="drafted">
-          <Spark /> Ready drafted this
-        </p>
+        {readonly ? (
+          <p className="guided">Approved</p>
+        ) : (
+          <p className="drafted">
+            <Spark /> Ready drafted this
+          </p>
+        )}
       </div>
       <h1>{brief.name}&apos;s brief</h1>
       <p className="lede">
-        This is what {brief.name}&apos;s volunteers will read. Approve it, or tell Ready what to fix.
+        {readonly
+          ? `Approved. This is what ${leader} and this Sunday's volunteers read.`
+          : `This is what ${brief.name}'s volunteers will read. Approve it, or tell Ready what to fix.`}
       </p>
       <article className="brief-card identity">
         <span className="portrait" aria-hidden="true">
@@ -549,12 +581,37 @@ function BriefScreen({
       {error === null ? null : <p role="alert">{error}</p>}
       <PrivacyNote
         variant="full"
-        note={parentReviewPrivacy({ name: brief.name, leader, churchName })}
+        note={parentReviewPrivacy({ name: brief.name, leader, churchName, readonly })}
       />
-      <button type="button" className="approve" disabled={pending} onClick={onApprove}>
-        Looks right, approve
-      </button>
-      {view.actions === 'intake' ? (
+      {pending ? <p role="status">{sharing.status}</p> : null}
+      {readonly ? (
+        <button
+          type="button"
+          className="primary"
+          onClick={() => dispatch({ type: 'conversation', event: { type: 'backToApproved' } })}
+        >
+          Back to {brief.name} is ready for Sunday
+        </button>
+      ) : (
+        <button type="button" className="approve" disabled={pending} onClick={onApprove}>
+          {pending ? sharing.button : 'Looks right, approve'}
+        </button>
+      )}
+      {readonly && view.canLeave ? (
+        <>
+          <p className="hint">
+            {brief.name} is a built-in example. This brief is already approved, so there is nothing to approve here.
+          </p>
+          <button
+            type="button"
+            className="text"
+            onClick={() => dispatch({ type: 'conversation', event: { type: 'leaveExample' } })}
+          >
+            Back to the start
+          </button>
+        </>
+      ) : null}
+      {readonly || pending ? null : (
         <>
           <button type="button" onClick={() => setPicking((open) => !open)}>
             {fixed ? 'Fix something else' : 'Fix something'}
@@ -577,12 +634,8 @@ function BriefScreen({
             </div>
           ) : null}
         </>
-      ) : (
-        <button type="button" onClick={() => dispatch({ type: 'conversation', event: { type: 'leaveExample' } })}>
-          Back to the start
-        </button>
       )}
-      {view.actions === 'intake' ? (
+      {view.actions === 'draft' && !pending ? (
         <p className="hint">Approve or fix is the only choice here. Nothing is shared until you approve.</p>
       ) : null}
     </section>
@@ -747,13 +800,24 @@ function ApprovedScreen({
       <button type="button" className="primary" onClick={() => dispatch({ type: 'conversation', event: { type: 'viewBrief' } })}>
         View {view.name}&apos;s brief
       </button>
-      <button
-        type="button"
-        className="text"
-        onClick={() => dispatch({ type: 'conversation', event: { type: 'viewBrief' } })}
-      >
-        Something changed? Update the brief
-      </button>
+      {view.canRevise ? (
+        <button
+          type="button"
+          className="text"
+          onClick={() => dispatch({ type: 'conversation', event: { type: 'reviseBrief' } })}
+        >
+          Something changed? Update the brief
+        </button>
+      ) : null}
+      {view.canLeave ? (
+        <button
+          type="button"
+          className="text"
+          onClick={() => dispatch({ type: 'conversation', event: { type: 'leaveExample' } })}
+        >
+          Back to the start
+        </button>
+      ) : null}
       </div>
       <SundayPrint visit={visit} photos={photos} />
     </section>
@@ -807,6 +871,12 @@ function MicIcon() {
   );
 }
 
+function sameQuestion(current: Conversation, next: Conversation): boolean {
+  const talk = current.talk;
+  if (talk.mode !== 'ask' && talk.mode !== 'fix') return false;
+  return next.talk.mode === talk.mode && next.talk.nodeId === talk.nodeId;
+}
+
 function sectionTitle(conversation: Conversation): string | null {
   const talk = conversation.talk;
   if (talk.mode !== 'ask' && talk.mode !== 'fix') return null;
@@ -822,7 +892,7 @@ function sectionIdOf(ask: Extract<AskView, { kind: 'question' }>): SectionId | n
 }
 
 function chipText(ask: Extract<AskView, { kind: 'question' }>, draft: string, chip: string): string {
-  if (ask.fixing || (ask.exactChip !== null && chip === ask.exactChip)) return chip;
+  if (ask.fixing || ask.chipsAlone || (ask.exactChip !== null && chip === ask.exactChip)) return chip;
   return joinSpoken(draft, chip);
 }
 

@@ -36,10 +36,12 @@ test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
     ),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Start with a new child' }).click();
+  await send(page, 'Rowan', 'How old is Rowan');
+  await send(page, '7', 'how would you describe Rowan');
   await send(page, 'He likes a quiet hello.', 'What does Rowan love');
   await send(page, 'Trains.', 'What tends to overwhelm');
   await send(page, 'Crowded doorways.', 'feel calm again');
-  await send(page, 'A quiet corner and a heads-up before the next song.', 'let you know what he needs');
+  await send(page, 'A quiet corner and a heads-up before the next song.', 'let you know what Rowan needs');
   await send(page, 'Picture cards.', 'What sensory things');
   await send(page, 'TICK-QUIET-ROOM', 'need the bathroom');
   await send(page, 'Tells an adult', 'any allergies');
@@ -65,7 +67,7 @@ test('approving again replaces Trains on the volunteer brief', async ({ page }) 
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('region', { name: 'Sunday brief' })).toContainText('Trains.');
   await page.getByRole('link', { name: 'Parent' }).click();
-  await page.getByRole('button', { name: "View Rowan's brief" }).click();
+  await page.getByRole('button', { name: 'Something changed? Update the brief' }).click();
   await page.getByRole('button', { name: 'Fix something' }).click();
   await page.getByRole('button', { name: 'Loves', exact: true }).click();
   await page.getByRole('textbox', { name: 'Your answer' }).fill('Painted rocks');
@@ -97,7 +99,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
 
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('link', { name: 'Volunteer' })).toHaveAttribute('aria-current', 'page');
-  expect(await tailGap(page)).toBeLessThan(400);
+  expect(await tailGap(page)).toBeLessThan(480);
   await expect(page.getByText(fictional)).toHaveCount(1);
   const volunteer = page.getByRole('main');
   await expect(volunteer).not.toContainText('TICK-SOFTER-SEAT');
@@ -105,7 +107,9 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(volunteer).not.toContainText('A warning before music.');
   await expect(volunteer).not.toContainText('Soft music and helping with snack cups.');
   await expect(volunteer).not.toContainText('A short warning before a change.');
-  await expect(volunteer).toContainText('Rowan Sampleton');
+  await expect(volunteer).toContainText('Rowan, 7');
+  await expect(volunteer).not.toContainText('Rowan Sampleton');
+  await expect(volunteer).not.toContainText('Quinn');
   await expect(volunteer).toContainText('No brief yet');
   await save(page, 'flows-volunteer-withheld.png');
 
@@ -153,7 +157,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-volunteer-notes.png');
 
   await page.getByRole('link', { name: 'Leader' }).click();
-  await page.getByRole('button', { name: /Notes from Theo Park/ }).click();
+  await page.getByRole('button', { name: /Notes from Jordan Ellis/ }).click();
   await expect(page.getByRole('region', { name: 'Internal notes' })).toContainText('TICK-AFTER-SUNDAY');
   await page.getByRole('button', { name: "Draft a note for Rowan's parent", exact: true }).click();
   const parentNote = page.getByRole('textbox', { name: 'Parent note' });
@@ -168,13 +172,13 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await expect(page.getByRole('button', { name: 'Write the parent note', exact: true })).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Leader' }).click();
-  await page.getByRole('button', { name: /Notes from Theo Park/ }).click();
-  await page.getByRole('textbox', { name: 'Parent note' }).fill('Sunday went well for Rowan. The quiet seat helped.\nTheo Park');
+  await page.getByRole('button', { name: /Notes from Jordan Ellis/ }).click();
+  await page.getByRole('textbox', { name: 'Parent note' }).fill('Sunday went well for Rowan. The quiet seat helped.\nJordan Ellis');
   await page.getByRole('button', { name: 'Approve and send to parent', exact: true }).click();
 
   await page.getByRole('link', { name: 'Parent' }).click();
   await expect(update).toContainText('Sunday went well for Rowan. The quiet seat helped.');
-  await expect(update).toContainText('Theo Park');
+  await expect(update).toContainText('Jordan Ellis');
   await expect(update).not.toContainText('TICK-AFTER-SUNDAY');
   await save(page, 'flows-parent-note.png');
 
@@ -208,9 +212,9 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
 
 test('each example opens a brief for volunteer and a lesson for the leader', async ({ page }) => {
   const examples = [
-    [/Rowan, 7/, 'Rowan loves Disney stories and quiet songs.', 'ROWAN, 7', 'Rowan Sampleton'],
-    [/Maya, 5/, 'Maya loves dinosaurs and digging in the sand table.', 'MAYA, 5', 'Maya'],
-    [/Jonah, 9/, 'Jonah loves Lego and building on the floor.', 'JONAH, 9', 'Jonah'],
+    [/Rowan, 7/, 'Rowan loves Disney stories and quiet songs.', 'ROWAN, 7', 'Rowan, 7'],
+    [/Maya, 5/, 'Maya loves dinosaurs and digging in the sand table.', 'MAYA, 5', 'Maya, 5'],
+    [/Jonah, 9/, 'Jonah loves Lego and building on the floor.', 'JONAH, 9', 'Jonah, 9'],
   ] as const;
   for (const [button, line, eyebrow, heading] of examples) {
     await page.goto('/');
@@ -394,6 +398,8 @@ test('a parent prints one page per step and a classroom photo replaces the sampl
 test('a nonsense helps answer stays on the question until a real one', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Start with a new child' }).click();
+  await send(page, 'Rowan', 'How old is Rowan');
+  await send(page, '7', 'how would you describe Rowan');
   await send(page, 'He likes a quiet hello.', 'What does Rowan love');
   await send(page, 'Trains.', 'What tends to overwhelm');
   await send(page, 'Crowded doorways.', 'feel calm again');
@@ -408,12 +414,14 @@ test('a nonsense helps answer stays on the question until a real one', async ({ 
   await expect(page.getByRole('button', { name: 'Skip' })).toHaveCount(0);
   await answer.fill('A quiet corner and a heads-up before the next song.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText('let you know what he needs').first()).toBeVisible();
+  await expect(page.getByText('let you know what Rowan needs').first()).toBeVisible();
 });
 
 test('a second nonsense helps answer advances', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Start with a new child' }).click();
+  await send(page, 'Rowan', 'How old is Rowan');
+  await send(page, '7', 'how would you describe Rowan');
   await send(page, 'He likes a quiet hello.', 'What does Rowan love');
   await send(page, 'Trains.', 'What tends to overwhelm');
   await send(page, 'Crowded doorways.', 'feel calm again');

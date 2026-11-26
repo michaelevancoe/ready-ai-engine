@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
-import { approvedValue, checkInBrief, childHeading, childPreferredName } from '../../lib/visit';
+import { approvedValue, checkInBrief, childPreferredName, volunteerRoster } from '../../lib/visit';
 import { PrivacyNote } from '../privacy-note';
 import { useReadyStore } from '../visit-shell';
 
@@ -12,6 +12,7 @@ export default function VolunteerPage() {
   const { dispatch } = store;
   const brief = checkInBrief(visit);
   const lesson = approvedValue(visit.lesson);
+  const roster = volunteerRoster(visit);
   const [initialNotes] = useState(visit.notes);
   const [saved, setSaved] = useState(false);
 
@@ -25,22 +26,17 @@ export default function VolunteerPage() {
   return (
     <main>
       <h1>Sunday check-in</h1>
-      <p>Theo Park</p>
+      <p>Jordan Ellis</p>
       <ul className="roster">
-        <li>
-          <span className="portrait">Placeholder photo</span>
-          <div>
-            <h2>{childHeading(childPreferredName(visit))}</h2>
-            <p className="muted">{brief.status === 'approved' ? 'Brief ready' : 'No brief yet'}</p>
-          </div>
-        </li>
-        <li>
-          <span className="portrait">Placeholder photo</span>
-          <div>
-            <h2>Quinn Placeholder</h2>
-            <p className="muted">No brief</p>
-          </div>
-        </li>
+        {roster.map((row) => (
+          <li key={row.heading}>
+            <span className="portrait">Placeholder photo</span>
+            <div>
+              <h2>{row.heading}</h2>
+              <p className="muted">{row.status}</p>
+            </div>
+          </li>
+        ))}
       </ul>
       {brief.status === 'approved' ? (
         <section aria-label="Sunday brief">
