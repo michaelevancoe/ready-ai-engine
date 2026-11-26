@@ -27,8 +27,15 @@ export function sundayStorySentences(
     classroom(church),
     `${church.leader} and the helpers are there to help you.`,
     'If you need a break, there is a quiet spot in the room.',
-    `${church.leader} is glad you came.`,
+    welcome(church.leader),
   ];
+}
+
+function welcome(leader: string): string {
+  const name = leader.trim();
+  if (name === '') return 'We are glad you came.';
+  const verb = /\band\b/iu.test(name) ? 'are' : 'is';
+  return `${name} ${verb} glad you came.`;
 }
 
 function arrival(church: SundaySentenceChurch): string {
