@@ -66,7 +66,10 @@ export default function Page() {
     if (answer.length === 0 && answerNeedsAck(intakeTree, nodeId)) return;
     const fixing = current.talk.mode === 'fix';
     if (!answerNeedsAck(intakeTree, nodeId)) {
-      void settleAnswer(token.current, current, answer, nodeId, fixing);
+      const next = reduceConversation(intakeTree, current, { type: 'answer', text: answer });
+      const stayed = sameQuestion(current, next);
+      if (!fixing && !stayed && answer.length > 0) setSpoken(answer);
+      dispatch({ type: 'conversation', event: { type: 'answer', text: answer } });
       return;
     }
     if (!fixing) setSpoken(answer);
@@ -84,10 +87,6 @@ export default function Page() {
     nodeId: string,
     fixing: boolean,
   ): Promise<void> {
-    if (!answerNeedsAck(intakeTree, nodeId)) {
-      dispatch({ type: 'conversation', event: { type: 'answer', text: answer } });
-      return;
-    }
     const attempt = attempts.current[nodeId] ?? 0;
     try {
       const raced = await Promise.all([
@@ -171,6 +170,7 @@ export default function Page() {
       ) : null}
       {view.kind === 'question' ? (
         <QuestionScreen
+          key={view.nodeId}
           ask={view}
           locked={locked}
           readyLine={readyLine}
@@ -840,6 +840,12 @@ function MicIcon() {
       />
     </svg>
   );
+}
+
+function sameQuestion(current: Conversation, next: Conversation): boolean {
+  const talk = current.talk;
+  if (talk.mode !== 'ask' && talk.mode !== 'fix') return false;
+  return next.talk.mode === talk.mode && next.talk.nodeId === talk.nodeId;
 }
 
 function sectionTitle(conversation: Conversation): string | null {

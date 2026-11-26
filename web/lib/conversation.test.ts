@@ -313,12 +313,15 @@ test('Theo at age 8 is the brief, and name and age need no acknowledgement', () 
 });
 
 test('a bad name or age stays on that question with a gentle notice', () => {
+  for (const text of ['Theo!', '---', "'"]) {
+    const badName = say(begin(), text);
+    assert.equal(badName.talk.mode, 'ask');
+    if (badName.talk.mode !== 'ask') return;
+    assert.equal(badName.talk.nodeId, 'name', text);
+    assert.equal(badName.talk.notice, NAME_NOTICE, text);
+    assert.equal(badName.answers.name, undefined, text);
+  }
   const badName = say(begin(), 'Theo!');
-  assert.equal(badName.talk.mode, 'ask');
-  if (badName.talk.mode !== 'ask') return;
-  assert.equal(badName.talk.nodeId, 'name');
-  assert.equal(badName.talk.notice, NAME_NOTICE);
-  assert.equal(badName.answers.name, undefined);
   const nameView = presentAsk(intakeTree, badName);
   assert.equal(nameView.kind, 'question');
   if (nameView.kind !== 'question') return;

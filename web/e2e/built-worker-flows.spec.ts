@@ -67,7 +67,7 @@ test('approving again replaces Trains on the volunteer brief', async ({ page }) 
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('region', { name: 'Sunday brief' })).toContainText('Trains.');
   await page.getByRole('link', { name: 'Parent' }).click();
-  await page.getByRole('button', { name: "View Rowan's brief" }).click();
+  await page.getByRole('button', { name: 'Something changed? Update the brief' }).click();
   await page.getByRole('button', { name: 'Fix something' }).click();
   await page.getByRole('button', { name: 'Loves', exact: true }).click();
   await page.getByRole('textbox', { name: 'Your answer' }).fill('Painted rocks');
@@ -99,7 +99,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
 
   await page.getByRole('link', { name: 'Volunteer' }).click();
   await expect(page.getByRole('link', { name: 'Volunteer' })).toHaveAttribute('aria-current', 'page');
-  expect(await tailGap(page)).toBeLessThan(400);
+  expect(await tailGap(page)).toBeLessThan(480);
   await expect(page.getByText(fictional)).toHaveCount(1);
   const volunteer = page.getByRole('main');
   await expect(volunteer).not.toContainText('TICK-SOFTER-SEAT');

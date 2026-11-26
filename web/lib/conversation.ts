@@ -242,7 +242,7 @@ export const UNANSWERED_CHILD = { preferredName: 'Rowan', ageYears: 7 } as const
 
 const NAME_NOTICE = 'Use 1 to 40 letters, spaces, hyphens, or apostrophes.';
 const AGE_NOTICE = 'Use a whole number from 0 to 18.';
-const NAME_PATTERN = /^[\p{L} '\u2019-]+$/u;
+const NAME_PATTERN = /^(?=.*\p{L})[\p{L} '\u2019-]+$/u;
 
 export function answeredChild(conversation: Conversation): { preferredName: string; ageYears: number } | null {
   const name = conversation.answers.name;
