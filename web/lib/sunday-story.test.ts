@@ -34,7 +34,7 @@ test('a Sunday story is a cover plus seven steps in order', () => {
       {
         step: 2,
         slot: 'doors',
-        text: 'You walk in the front doors. A greeter smiles and says hello.',
+        text: 'You walk in the front doors, and a greeter smiles and says hello.',
       },
       {
         step: 3,
@@ -59,7 +59,7 @@ test('a Sunday story is a cover plus seven steps in order', () => {
       {
         step: 7,
         slot: 'pickup',
-        text: 'When it is over, your grown-up comes back to pick you up.',
+        text: 'Ms. Dana is glad you came.',
       },
     ],
   );

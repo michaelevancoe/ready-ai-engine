@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DemoContext } from '../scripts/demo-engine.ts';
 import {
+  fallbackSocialStory,
   parseSocialStory,
   parseSocialStoryRequest,
   parseSundayUpdate,
@@ -60,12 +61,12 @@ const mayaInput = { childName: 'Maya', church: harbor, lines: mayaLines };
 const jonahInput = { childName: 'Jonah', church: harbor, lines: jonahLines };
 const fallbackBody = [
   'On Sunday at 9:30, you and your grown-up go to Example Harbor Fellowship.',
-  'You walk in the front doors. A greeter smiles and says hello.',
+  'You walk in the front doors, and a greeter smiles and says hello.',
   'At the welcome desk, you check in and get a name tag.',
   'You go to the Harbor Room. You will have a short welcome, one song, and a quiet activity.',
   'Ms. Dana and the helpers are there to help you.',
   'If you need a break, there is a quiet spot in the room.',
-  'When it is over, your grown-up comes back to pick you up.',
+  'Ms. Dana is glad you came.',
 ].join('\n\n');
 const labelStory =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
@@ -653,7 +654,8 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   assert.equal(storySystem.includes('preferred name'), true);
   assert.equal(storySystem.includes('church plan'), true);
   assert.equal(storySystem.toLowerCase().includes('calm and positive'), true);
-  assert.equal(storySystem.includes('Sometimes songs are loud.'), true);
+  assert.equal(storySystem.includes('A hard moment is described gently, in words of your own.'), true);
+  assert.equal(storySystem.includes('Sometimes songs are loud.'), false);
   assert.equal(storySystem.includes('No labels or medical words.'), true);
   assert.equal(storySystem.includes('leaving the room'), true);
   assert.equal(storySystem.includes('names that appear in the input'), true);
@@ -1229,19 +1231,24 @@ test('socialStoryMessages asks for a short story read aloud to the child', () =>
     'preferred name',
     'church plan',
     'calm and positive',
-    'Sometimes songs are loud.',
+    'A hard moment is described gently, in words of your own.',
     'No labels or medical words.',
     'leaving the room',
     'names that appear in the input',
     "use the child's name instead of he or she",
     'Never use these words:',
-    'Write it as a short story read aloud to the child, in 5 to 8 short sentences, under 90 words, in short paragraphs.',
-    'The title is a story title such as "Rowan\'s Sunday at Harbor Room", never a Plan or Supporting.',
-    'Describe only what the church plan says will happen. Do not promise seats, sound levels, songs, or activities beyond the plan.',
+    'Write it as a story read aloud to the child, about 40 to 80 words, in 5 to 8 short sentences and short paragraphs, and stay under 90 words.',
+    'The title is a varied story title for this child and this morning, never a Plan or Supporting title.',
+    'Use ordinary spoken English, and put the before a room name.',
+    'Describe only what the church plan says will happen. Do not add a seat, a kind of seat, a sound level, a song, or an activity the plan does not name. Do not promise that anything will be ready.',
+    'End with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything.',
     'Do not use the words support, accommodation, ensure, engage, or upset.',
   ];
   for (const phrase of phrases) {
     assert.equal(system.includes(phrase), true, phrase);
+  }
+  for (const phrase of ['Sometimes songs are loud.', "Rowan's Sunday at Harbor Room"]) {
+    assert.equal(system.includes(phrase), false, phrase);
   }
 });
 
@@ -1450,6 +1457,14 @@ test('a social story gateway failure returns the Sunday fallback', async () => {
   assert.deepEqual(JSON.parse(text), { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
 });
 
+test('the Sunday fallback passes storySafety and ends warm', () => {
+  const { title, body } = fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] });
+  assert.equal(storySafety({ title, body }, { childName: 'Rowan', church: harbor, lines: rowanLines }), true);
+  assert.equal(body.endsWith('Ms. Dana is glad you came.'), true);
+  assert.equal(body.includes('the Harbor Room'), true);
+  assert.equal(body.includes('pick you up'), false);
+});
+
 test('a long church plan keeps every Sunday sentence in the fallback', async () => {
   const plan = `${'Sing a short song and sit quietly. '.repeat(50)}End.`.slice(0, 1800);
   const church = { ...harbor, plan };
@@ -1461,7 +1476,7 @@ test('a long church plan keeps every Sunday sentence in the fallback', async () 
   assert.equal(payload.source, 'fallback');
   assert.equal(payload.body, full);
   assert.equal(payload.body.includes('there is a quiet spot in the room.'), true);
-  assert.equal(payload.body.endsWith('your grown-up comes back to pick you up.'), true);
+  assert.equal(payload.body.endsWith('is glad you came.'), true);
   assert.equal(payload.body.length > 2000, true);
   assert.equal(payload.body.length <= SUNDAY_STORY_BODY_MAX, true);
 });
