@@ -148,9 +148,13 @@ const SAMPLES: readonly SampleSpec[] = [
   },
 ];
 
-const EVENT_LISTS: Readonly<Record<SampleId, readonly VisitEvent[]>> = Object.fromEntries(
-  SAMPLES.map((spec) => [spec.id, eventsFor(spec)]),
-) as Record<SampleId, readonly VisitEvent[]>;
+const EVENT_LISTS: Record<SampleId, readonly VisitEvent[]> = {
+  owen: eventsFor(specFor('owen')),
+  nora: eventsFor(specFor('nora')),
+  ezra: eventsFor(specFor('ezra')),
+  hazel: eventsFor(specFor('hazel')),
+  lucy: eventsFor(specFor('lucy')),
+};
 
 for (const spec of SAMPLES) checkSeed(spec, play(EVENT_LISTS[spec.id]));
 
@@ -240,11 +244,30 @@ function eventsFor(spec: SampleSpec): VisitEvent[] {
 }
 
 function answersFor(spec: SampleSpec): string[] {
-  const [loves, overwhelms, helps, communication, sensory, toileting, allergies, calming] = spec.lines;
+  const loves = lineAt(spec.lines, 0);
+  const overwhelms = lineAt(spec.lines, 1);
+  const helps = lineAt(spec.lines, 2);
+  const communication = lineAt(spec.lines, 3);
+  const sensory = lineAt(spec.lines, 4);
+  const toileting = lineAt(spec.lines, 5);
+  const allergies = lineAt(spec.lines, 6);
+  const calming = lineAt(spec.lines, 7);
   const answers = [spec.name, spec.age, spec.about, loves, overwhelms, helps, communication, sensory, toileting, allergies];
   if (spec.allergyMore !== null) answers.push(spec.allergyMore);
-  answers.push(calming ?? '');
-  return answers.filter((text) => text !== '');
+  answers.push(calming);
+  return answers;
+}
+
+function lineAt(lines: readonly string[], index: number): string {
+  const text = lines[index];
+  if (text === undefined) throw new Error('missing brief line');
+  return text;
+}
+
+function specFor(id: SampleId): SampleSpec {
+  const found = SAMPLES.find((item) => item.id === id);
+  if (found === undefined) throw new Error(id);
+  return found;
 }
 
 function checkSeed(spec: SampleSpec, visit: Visit): void {
