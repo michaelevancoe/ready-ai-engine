@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { INACTIVE_BODY, headerTone, reduceSignIn, type SignInView } from './sign-in.ts';
+import { CHURCHES, INACTIVE_BODY, headerTone, reduceSignIn, type SignInView } from './sign-in.ts';
+
+test('the sample church is Example Harbor Fellowship', () => {
+  assert.equal(CHURCHES[0]?.id, 'harbor');
+  assert.equal(CHURCHES[0]?.name, 'Example Harbor Fellowship');
+  assert.equal(CHURCHES[1]?.name, 'Riverside Fellowship');
+});
 
 test('the header color follows the role', () => {
   assert.equal(headerTone('Parent'), 'parent');
@@ -28,7 +34,7 @@ test('an inactive link is one screen and does not name a single cause', () => {
 
 test('choosing a church then leaving it returns to the same email', () => {
   const chosen = reduceSignIn(
-    { kind: 'choose', email: 'maya.parent@example.com', churchId: 'grace' },
+    { kind: 'choose', email: 'maya.parent@example.com', churchId: 'harbor' },
     { type: 'choose', churchId: 'riverside' },
   );
   const signedIn = reduceSignIn(chosen, { type: 'continue' });

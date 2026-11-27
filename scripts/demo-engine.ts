@@ -2,8 +2,8 @@ import { assertAdapterAllowed } from '../src/adapter.ts';
 import type { WorkerBindings } from '../src/bindings.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import {
-  DEMO_VOLUNTEER_NAME,
   fallbackSocialStory,
+  finishSundayNote,
   parseSocialStory,
   parseSocialStoryRequest,
   parseSundayUpdate,
@@ -51,24 +51,44 @@ const ANSWER_KEYS = [
   'whatToAvoid',
 ] as const;
 
+const ACK_GATEWAY_GUARD = 19;
+
 export class DemoContext {
   private readonly store: MemoryStore;
   private readonly deps: AppDeps;
   private readonly mock: boolean;
+  private readonly gatewayCalls: number[] = [];
 
   private constructor(env: WorkerBindings, fetchImpl: typeof fetch, mock: boolean) {
     assertAdapterAllowed(env, 'memory');
     this.mock = mock;
     this.store = churchStore();
+    const countedFetch: typeof globalThis.fetch = async (input, init) => {
+      this.gatewayCalls.push(Date.now());
+      return fetchImpl(input, init);
+    };
     this.deps = {
       env,
-      fetch: fetchImpl,
+      fetch: countedFetch,
       storeFactory: () => this.store,
       log: emitSafe,
       now: () => Date.now(),
       auth: sessionAuthVerifier(),
       accessSource: memoryAccessSource(emptyMemoryAccessWorld()),
     };
+  }
+
+  private gatewayBusy(): boolean {
+    const now = Date.now();
+    let keep = 0;
+    for (const time of this.gatewayCalls) {
+      if (now - time < 60_000) {
+        this.gatewayCalls[keep] = time;
+        keep += 1;
+      }
+    }
+    this.gatewayCalls.length = keep;
+    return keep >= ACK_GATEWAY_GUARD;
   }
 
   static fromBindings(
@@ -168,6 +188,9 @@ export class DemoContext {
     const parsed = await parsedBody(request, parseAcknowledgementRequest);
     if (parsed instanceof Response) return parsed;
     if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
+    if (this.gatewayBusy()) {
+      return json({ relevant: true, line: ACK_FALLBACK, clarifyingPrompt: '' }, 200);
+    }
     try {
       const value = await generate({
         endpoint: 'intake.profile',
@@ -179,6 +202,7 @@ export class DemoContext {
         fetch: this.deps.fetch,
         log: this.deps.log,
         maxTokens: 80,
+        attempts: 'once',
       });
       return json(value, 200);
     } catch (error) {
@@ -197,7 +221,11 @@ export class DemoContext {
       sundayUpdateMessages(parsed),
       sundayUpdateSchemaName,
       sundayUpdateSchema,
-      (value) => parseSundayUpdate(value, parsed.notes, parsed.childName),
+      (value) =>
+        parseSundayUpdate(value, parsed.notes, parsed.childName, {
+          leader: parsed.leader,
+          church: parsed.church,
+        }),
     );
   }
 
@@ -357,7 +385,7 @@ function mockDraft(name: string, content: string): unknown | null {
     case sundayUpdateSchemaName: {
       const parsed = readSunday(content);
       if (parsed === null) return null;
-      return mockSundayUpdate(parsed.childName, parsed.notes);
+      return mockSundayUpdate(parsed.childName, parsed.leader, parsed.church);
     }
     case intakeAcknowledgementSchemaName: {
       const read = readAcknowledgementContent(content);
@@ -442,11 +470,24 @@ function isLabeledRow(row: string): boolean {
   return row.indexOf(': ') > 0;
 }
 
-function readSunday(content: string): { childName: string; notes: string } | null {
+function readSunday(content: string): { childName: string; leader: string; church: string; notes: string } | null {
   const head = readChild(content);
-  const notesPrefix = `Volunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n`;
-  if (head === null || !head.rest.startsWith(notesPrefix)) return null;
-  return { childName: head.childName, notes: head.rest.slice(notesPrefix.length) };
+  const leaderMark = 'Leader: ';
+  const churchMark = '\nChurch: ';
+  const notesMark = '\nVolunteer notes:\n';
+  if (head === null || !head.rest.startsWith(leaderMark)) return null;
+  const churchAt = head.rest.indexOf(churchMark);
+  if (churchAt < leaderMark.length) return null;
+  const leader = head.rest.slice(leaderMark.length, churchAt);
+  const afterChurch = head.rest.slice(churchAt + churchMark.length);
+  const notesAt = afterChurch.indexOf(notesMark);
+  if (notesAt < 0) return null;
+  return {
+    childName: head.childName,
+    leader,
+    church: afterChurch.slice(0, notesAt),
+    notes: afterChurch.slice(notesAt + notesMark.length),
+  };
 }
 
 const intakeAcknowledgementSchemaName = 'intake_acknowledgement';
@@ -827,10 +868,8 @@ function mockSocialStory(childName: string, church: StoryChurch): { title: strin
   return { title: `Sunday with ${childName}`.slice(0, 120), body };
 }
 
-function mockSundayUpdate(childName: string, _notes: string): { body: string } {
-  const signature = `\n${DEMO_VOLUNTEER_NAME}`;
-  const told = `Sunday went well for ${childName}.`.slice(0, 2000 - signature.length);
-  return { body: `${told}${signature}` };
+function mockSundayUpdate(childName: string, leader: string, church: string): { body: string } {
+  return { body: finishSundayNote(`Sunday went well for ${childName}.`, leader, church) };
 }
 
 function answersFromGateway(payload: unknown): IntakeAnswers | null {

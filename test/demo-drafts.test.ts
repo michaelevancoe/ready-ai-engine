@@ -27,6 +27,11 @@ const harbor = {
   leader: 'Ms. Dana',
   plan: 'A short welcome, one song, and a quiet activity.',
 };
+const LEADER_SIGN = '\n\nMs. Dana\nExample Harbor Fellowship';
+
+function sunday(notes: string, childName = 'Rowan', extra: Record<string, unknown> = {}) {
+  return { notes, childName, leader: 'Ms. Dana', church: 'Example Harbor Fellowship', ...extra };
+}
 const safeBody =
   'On Sunday, Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello.';
 const rowanLines = [
@@ -179,6 +184,21 @@ test('a live acknowledgement records the intake schema and leaves out the next q
   } finally {
     console.log = original;
   }
+});
+
+test('a failing acknowledgement tries the gateway once and uses the fallback line', async () => {
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return new Response('rate', { status: 429, headers: { 'retry-after': '2' } });
+  });
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'Picture cards.', nodeId: 'communication' }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 1);
+  const body = (await response.json()) as { line: string };
+  assert.equal(body.line, "That's really helpful.");
 });
 
 test('an acknowledgement longer than 500 characters is rejected before fetch', async () => {
@@ -615,9 +635,7 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   const calls: GatewayCall[] = [];
   const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
   const story = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan' }));
-  const update = await demo.handle(
-    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
-  );
+  const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(story.status, 200);
   assert.equal(update.status, 200);
   assert.equal(calls.length, 2);
@@ -637,7 +655,7 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   assertCall(
     calls[1],
     'sunday_update',
-    'Child: Rowan\nVolunteer: Jordan Ellis\nNotes:\nTICK-AFTER-SUNDAY',
+    'Child: Rowan\nLeader: Ms. Dana\nChurch: Example Harbor Fellowship\nVolunteer notes:\nTICK-AFTER-SUNDAY',
   );
   const storySystem = systemText(calls[0]);
   assert.equal(storySystem.includes('rather than a dict'), true);
@@ -654,7 +672,10 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   const updateSystem = systemText(calls[1]);
   assert.equal(updateSystem.includes('your own words'), true);
   assert.equal(updateSystem.includes('Do not copy the notes.'), true);
-  assert.equal(updateSystem.includes('Jordan Ellis'), true);
+  assert.equal(updateSystem.includes('Invent nothing'), true);
+  assert.equal(updateSystem.includes("children's ministry leader"), true);
+  assert.equal(updateSystem.includes('Sign the note as'), false);
+  assert.equal(updateSystem.includes('Jordan Ellis'), false);
   assert.equal(updateSystem.includes("[Volunteer's Name]"), true);
   const storyText = JSON.stringify(await story.json());
   assert.equal(storyText.includes(testEnv.AI_GATEWAY_TOKEN), false);
@@ -663,22 +684,21 @@ test('live drafts call the intake model and hide the gateway token', async () =>
 test('the Sunday update user message is plain text', async () => {
   const calls: GatewayCall[] = [];
   const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
-  const update = await demo.handle(
-    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
-  );
+  const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(update.status, 200);
   assert.equal(calls.length, 1);
   const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content;
-  assert.equal(user, 'Child: Rowan\nVolunteer: Jordan Ellis\nNotes:\nTICK-AFTER-SUNDAY');
+  assert.equal(
+    user,
+    'Child: Rowan\nLeader: Ms. Dana\nChurch: Example Harbor Fellowship\nVolunteer notes:\nTICK-AFTER-SUNDAY',
+  );
 });
 
 test('a failed draft does not return the gateway body', async () => {
   const demo = DemoContext.fromBindings(liveShell(), async () => {
     return new Response('GATEWAY-BODY-SHOULD-NOT-LEAK', { status: 502 });
   });
-  const response = await demo.handle(
-    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
-  );
+  const response = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(response.status, 502);
   const text = await response.text();
   assert.equal(text, '{"error":"generation_failed"}');
@@ -692,9 +712,7 @@ test('social story requests require childName', async () => {
   const empty = await demo.handle(
     socialStory({ lines: [sensory], childName: '' }),
   );
-  const long = await demo.handle(
-    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'R'.repeat(81) }),
-  );
+  const long = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY', 'R'.repeat(81))));
   assert.equal(story.status, 400);
   assert.equal(empty.status, 400);
   assert.equal(long.status, 400);
@@ -703,13 +721,13 @@ test('social story requests require childName', async () => {
 
 test('the mock Sunday update is not a copy of the notes', async () => {
   const demo = await DemoContext.open('1');
-  const update = await demo.handle(
-    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
-  );
+  const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);
-  assert.equal(note.body.endsWith('Jordan Ellis'), true);
+  assert.equal(note.body.endsWith(LEADER_SIGN), true);
+  assert.equal(note.body.includes('Jordan Ellis'), false);
+  assert.equal(note.body.split(LEADER_SIGN).length, 2);
   assert.equal(note.body.includes('['), false);
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');
@@ -744,34 +762,46 @@ test('parseSocialStory rejects a care-plan title', () => {
 
 test('parseSundayUpdate rejects the notes and the notes plus only the child name', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  assert.throws(() => parseSundayUpdate({ body: notes }, notes, 'Juniper'), SchemaRejected);
-  assert.throws(
-    () => parseSundayUpdate({ body: `${notes}\nJuniper` }, notes, 'Juniper'),
-    SchemaRejected,
-  );
-  assert.throws(() => parseSundayUpdate({ body: `Juniper ${notes}` }, notes, 'Juniper'), SchemaRejected);
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  assert.throws(() => parseSundayUpdate({ body: notes }, notes, 'Juniper', sign), SchemaRejected);
+  assert.throws(() => parseSundayUpdate({ body: `${notes}\nJuniper` }, notes, 'Juniper', sign), SchemaRejected);
+  assert.throws(() => parseSundayUpdate({ body: `Juniper ${notes}` }, notes, 'Juniper', sign), SchemaRejected);
 });
 
 test('parseSundayUpdate accepts the model words around the notes', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const body = `Sunday went well. ${notes} The quiet seat helped.`;
-  assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper'), { body });
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper', sign), { body: `${body}${LEADER_SIGN}` });
 });
 
 test('parseSundayUpdate strips a bracketed name so it never reaches the screen', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const told = `Sunday went well. ${notes} The quiet seat helped.`;
-  assert.deepEqual(
-    parseSundayUpdate({ body: `${told}\n[Volunteer's Name]` }, notes, 'Juniper'),
-    { body: told },
-  );
-  assert.deepEqual(parseSundayUpdate({ body: `${told} [Name]` }, notes, 'Juniper'), { body: told });
-  assert.throws(() => parseSundayUpdate({ body: '[Name]' }, notes, 'Juniper'), SchemaRejected);
-  assert.throws(
-    () => parseSundayUpdate({ body: "[Volunteer's Name]" }, notes, 'Juniper'),
-    SchemaRejected,
-  );
-  assert.throws(() => parseSundayUpdate({ body: `${notes}\n[Name]` }, notes, 'Juniper'), SchemaRejected);
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  assert.deepEqual(parseSundayUpdate({ body: `${told}\n[Volunteer's Name]` }, notes, 'Juniper', sign), {
+    body: `${told}${LEADER_SIGN}`,
+  });
+  assert.deepEqual(parseSundayUpdate({ body: `${told} [Name]` }, notes, 'Juniper', sign), {
+    body: `${told}${LEADER_SIGN}`,
+  });
+  assert.throws(() => parseSundayUpdate({ body: '[Name]' }, notes, 'Juniper', sign), SchemaRejected);
+  assert.throws(() => parseSundayUpdate({ body: "[Volunteer's Name]" }, notes, 'Juniper', sign), SchemaRejected);
+  assert.throws(() => parseSundayUpdate({ body: `${notes}\n[Name]` }, notes, 'Juniper', sign), SchemaRejected);
+});
+
+test('parseSundayUpdate keeps one leader sign-off and drops a model sign-off', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  const volunteer = parseSundayUpdate({ body: `${prose}\nJordan Ellis` }, notes, 'Rowan', sign);
+  assert.equal(volunteer.body.endsWith(LEADER_SIGN), true);
+  assert.equal(volunteer.body.includes('Jordan Ellis'), false);
+  assert.equal(volunteer.body.split(LEADER_SIGN).length, 2);
+  const warmly = parseSundayUpdate({ body: `${prose}\nWarmly,\nMs. Dana` }, notes, 'Rowan', sign);
+  assert.equal(warmly.body.endsWith(LEADER_SIGN), true);
+  assert.equal(warmly.body.split(LEADER_SIGN).length, 2);
+  assert.equal(warmly.body.includes('Warmly'), false);
 });
 
 test('a dict story body fails the existing generation retry', async () => {
@@ -844,14 +874,10 @@ test('a care-plan story title fails the existing generation retry', async () => 
 
 test('a copied Sunday update fails the existing generation retry', async () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const copied = await generated('/v1/drafts/sunday-update', { notes, childName: 'Rowan' }, { body: notes });
+  const copied = await generated('/v1/drafts/sunday-update', sunday(notes), { body: notes });
   assert.equal(copied.status, 502);
   assert.equal(copied.calls, 3);
-  const named = await generated(
-    '/v1/drafts/sunday-update',
-    { notes, childName: 'Rowan' },
-    { body: `${notes}\nRowan` },
-  );
+  const named = await generated('/v1/drafts/sunday-update', sunday(notes), { body: `${notes}\nRowan` });
   assert.equal(named.status, 502);
   assert.equal(named.calls, 3);
 });
@@ -861,19 +887,15 @@ test('a bracketed Sunday signature is stripped and a placeholder alone retries',
   const told = `Sunday went well. ${notes} The quiet seat helped.`;
   const signed = await generated(
     '/v1/drafts/sunday-update',
-    { notes, childName: 'Juniper' },
+    sunday(notes, 'Juniper'),
     { body: `${told}\n[Volunteer's Name]` },
   );
   assert.equal(signed.status, 200);
   assert.equal(signed.calls, 1);
-  assert.deepEqual(signed.payload, { body: told });
+  assert.deepEqual(signed.payload, { body: `${told}${LEADER_SIGN}` });
   assert.equal(JSON.stringify(signed.payload).includes('['), false);
 
-  const only = await generated(
-    '/v1/drafts/sunday-update',
-    { notes, childName: 'Juniper' },
-    { body: '[Name]' },
-  );
+  const only = await generated('/v1/drafts/sunday-update', sunday(notes, 'Juniper'), { body: '[Name]' });
   assert.equal(only.status, 502);
   assert.equal(only.calls, 3);
   assert.deepEqual(only.payload, { error: 'generation_failed' });
@@ -882,10 +904,41 @@ test('a bracketed Sunday signature is stripped and a placeholder alone retries',
 test('a Sunday update with the model words is returned', async () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const body = `Sunday went well. ${notes} The quiet seat helped.`;
-  const result = await generated('/v1/drafts/sunday-update', { notes, childName: 'Rowan' }, { body });
+  const result = await generated('/v1/drafts/sunday-update', sunday(notes), { body });
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.payload, { body });
+  assert.deepEqual(result.payload, { body: `${body}${LEADER_SIGN}` });
+});
+
+test('a model sign-off is replaced by the leader and the church', async () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const volunteer = await generated('/v1/drafts/sunday-update', sunday(notes), { body: `${prose}\nJordan Ellis` });
+  assert.equal(volunteer.status, 200);
+  const volunteerBody = (volunteer.payload as { body: string }).body;
+  assert.equal(volunteerBody.endsWith(LEADER_SIGN), true);
+  assert.equal(volunteerBody.includes('Jordan Ellis'), false);
+  assert.equal(volunteerBody.split(LEADER_SIGN).length, 2);
+  const warmly = await generated('/v1/drafts/sunday-update', sunday(notes), {
+    body: `${prose}\nWarmly,\nMs. Dana`,
+  });
+  assert.equal(warmly.status, 200);
+  const warmlyBody = (warmly.payload as { body: string }).body;
+  assert.equal(warmlyBody.endsWith(LEADER_SIGN), true);
+  assert.equal(warmlyBody.includes('Warmly'), false);
+  assert.equal(warmlyBody.split(LEADER_SIGN).length, 2);
+});
+
+test('a Sunday update without the leader or church, or with an extra key, is rejected', async () => {
+  const demo = await DemoContext.open('1');
+  const missing = await demo.handle(
+    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
+  );
+  const extra = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY', 'Rowan', { volunteer: 'Jordan Ellis' })));
+  assert.equal(missing.status, 400);
+  assert.equal(extra.status, 400);
+  assert.deepEqual(await missing.json(), { error: 'invalid_input' });
+  assert.deepEqual(await extra.json(), { error: 'invalid_input' });
 });
 
 const LABEL_TERMS = [
@@ -1599,9 +1652,7 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   assert.equal(broken.status, 400);
   assert.deepEqual(await broken.json(), { error: 'invalid_input' });
 
-  const update = await demo.handle(
-    post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
-  );
+  const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);

@@ -66,7 +66,7 @@ export default function LeaderPage() {
   async function onWriteNote(): Promise<void> {
     if (visit.role !== 'leader' || visit.notes.trim() === '' || visit.update.phase === 'writing') return;
     dispatch({ type: 'writeUpdate' });
-    const result = await postSundayUpdate(visit.notes, name);
+    const result = await postSundayUpdate(visit.notes, name, visit.church.leader, visit.church.name);
     if (result.ok) dispatch({ type: 'updateReady', value: result.value });
     else dispatch({ type: 'updateFailed', message: result.message });
   }
@@ -203,6 +203,9 @@ function AfterScreen({
         <>
           <p className="draft-text">{visit.update.value.body}</p>
           <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
+          <button type="button" className="primary" onClick={onWrite}>
+            Draft a note for {name}&apos;s parent
+          </button>
         </>
       ) : null}
     </main>

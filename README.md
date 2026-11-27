@@ -179,7 +179,7 @@ Set `READY_SIGN_IN=on` or `READY_MODE=account` only with the Supabase adapter. T
 
 Tests use a fake Auth response for that check. The schema and row-level-security policies live under `supabase/migrations`. No script applies them.
 
-A parent reads only their own child and self-registers as a parent. A volunteer reads only a shared brief for their room and Sunday. Medical text lives in `medical_notes`, and a brief line cannot use the field `medical`. A leader reads that church's setup and lessons, and invites a volunteer or a leader. A requested role that does not match that path is refused.
+A parent reads only their own child and self-registers as a parent. A volunteer reads only a shared brief for their room and Sunday. Medical text lives in `medical_notes`, and a brief line cannot use the field `medical`. A leader reads that church's setup and invites a volunteer or a leader. A requested role that does not match that path is refused.
 
 ## Move to team-owned accounts
 

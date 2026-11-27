@@ -42,8 +42,13 @@ export function postSocialStory(
   );
 }
 
-export function postSundayUpdate(notes: string, childName: string): Promise<DraftResult<SundayUpdate>> {
-  return post('/v1/drafts/sunday-update', { notes, childName }, readUpdate);
+export function postSundayUpdate(
+  notes: string,
+  childName: string,
+  leader: string,
+  church: string,
+): Promise<DraftResult<SundayUpdate>> {
+  return post('/v1/drafts/sunday-update', { notes, childName, leader, church }, readUpdate);
 }
 
 export type AckPost =

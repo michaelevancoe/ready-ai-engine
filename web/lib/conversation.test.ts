@@ -18,7 +18,7 @@ import { checkInBrief, initialVisit, reduceVisit } from './visit.ts';
 
 const LONG_HELPS = 'A quiet corner and a heads-up before the next song.';
 const BEHAVIOR =
-  'When Rowan is very upset, does Rowan ever hurt himself or others, or run off? If so, what helps in that moment?';
+  'When Rowan is very upset, does that ever lead to hurting themselves or others, or running off? If so, what helps in that moment?';
 const HELPS_FOLLOW =
   'One more about what helps: is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?';
 const ABOUT = 'To start: how would you describe Rowan in a sentence or two?';
