@@ -646,7 +646,7 @@ export function finishSundayNote(body: string, leader: string, church: string): 
 
 function signOffKey(line: string): string {
   const unlabeled = line.trim().replace(/^(?:leader|church|from)\s*:\s*/iu, '');
-  return unlabeled.replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/gu, ' ').trim().toLowerCase();
+  return unlabeled.replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/gu, ' ').trim().toLowerCase();
 }
 
 function stripSundaySignOff(body: string, leader: string, church: string): string {
@@ -669,7 +669,11 @@ function stripSundaySignOff(body: string, leader: string, church: string): strin
       continue;
     }
     const closing = /^(?:blessings|warmly|thanks|love|from)$/iu.test(last.replace(/,/gu, '').trim());
-    if (removedName && closing) lines.pop();
+    if (removedName && closing) {
+      lines.pop();
+      removedName = false;
+      continue;
+    }
     break;
   }
   return lines.join('\n');
