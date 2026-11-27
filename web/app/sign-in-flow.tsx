@@ -22,7 +22,7 @@ export function SignInGate({ boot, children }: { boot: StoreBoot; children: Reac
     const params = new URLSearchParams(window.location.search);
     const invite = params.get('invite');
     const email = (params.get('email') ?? 'maya.parent@example.com').trim();
-    const churchId = params.get('church') === 'riverside' ? 'riverside' : 'grace';
+    const churchId = params.get('church') === 'riverside' ? 'riverside' : 'harbor';
     if (invite === 'inactive') setView({ kind: 'inactive', email });
     else if (invite === 'link') setView({ kind: 'choose', email, churchId });
     else if (invite === 'signed-in') setView({ kind: 'app', email, churchId, menu: false });
@@ -213,6 +213,7 @@ function ChooseStep({
 
 function InactiveStep({ email, onDifferent, onDemo }: { email: string; onDifferent: () => void; onDemo: () => void }) {
   const address = email === '' ? 'this email' : email;
+  const churchName = CHURCHES.find((item) => item.id === 'harbor')?.name ?? '';
   return (
     <>
       <SignMark invite />
@@ -224,7 +225,7 @@ function InactiveStep({ email, onDifferent, onDemo }: { email: string; onDiffere
       <section className="contact-card">
         <p className="eyebrow">Who to contact</p>
         <h2>Your children's ministry leader</h2>
-        <p>Ask them to invite {address}. At Grace Community Church, that's Devon in Kids Ministry.</p>
+        <p>Ask them to invite {address}. At {churchName}, that's Devon in Kids Ministry.</p>
       </section>
       <button className="secondary" type="button" onClick={onDifferent}>
         Try a different email

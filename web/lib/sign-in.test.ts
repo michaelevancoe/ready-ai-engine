@@ -34,7 +34,7 @@ test('an inactive link is one screen and does not name a single cause', () => {
 
 test('choosing a church then leaving it returns to the same email', () => {
   const chosen = reduceSignIn(
-    { kind: 'choose', email: 'maya.parent@example.com', churchId: 'grace' },
+    { kind: 'choose', email: 'maya.parent@example.com', churchId: 'harbor' },
     { type: 'choose', churchId: 'riverside' },
   );
   const signedIn = reduceSignIn(chosen, { type: 'continue' });

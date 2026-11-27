@@ -1,7 +1,7 @@
 export type ChurchRole = 'Parent' | 'Volunteer' | 'Leader';
 
 export interface ChurchOption {
-  readonly id: 'grace' | 'riverside';
+  readonly id: 'harbor' | 'riverside';
   readonly name: string;
   readonly ministry: string;
   readonly role: ChurchRole;
@@ -11,8 +11,8 @@ export interface ChurchOption {
 
 export const CHURCHES: readonly ChurchOption[] = [
   {
-    id: 'grace',
-    name: 'Grace Community Church',
+    id: 'harbor',
+    name: 'Example Harbor Fellowship',
     ministry: 'Kids Ministry',
     role: 'Parent',
     person: "Maya's parent",
@@ -88,7 +88,7 @@ export function reduceSignIn(view: SignInView, event: SignInEvent): SignInView {
     }
     case 'choose': {
       if (view.kind !== 'choose') return view;
-      if (event.churchId !== 'grace' && event.churchId !== 'riverside') return view;
+      if (event.churchId !== 'harbor' && event.churchId !== 'riverside') return view;
       return { ...view, churchId: event.churchId };
     }
     case 'continue':
