@@ -992,6 +992,16 @@ test('parseSundayUpdate accepts the model words around the notes', () => {
   assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper', sign), { body: `${body}${LEADER_SIGN}` });
 });
 
+test('parseSundayUpdate drops a leading leader-at-church prefix and signs off once', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = `Sunday went well. ${notes} The quiet seat helped.`;
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  const prefixed = `Ms. Dana at Example Harbor Fellowship: ${prose}`;
+  const lined = `Ms. Dana at Example Harbor Fellowship:\n${prose}`;
+  assert.equal(parseSundayUpdate({ body: prefixed }, notes, 'Juniper', sign).body, `${prose}${LEADER_SIGN}`);
+  assert.equal(parseSundayUpdate({ body: lined }, notes, 'Juniper', sign).body, `${prose}${LEADER_SIGN}`);
+});
+
 test('parseSundayUpdate strips a bracketed name so it never reaches the screen', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const told = `Sunday went well. ${notes} The quiet seat helped.`;

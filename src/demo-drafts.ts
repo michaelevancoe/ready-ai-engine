@@ -105,6 +105,7 @@ const SUNDAY_RULES = [
   'Invent nothing beyond the notes and the names.',
   'Do not copy the notes.',
   'Do not add a sign-off. Ready adds the leader and the church.',
+  'Do not open with the leader at the church, such as "Jordan at Harbor Church:".',
   "Do not write a bracketed placeholder such as [Name] or [Volunteer's Name].",
 ].join(' ');
 
@@ -854,7 +855,11 @@ export function parseSundayUpdate(
 ): SundayUpdateDraft {
   if (!validateJson(sundayUpdateSchema, value) || !isRecord(value)) throw new SchemaRejected();
   if (typeof value.body !== 'string') throw new SchemaRejected();
-  const stripped = stripBracketPlaceholders(value.body);
+  const stripped = stripLeaderPrefix(
+    stripBracketPlaceholders(value.body),
+    signature.leader,
+    signature.church,
+  );
   const prose = stripSundaySignOff(stripped, signature.leader, signature.church).trim();
   if (!updateBodyAccepted(prose, notes, childName)) throw new SchemaRejected();
   return { body: finishSundayNote(stripped, signature.leader, signature.church) };
@@ -863,7 +868,7 @@ export function parseSundayUpdate(
 export function finishSundayNote(body: string, leader: string, church: string): string {
   const signature = `\n\n${leader}\n${church}`;
   const room = Math.max(0, 2000 - signature.length);
-  const prose = stripSundaySignOff(body, leader, church).trimEnd();
+  const prose = stripSundaySignOff(stripLeaderPrefix(body, leader, church), leader, church).trimEnd();
   const kept = prose.length > room ? prose.slice(0, room).trimEnd() : prose;
   return `${kept}${signature}`;
 }
@@ -871,6 +876,13 @@ export function finishSundayNote(body: string, leader: string, church: string): 
 function signOffKey(line: string): string {
   const unlabeled = line.trim().replace(/^(?:leader|church|from)\s*:\s*/iu, '');
   return unlabeled.replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/gu, ' ').trim().toLowerCase();
+}
+
+function stripLeaderPrefix(body: string, leader: string, church: string): string {
+  const prefix = `${leader} at ${church}:`;
+  const start = body.trimStart();
+  if (!start.startsWith(prefix)) return body;
+  return start.slice(prefix.length).replace(/^\s+/u, '');
 }
 
 function stripSundaySignOff(body: string, leader: string, church: string): string {
