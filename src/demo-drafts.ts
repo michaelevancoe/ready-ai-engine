@@ -41,6 +41,8 @@ export type StorySource = 'model' | 'fallback';
 export interface SundayUpdateRequest {
   notes: string;
   childName: string;
+  leader: string;
+  church: string;
 }
 
 export interface SocialStoryDraft {
@@ -92,17 +94,19 @@ const SOCIAL_STORY_RULES = [
   'Do not use the words support, accommodation, ensure, engage, or upset.',
 ].join(' ');
 
-export const DEMO_VOLUNTEER_NAME = 'Jordan Ellis';
-
 const SUNDAY_RULES = [
   'The data is fictional. Do not invent medical facts.',
-  'Write a short warm note from the volunteer to the parent, in your own words, summarizing how Sunday went.',
+  "Write a short warm note from the children's ministry leader to the parent, in your own words, summarizing how Sunday went.",
   'Mention wins and what helped.',
   'Invent nothing beyond the notes and the names.',
   'Do not copy the notes.',
-  `Sign the note as ${DEMO_VOLUNTEER_NAME}, or leave no signature line.`,
+  'Do not add a sign-off. Ready adds the leader and the church.',
   "Do not write a bracketed placeholder such as [Name] or [Volunteer's Name].",
 ].join(' ');
+
+const SUNDAY_KEYS = ['notes', 'childName', 'leader', 'church'] as const;
+const SIGN_OFF_LINE = /^(?:from|love|warmly)\b/iu;
+const NAME_LINE = /^[\p{Lu}][\p{L}'.-]*(?:\s+[\p{Lu}][\p{L}'.-]*){0,3}$/u;
 
 const LABEL_WORDS = new Set([
   'loves',
@@ -212,9 +216,15 @@ export function parseSocialStoryRequest(value: unknown): SocialStoryRequest | nu
 }
 
 export function parseSundayUpdateRequest(value: unknown): SundayUpdateRequest | null {
-  if (!isRecord(value) || !exactKeys(value, ['notes', 'childName'])) return null;
+  if (!isRecord(value) || !exactKeys(value, SUNDAY_KEYS)) return null;
   if (!isBounded(value.notes, 0, 4000) || !isBounded(value.childName, 1, 80)) return null;
-  return { notes: value.notes, childName: value.childName };
+  if (!isBounded(value.leader, 0, 200) || !isBounded(value.church, 0, 200)) return null;
+  return {
+    notes: value.notes,
+    childName: value.childName,
+    leader: value.leader,
+    church: value.church,
+  };
 }
 
 export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[] {
@@ -238,7 +248,7 @@ export function sundayUpdateMessages(request: SundayUpdateRequest): DraftMessage
     { role: 'system', content: SUNDAY_RULES },
     {
       role: 'user',
-      content: `Child: ${request.childName}\nVolunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n${request.notes}`,
+      content: `Child: ${request.childName}\nLeader: ${request.leader}\nChurch: ${request.church}\nVolunteer notes:\n${request.notes}`,
     },
   ];
 }
@@ -614,10 +624,43 @@ export function fallbackSocialStory(request: SocialStoryRequest): {
   };
 }
 
-export function parseSundayUpdate(value: unknown, notes: string, childName: string): SundayUpdateDraft {
+export function parseSundayUpdate(
+  value: unknown,
+  notes: string,
+  childName: string,
+  signature: { readonly leader: string; readonly church: string },
+): SundayUpdateDraft {
   if (!validateJson(sundayUpdateSchema, value) || !isRecord(value)) throw new SchemaRejected();
   if (typeof value.body !== 'string') throw new SchemaRejected();
-  const body = stripBracketPlaceholders(value.body);
-  if (!updateBodyAccepted(body, notes, childName)) throw new SchemaRejected();
-  return { body };
+  const stripped = stripBracketPlaceholders(value.body);
+  const prose = stripSundaySignOff(stripped, signature.leader).trim();
+  if (!updateBodyAccepted(prose, notes, childName)) throw new SchemaRejected();
+  return { body: finishSundayNote(stripped, signature.leader, signature.church) };
+}
+
+export function finishSundayNote(body: string, leader: string, church: string): string {
+  const signature = `\n\n${leader}\n${church}`;
+  const room = Math.max(0, 2000 - signature.length);
+  const prose = stripSundaySignOff(body, leader).trimEnd();
+  const kept = prose.length > room ? prose.slice(0, room).trimEnd() : prose;
+  return `${kept}${signature}`;
+}
+
+function stripSundaySignOff(body: string, leader: string): string {
+  const lines = body.replace(/[ \t]+$/gu, '').replace(/\n+$/u, '').split('\n');
+  const leaderLine = leader.trim();
+  for (let guard = 0; guard < 4 && lines.length > 0; guard += 1) {
+    const last = lines[lines.length - 1]?.trim() ?? '';
+    if (last.length === 0) {
+      lines.pop();
+      continue;
+    }
+    const named = last.length <= 40 && NAME_LINE.test(last);
+    if (last === leaderLine || SIGN_OFF_LINE.test(last) || named) {
+      lines.pop();
+      continue;
+    }
+    break;
+  }
+  return lines.join('\n');
 }

@@ -2,8 +2,8 @@ import { assertAdapterAllowed } from '../src/adapter.ts';
 import type { WorkerBindings } from '../src/bindings.ts';
 import { handleRequest, type AppDeps } from '../src/app.ts';
 import {
-  DEMO_VOLUNTEER_NAME,
   fallbackSocialStory,
+  finishSundayNote,
   parseSocialStory,
   parseSocialStoryRequest,
   parseSundayUpdate,
@@ -197,7 +197,11 @@ export class DemoContext {
       sundayUpdateMessages(parsed),
       sundayUpdateSchemaName,
       sundayUpdateSchema,
-      (value) => parseSundayUpdate(value, parsed.notes, parsed.childName),
+      (value) =>
+        parseSundayUpdate(value, parsed.notes, parsed.childName, {
+          leader: parsed.leader,
+          church: parsed.church,
+        }),
     );
   }
 
@@ -357,7 +361,7 @@ function mockDraft(name: string, content: string): unknown | null {
     case sundayUpdateSchemaName: {
       const parsed = readSunday(content);
       if (parsed === null) return null;
-      return mockSundayUpdate(parsed.childName, parsed.notes);
+      return mockSundayUpdate(parsed.childName, parsed.leader, parsed.church);
     }
     case intakeAcknowledgementSchemaName: {
       const read = readAcknowledgementContent(content);
@@ -442,11 +446,24 @@ function isLabeledRow(row: string): boolean {
   return row.indexOf(': ') > 0;
 }
 
-function readSunday(content: string): { childName: string; notes: string } | null {
+function readSunday(content: string): { childName: string; leader: string; church: string; notes: string } | null {
   const head = readChild(content);
-  const notesPrefix = `Volunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n`;
-  if (head === null || !head.rest.startsWith(notesPrefix)) return null;
-  return { childName: head.childName, notes: head.rest.slice(notesPrefix.length) };
+  const leaderMark = 'Leader: ';
+  const churchMark = '\nChurch: ';
+  const notesMark = '\nVolunteer notes:\n';
+  if (head === null || !head.rest.startsWith(leaderMark)) return null;
+  const churchAt = head.rest.indexOf(churchMark);
+  if (churchAt < leaderMark.length) return null;
+  const leader = head.rest.slice(leaderMark.length, churchAt);
+  const afterChurch = head.rest.slice(churchAt + churchMark.length);
+  const notesAt = afterChurch.indexOf(notesMark);
+  if (notesAt < 0) return null;
+  return {
+    childName: head.childName,
+    leader,
+    church: afterChurch.slice(0, notesAt),
+    notes: afterChurch.slice(notesAt + notesMark.length),
+  };
 }
 
 const intakeAcknowledgementSchemaName = 'intake_acknowledgement';
@@ -827,10 +844,8 @@ function mockSocialStory(childName: string, church: StoryChurch): { title: strin
   return { title: `Sunday with ${childName}`.slice(0, 120), body };
 }
 
-function mockSundayUpdate(childName: string, _notes: string): { body: string } {
-  const signature = `\n${DEMO_VOLUNTEER_NAME}`;
-  const told = `Sunday went well for ${childName}.`.slice(0, 2000 - signature.length);
-  return { body: `${told}${signature}` };
+function mockSundayUpdate(childName: string, leader: string, church: string): { body: string } {
+  return { body: finishSundayNote(`Sunday went well for ${childName}.`, leader, church) };
 }
 
 function answersFromGateway(payload: unknown): IntakeAnswers | null {
