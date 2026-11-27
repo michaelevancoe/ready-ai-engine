@@ -2,20 +2,10 @@
 
 import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { isChurchPhotoFile } from '../../lib/church-photo-file';
-import { postLesson, postSundayUpdate } from '../../lib/drafts';
+import { postSundayUpdate } from '../../lib/drafts';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
-import { leaderLessonPrivacy } from '../../lib/privacy-note';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
-import {
-  checkInBrief,
-  childAgeYears,
-  childPreferredName,
-  type BriefLine,
-  type ChurchSetup,
-  type LessonAdaptation,
-  type Visit,
-} from '../../lib/visit';
-import { PrivacyNote } from '../privacy-note';
+import { childPreferredName, type ChurchSetup, type Visit } from '../../lib/visit';
 import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
 import { readChurchPhoto } from './read-church-photo';
 
@@ -37,23 +27,18 @@ const PHOTO_SLOTS = [
   ['pickup', 'Pickup area'],
 ] as const satisfies ReadonlyArray<readonly [ChurchPhotoSlot, string]>;
 
-type Screen = 'home' | 'sunday' | 'draft' | 'after' | 'settings';
+type Screen = 'home' | 'after' | 'settings';
 
 export default function LeaderPage() {
   const store = useReadyStore();
   const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const { dispatch } = store;
-  const brief = checkInBrief(visit);
   const name = childPreferredName(visit);
-  const age = childAgeYears(visit);
   const [screen, setScreen] = useState<Screen>('home');
   const [saved, setSaved] = useState(false);
-  const [lessonText, setLessonText] = useState(visit.lessonSource);
   const [church, setChurch] = useState(visit.church);
   useScrollWhen(visit.update.phase === 'writing', 'update-status');
   useScrollWhen(visit.update.phase === 'ready', 'update-draft');
-  useScrollWhen(visit.lesson.phase === 'writing', 'lesson-status');
-  useScrollWhen(visit.lesson.phase === 'ready', 'lesson-draft');
 
   function showHome(): void {
     setScreen('home');
@@ -63,17 +48,6 @@ export default function LeaderPage() {
     setChurch(visit.church);
     setSaved(false);
     setScreen('settings');
-  }
-
-  function openLesson(): void {
-    if (brief.status !== 'approved') return;
-    setSaved(false);
-    if (visit.lesson.phase === 'ready' || visit.lesson.phase === 'approved') {
-      setScreen('draft');
-      return;
-    }
-    setLessonText(visit.lessonSource);
-    setScreen('sunday');
   }
 
   function openAfter(): void {
@@ -87,21 +61,6 @@ export default function LeaderPage() {
     dispatch({ type: 'saveChurch', church });
     setSaved(true);
     setScreen('home');
-  }
-
-  async function onAdapt(): Promise<void> {
-    if (brief.status !== 'approved' || visit.lesson.phase === 'writing') return;
-    const source = lessonText.trim();
-    if (source.length === 0) return;
-    const lines = brief.lines;
-    dispatch({ type: 'writeLesson', source });
-    const result = await postLesson(source, lines, name);
-    if (result.ok) {
-      dispatch({ type: 'lessonReady', value: result.value });
-      setScreen((current) => (current === 'sunday' ? 'draft' : current));
-      return;
-    }
-    dispatch({ type: 'lessonFailed', message: result.message });
   }
 
   async function onWriteNote(): Promise<void> {
@@ -118,43 +77,12 @@ export default function LeaderPage() {
     dispatch({ type: 'approveUpdate', body: typeof value === 'string' ? value : '' });
   }
 
-  function onApproveLesson(value: LessonAdaptation): void {
-    dispatch({ type: 'approveLesson', value });
-    setScreen('home');
-  }
-
   if (screen === 'settings') {
     return (
       <SettingsScreen
         church={church}
         onChange={setChurch}
         onSave={onSaveChurch}
-        onHome={showHome}
-      />
-    );
-  }
-  if (screen === 'sunday' && brief.status === 'approved') {
-    return (
-      <LessonScreen
-        name={name}
-        lines={brief.lines}
-        lessonText={lessonText}
-        phase={visit.lesson.phase}
-        failure={visit.lesson.phase === 'failed' ? visit.lesson.message : null}
-        onChange={setLessonText}
-        onAdapt={() => void onAdapt()}
-        onHome={showHome}
-      />
-    );
-  }
-  const lesson = visit.lesson;
-  if (screen === 'draft' && (lesson.phase === 'ready' || lesson.phase === 'approved')) {
-    return (
-      <DraftScreen
-        name={name}
-        value={lesson.value}
-        viewing={lesson.phase === 'approved'}
-        onApprove={onApproveLesson}
         onHome={showHome}
       />
     );
@@ -184,15 +112,8 @@ export default function LeaderPage() {
       </div>
       <h1>Good morning, {visit.church.leader}</h1>
       <p>
-        {name} is at {visit.church.name}. This Sunday comes first, then After Sunday.
+        {name} is at {visit.church.name}.
       </p>
-      <SundayCard
-        name={name}
-        age={age}
-        waiting={brief.status !== 'approved'}
-        approved={visit.lesson.phase === 'approved'}
-        onOpen={openLesson}
-      />
       <AfterCard
         name={name}
         notes={visit.notes}
@@ -200,44 +121,6 @@ export default function LeaderPage() {
         onOpen={openAfter}
       />
     </main>
-  );
-}
-
-function SundayCard({
-  name,
-  age,
-  waiting,
-  approved,
-  onOpen,
-}: {
-  name: string;
-  age: number;
-  waiting: boolean;
-  approved: boolean;
-  onOpen: () => void;
-}) {
-  const tag = waiting ? 'waiting' : approved ? 'approved' : 'ready';
-  const label = waiting ? "Waiting on parent's brief" : approved ? 'Approved' : 'Ready to adapt';
-  const body = (
-    <>
-      <p className="eyebrow">
-        THIS SUNDAY · {name.toUpperCase()}, {age}
-      </p>
-      <h2>Lesson for {name}</h2>
-      {waiting ? (
-        <p>
-          Waiting on {name}&apos;s parent to approve the brief. Once they do, you can paste the lesson and adapt it
-          here.
-        </p>
-      ) : null}
-      <span className={tagClass(tag)}>{label}</span>
-    </>
-  );
-  if (waiting) return <article className="home-card">{body}</article>;
-  return (
-    <button type="button" className="home-card" onClick={onOpen}>
-      {body}
-    </button>
   );
 }
 
@@ -269,155 +152,6 @@ function AfterCard({
     <button type="button" className="home-card" onClick={onOpen}>
       {body}
     </button>
-  );
-}
-
-function LessonScreen({
-  name,
-  lines,
-  lessonText,
-  phase,
-  failure,
-  onChange,
-  onAdapt,
-  onHome,
-}: {
-  name: string;
-  lines: readonly BriefLine[];
-  lessonText: string;
-  phase: Visit['lesson']['phase'];
-  failure: string | null;
-  onChange: (value: string) => void;
-  onAdapt: () => void;
-  onHome: () => void;
-}) {
-  const writing = phase === 'writing';
-  return (
-    <main>
-      <Back onHome={onHome} />
-      <span className={tagClass('approved')}>Brief approved</span>
-      <p>{name}&apos;s parent approved the brief.</p>
-      <article className="brief-card">
-        <h2>From {name}&apos;s approved brief</h2>
-        <ul>
-          {lines.map((line) => (
-            <li key={line.field}>{line.text}</li>
-          ))}
-        </ul>
-      </article>
-      <PrivacyNote variant="line" text={leaderLessonPrivacy(name)} />
-      <label htmlFor="fictional-lesson">Lesson (fictional)</label>
-      <textarea
-        id="fictional-lesson"
-        rows={5}
-        value={lessonText}
-        autoComplete="off"
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <button type="button" className="primary" disabled={writing || lessonText.trim() === ''} onClick={onAdapt}>
-        Adapt for {name}
-      </button>
-      {writing ? (
-        <p id="lesson-status" className="draft-status" role="status">
-          Writing the draft.
-        </p>
-      ) : null}
-      {failure === null ? null : <p role="alert">{failure}</p>}
-      <p className="hint">Ready writes a draft. Volunteers see nothing until you approve it.</p>
-    </main>
-  );
-}
-
-function DraftScreen({
-  name,
-  value,
-  viewing,
-  onApprove,
-  onHome,
-}: {
-  name: string;
-  value: LessonAdaptation;
-  viewing: boolean;
-  onApprove: (value: LessonAdaptation) => void;
-  onHome: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [summary, setSummary] = useState(value.summary);
-  const [steps, setSteps] = useState<string[]>([...value.steps]);
-  const cleaned = steps.map((step) => step.trim()).filter((step) => step.length > 0);
-  const showEditor = editing && !viewing;
-
-  function approve(): void {
-    if (summary.trim().length === 0 || cleaned.length === 0) return;
-    onApprove({ summary: summary.trim(), steps: cleaned });
-  }
-
-  return (
-    <main>
-      <Back onHome={onHome} />
-      <section id="lesson-draft" aria-label="Lesson adaptation">
-        <span className={tagClass(viewing ? 'approved' : 'ready')}>
-          {viewing ? 'Approved' : 'AI draft · needs your OK'}
-        </span>
-        <h1>Lesson for {name}</h1>
-        <article className="lesson-card">
-          <p className="eyebrow">Summary</p>
-          {showEditor ? (
-            <>
-              <label className="sr-only" htmlFor="lesson-summary">
-                Summary
-              </label>
-              <textarea
-                id="lesson-summary"
-                rows={3}
-                value={summary}
-                autoComplete="off"
-                onChange={(event) => setSummary(event.target.value)}
-              />
-            </>
-          ) : (
-            <p>{summary}</p>
-          )}
-        </article>
-        <article className="lesson-card">
-          <p className="eyebrow">Steps</p>
-          <ol>
-            {steps.map((step, index) => (
-              <li key={`${index}-${showEditor ? 'edit' : step}`}>
-                {showEditor ? (
-                  <>
-                    <label className="sr-only" htmlFor={`lesson-step-${index}`}>
-                      Step {index + 1}
-                    </label>
-                    <input
-                      id={`lesson-step-${index}`}
-                      value={step}
-                      autoComplete="off"
-                      onChange={(event) =>
-                        setSteps((current) => current.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))
-                      }
-                    />
-                  </>
-                ) : (
-                  step
-                )}
-              </li>
-            ))}
-          </ol>
-        </article>
-        {viewing ? null : <p className="notice">Volunteers see this lesson only after you approve it.</p>}
-        {viewing ? null : (
-          <button type="button" className="approve" disabled={summary.trim().length === 0 || cleaned.length === 0} onClick={approve}>
-            Approve lesson
-          </button>
-        )}
-        {viewing ? null : (
-          <button type="button" className="secondary" aria-pressed={editing} onClick={() => setEditing((open) => !open)}>
-            {editing ? 'Done' : 'Edit'}
-          </button>
-        )}
-      </section>
-    </main>
   );
 }
 
@@ -630,10 +364,8 @@ function Back({ onHome }: { onHome: () => void }) {
   );
 }
 
-function tagClass(kind: 'waiting' | 'ready' | 'approved' | 'plain'): string {
+function tagClass(kind: 'ready' | 'approved' | 'plain'): string {
   switch (kind) {
-    case 'waiting':
-      return 'tag waiting';
     case 'ready':
       return 'tag ready';
     case 'approved':

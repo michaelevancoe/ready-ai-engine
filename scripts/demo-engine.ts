@@ -4,11 +4,6 @@ import { handleRequest, type AppDeps } from '../src/app.ts';
 import {
   DEMO_VOLUNTEER_NAME,
   fallbackSocialStory,
-  lessonMessages,
-  lessonSchema,
-  lessonSchemaName,
-  parseLesson,
-  parseLessonRequest,
   parseSocialStory,
   parseSocialStoryRequest,
   parseSundayUpdate,
@@ -138,9 +133,6 @@ export class DemoContext {
     if (request.method === 'POST' && url.pathname === '/v1/drafts/social-story') {
       return this.handleSocialStory(request);
     }
-    if (request.method === 'POST' && url.pathname === '/v1/drafts/lesson') {
-      return this.handleLesson(request);
-    }
     if (request.method === 'POST' && url.pathname === '/v1/drafts/sunday-update') {
       return this.handleSundayUpdate(request);
     }
@@ -170,12 +162,6 @@ export class DemoContext {
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
-  }
-
-  private async handleLesson(request: Request): Promise<Response> {
-    const parsed = await parsedBody(request, parseLessonRequest);
-    if (parsed instanceof Response) return parsed;
-    return this.completeDraft(lessonMessages(parsed), lessonSchemaName, lessonSchema, parseLesson);
   }
 
   private async handleAcknowledgement(request: Request): Promise<Response> {
@@ -368,11 +354,6 @@ function mockDraft(name: string, content: string): unknown | null {
       if (parsed === null) return null;
       return mockSocialStory(parsed.childName, parsed.church);
     }
-    case lessonSchemaName: {
-      const parsed = readLesson(content);
-      if (parsed === null) return null;
-      return mockLesson(parsed.childName, parsed.lesson, parsed.lines);
-    }
     case sundayUpdateSchemaName: {
       const parsed = readSunday(content);
       if (parsed === null) return null;
@@ -466,22 +447,6 @@ function readSunday(content: string): { childName: string; notes: string } | nul
   const notesPrefix = `Volunteer: ${DEMO_VOLUNTEER_NAME}\nNotes:\n`;
   if (head === null || !head.rest.startsWith(notesPrefix)) return null;
   return { childName: head.childName, notes: head.rest.slice(notesPrefix.length) };
-}
-
-function readLesson(
-  content: string,
-): { childName: string; lesson: string; lines: { text: string }[] } | null {
-  const head = readChild(content);
-  if (head === null || !head.rest.startsWith('Lesson:\n')) return null;
-  const after = head.rest.slice('Lesson:\n'.length);
-  const marker = '\nApproved needs:\n';
-  const at = after.indexOf(marker);
-  if (at < 0) return null;
-  const lesson = after.slice(0, at);
-  if (lesson.length < 1) return null;
-  const lines = readLabeled(after.slice(at + marker.length));
-  if (lines === null) return null;
-  return { childName: head.childName, lesson, lines };
 }
 
 const intakeAcknowledgementSchemaName = 'intake_acknowledgement';
@@ -854,34 +819,12 @@ function plain(value: string): string {
   return value.toLowerCase().replace(/[.!?]+$/u, '').replace(/\s+/gu, ' ').trim();
 }
 
-function clip(value: string, max: number): string {
-  return value.slice(0, max);
-}
-
 function mockSocialStory(childName: string, church: StoryChurch): { title: string; body: string } {
   const body = `${childName} arrives at ${church.name}. ${childName} goes to ${church.room}. ${church.leader} says hello.`.slice(
     0,
     2000,
   );
   return { title: `Sunday with ${childName}`.slice(0, 120), body };
-}
-
-function mockLesson(
-  childName: string,
-  lesson: string,
-  lines: { text: string }[],
-): { summary: string; steps: string[] } {
-  const steps: string[] = [];
-  for (const line of lesson.split('\n')) {
-    if (line.trim().length === 0 || steps.length >= 8) continue;
-    steps.push(clip(`${childName} ${line}`, 400));
-  }
-  for (const line of lines) {
-    if (steps.length >= 8) break;
-    steps.push(clip(`${childName} ${line.text}`, 400));
-  }
-  if (steps.length === 0) steps.push(clip(childName, 400));
-  return { summary: clip(`${childName} ${lesson}`.trim(), 600), steps };
 }
 
 function mockSundayUpdate(childName: string, _notes: string): { body: string } {

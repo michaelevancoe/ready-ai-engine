@@ -48,16 +48,6 @@ export interface ChurchPersist {
   readonly church: ChurchSetup;
 }
 
-export type LessonPersist =
-  | {
-      readonly action: 'upsert';
-      readonly organizationId: string;
-      readonly source: string;
-      readonly summary: string;
-      readonly steps: readonly string[];
-    }
-  | { readonly action: 'delete'; readonly organizationId: string };
-
 export type UpdatePersist =
   | { readonly action: 'upsert'; readonly organizationId: string; readonly childId: string; readonly body: string }
   | { readonly action: 'delete'; readonly organizationId: string; readonly childId: string };
@@ -68,7 +58,6 @@ export interface PersistPlan {
   readonly publication: PublicationPersist | null;
   readonly notes: NotePersist | null;
   readonly church: ChurchPersist | null;
-  readonly lesson: LessonPersist | null;
   readonly update: UpdatePersist | null;
 }
 
@@ -78,7 +67,6 @@ const blankPlan: PersistPlan = {
   publication: null,
   notes: null,
   church: null,
-  lesson: null,
   update: null,
 };
 
@@ -105,7 +93,6 @@ export function persistDispatch(before: Visit, after: Visit, scope: AccountScope
     church: sameChurch(before.church, after.church)
       ? null
       : { organizationId: scope.organizationId, church: after.church },
-    lesson: lessonChange(before, after, scope),
     update: updateChange(before, after, scope),
   };
 }
@@ -117,7 +104,6 @@ export function emptyPlan(plan: PersistPlan): boolean {
     plan.publication === null &&
     plan.notes === null &&
     plan.church === null &&
-    plan.lesson === null &&
     plan.update === null
   );
 }
@@ -133,15 +119,6 @@ function publicationChange(before: Visit, after: Visit, scope: AccountScope): Pu
   return { action: 'upsert', organizationId: scope.organizationId, childId: scope.childId, lines: next };
 }
 
-function lessonChange(before: Visit, after: Visit, scope: AccountScope): LessonPersist | null {
-  const previous = approvedLesson(before);
-  const next = approvedLesson(after);
-  if (previous === null && next === null) return null;
-  if (previous !== null && next !== null && sameLesson(previous, next)) return null;
-  if (next === null) return { action: 'delete', organizationId: scope.organizationId };
-  return { action: 'upsert', organizationId: scope.organizationId, ...next };
-}
-
 function updateChange(before: Visit, after: Visit, scope: AccountScope): UpdatePersist | null {
   const previous = approvedBody(before);
   const next = approvedBody(after);
@@ -155,15 +132,6 @@ function updateChange(before: Visit, after: Visit, scope: AccountScope): UpdateP
 function publishedLines(visit: Visit): readonly BriefLine[] | null {
   if (visit.brief.phase !== 'approved') return null;
   return briefLines(visit.card, visit.visibility).filter((line) => line.field !== 'medical');
-}
-
-function approvedLesson(visit: Visit): { source: string; summary: string; steps: readonly string[] } | null {
-  if (visit.lesson.phase !== 'approved') return null;
-  return {
-    source: visit.lessonSource,
-    summary: visit.lesson.value.summary,
-    steps: visit.lesson.value.steps,
-  };
 }
 
 function approvedBody(visit: Visit): string | null {
@@ -208,14 +176,4 @@ function sameLines(left: readonly BriefLine[], right: readonly BriefLine[]): boo
     const other = right[index];
     return other !== undefined && line.field === other.field && line.text === other.text;
   });
-}
-
-function sameLesson(
-  left: { source: string; summary: string; steps: readonly string[] },
-  right: { source: string; summary: string; steps: readonly string[] },
-): boolean {
-  if (left.source !== right.source || left.summary !== right.summary || left.steps.length !== right.steps.length) {
-    return false;
-  }
-  return left.steps.every((step, index) => step === right.steps[index]);
 }

@@ -51,9 +51,9 @@ The demo uses the mock unless you set `READY_DEMO_MODEL` to `live`. Any other va
 
 Avery Sampleton uses Parent to answer the questions and approve Rowan's brief. Avery does not write the Sunday update. The brief keeps the visible fields that have text at the moment of approval. Avery sees the Sunday update only after Ms. Dana approves it.
 
-Jordan Ellis uses Volunteer to read that brief and save notes after Sunday. Those notes stay on the volunteer and leader screens. Volunteer shows no profile text before the brief is approved. Volunteer sees the lesson only after Ms. Dana approves it.
+Jordan Ellis uses Volunteer to read that brief and save notes after Sunday. Those notes stay on the volunteer and leader screens. Volunteer shows no profile text before the brief is approved.
 
-Ms. Dana uses Leader to edit the church and adapt a fictional lesson. Ms. Dana writes a separate parent note and approves it. Ms. Dana approves the lesson before a volunteer sees it. **Adapt lesson** stays off until the Sunday brief is approved. The lesson uses that approved brief.
+Ms. Dana uses Leader to edit the church. Ms. Dana writes a separate parent note and approves it.
 
 From the repo root, install, check, and test. Then start the demo process.
 

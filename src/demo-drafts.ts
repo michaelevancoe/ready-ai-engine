@@ -38,12 +38,6 @@ export interface SocialStoryRequest {
 
 export type StorySource = 'model' | 'fallback';
 
-export interface LessonRequest {
-  lesson: string;
-  lines: DraftLine[];
-  childName: string;
-}
-
 export interface SundayUpdateRequest {
   notes: string;
   childName: string;
@@ -52,11 +46,6 @@ export interface SundayUpdateRequest {
 export interface SocialStoryDraft {
   readonly title: string;
   readonly body: string;
-}
-
-export interface LessonDraft {
-  summary: string;
-  steps: string[];
 }
 
 export interface SundayUpdateDraft {
@@ -103,14 +92,6 @@ const SOCIAL_STORY_RULES = [
   'Do not use the words support, accommodation, ensure, engage, or upset.',
 ].join(' ');
 
-const LESSON_RULES = [
-  'The data is fictional. Do not invent medical facts.',
-  "Adapt every step of the lesson for this child's approved needs.",
-  "Use the child's preferred name.",
-  'Do not say "the individual".',
-  'Do not drop a lesson step.',
-].join(' ');
-
 export const DEMO_VOLUNTEER_NAME = 'Jordan Ellis';
 
 const SUNDAY_RULES = [
@@ -151,23 +132,6 @@ export const socialStorySchema = {
   properties: {
     title: boundedText(120),
     body: boundedText(2000),
-  },
-} satisfies JsonSchema;
-
-export const lessonSchemaName = 'lesson_adaptation';
-
-export const lessonSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['summary', 'steps'],
-  properties: {
-    summary: boundedText(600),
-    steps: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 8,
-      items: boundedText(400),
-    },
   },
 } satisfies JsonSchema;
 
@@ -247,22 +211,10 @@ export function parseSocialStoryRequest(value: unknown): SocialStoryRequest | nu
   return { lines: lines.filter((line) => isStoryField(line.field)), childName: value.childName, church };
 }
 
-export function parseLessonRequest(value: unknown): LessonRequest | null {
-  if (!isRecord(value) || !exactKeys(value, ['lesson', 'lines', 'childName'])) return null;
-  if (!isBounded(value.lesson, 1, 4000) || !isBounded(value.childName, 1, 80)) return null;
-  const lines = parseLines(value.lines, 0, BRIEF_FIELDS.length);
-  if (lines === null) return null;
-  return { lesson: value.lesson, lines, childName: value.childName };
-}
-
 export function parseSundayUpdateRequest(value: unknown): SundayUpdateRequest | null {
   if (!isRecord(value) || !exactKeys(value, ['notes', 'childName'])) return null;
   if (!isBounded(value.notes, 0, 4000) || !isBounded(value.childName, 1, 80)) return null;
   return { notes: value.notes, childName: value.childName };
-}
-
-function labeledLines(lines: readonly DraftLine[]): string {
-  return lines.map((line) => `${line.label}: ${line.text}`).join('\n');
 }
 
 export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[] {
@@ -278,16 +230,6 @@ export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[]
   return [
     { role: 'system', content: socialStorySystem() },
     { role: 'user', content: rows.join('\n') },
-  ];
-}
-
-export function lessonMessages(request: LessonRequest): DraftMessage[] {
-  return [
-    { role: 'system', content: LESSON_RULES },
-    {
-      role: 'user',
-      content: `Child: ${request.childName}\nLesson:\n${request.lesson}\nApproved needs:\n${labeledLines(request.lines)}`,
-    },
   ];
 }
 
@@ -645,11 +587,6 @@ export function updateBodyAccepted(body: string, notes: string, childName: strin
   return collapseSpace(withoutChildName(body, childName)) !== collapseSpace(notes);
 }
 
-function stringList(value: unknown): string[] | null {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return null;
-  return value;
-}
-
 export function parseSocialStory(
   value: unknown,
   input: {
@@ -675,13 +612,6 @@ export function fallbackSocialStory(request: SocialStoryRequest): {
     body: sundayFallbackSentences(request.church).join('\n\n'),
     source: 'fallback',
   };
-}
-
-export function parseLesson(value: unknown): LessonDraft {
-  if (!validateJson(lessonSchema, value) || !isRecord(value)) throw new SchemaRejected();
-  const steps = stringList(value.steps);
-  if (typeof value.summary !== 'string' || steps === null) throw new SchemaRejected();
-  return { summary: value.summary, steps };
 }
 
 export function parseSundayUpdate(value: unknown, notes: string, childName: string): SundayUpdateDraft {

@@ -200,12 +200,6 @@ async function applyLeader(
     token,
     `/rest/v1/church_setup?select=name,service,room,leader_label,ages,plan&organization_id=eq.${organizationId}`,
   );
-  const lesson = await oneRow(
-    apiUrl,
-    anonKey,
-    token,
-    `/rest/v1/lessons?select=source,summary,steps,status&organization_id=eq.${organizationId}`,
-  );
   const update = await oneRow(
     apiUrl,
     anonKey,
@@ -214,7 +208,6 @@ async function applyLeader(
   );
   let next = visit;
   if (church !== null) next = { ...next, church: parseChurch(church) };
-  if (lesson !== null && lesson.status === 'approved') next = applyLesson(next, lesson);
   if (update !== null && update.status === 'approved' && typeof update.body === 'string') {
     next = { ...next, update: { phase: 'approved', value: { body: update.body } } };
   }
@@ -234,22 +227,6 @@ function applyBrief(visit: Visit, row: Record<string, unknown>): Visit {
   }
   if (typeof row.card_touched !== 'boolean') throw new Error('account boot could not read the brief');
   return { ...visit, card, visibility, cardTouched: row.card_touched };
-}
-
-function applyLesson(visit: Visit, row: Record<string, unknown>): Visit {
-  if (typeof row.source !== 'string' || typeof row.summary !== 'string' || !Array.isArray(row.steps)) {
-    throw new Error('account boot could not read the lesson');
-  }
-  const steps: string[] = [];
-  for (const step of row.steps) {
-    if (typeof step !== 'string') throw new Error('account boot could not read the lesson');
-    steps.push(step);
-  }
-  return {
-    ...visit,
-    lessonSource: row.source,
-    lesson: { phase: 'approved', value: { summary: row.summary, steps } },
-  };
 }
 
 function parseChurch(row: Record<string, unknown>): Visit['church'] {

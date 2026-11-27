@@ -106,8 +106,8 @@ function volunteerPlan(plan: PersistPlan): PersistPlan | null {
 }
 
 function leaderPlan(plan: PersistPlan): PersistPlan | null {
-  if (plan.church === null && plan.lesson === null && plan.update === null) return null;
-  return { ...blankPlan(), church: plan.church, lesson: plan.lesson, update: plan.update };
+  if (plan.church === null && plan.update === null) return null;
+  return { ...blankPlan(), church: plan.church, update: plan.update };
 }
 
 function blankPlan(): PersistPlan {
@@ -117,7 +117,6 @@ function blankPlan(): PersistPlan {
     publication: null,
     notes: null,
     church: null,
-    lesson: null,
     update: null,
   };
 }

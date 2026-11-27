@@ -1,5 +1,5 @@
 import { SUNDAY_STORY_BODY_MAX } from '../../src/sunday-story-text.ts';
-import type { BriefLine, LessonAdaptation, SocialStory, SundayUpdate } from './visit';
+import type { BriefLine, SocialStory, SundayUpdate } from './visit';
 
 export type DraftResult<T> =
   | { readonly ok: true; readonly value: T }
@@ -40,14 +40,6 @@ export function postSocialStory(
     },
     readStory,
   );
-}
-
-export function postLesson(
-  lesson: string,
-  lines: readonly BriefLine[],
-  childName: string,
-): Promise<DraftResult<LessonAdaptation>> {
-  return post('/v1/drafts/lesson', { lesson, lines: wireLines(lines), childName }, readLesson);
 }
 
 export function postSundayUpdate(notes: string, childName: string): Promise<DraftResult<SundayUpdate>> {
@@ -122,17 +114,6 @@ function storySource(value: unknown): 'model' | 'fallback' | null {
     default:
       return null;
   }
-}
-
-function readLesson(value: unknown): LessonAdaptation | null {
-  if (!isRecord(value) || !isBounded(value.summary, 1, 600) || !Array.isArray(value.steps)) return null;
-  if (value.steps.length < 1 || value.steps.length > 8) return null;
-  const steps: string[] = [];
-  for (const step of value.steps) {
-    if (!isBounded(step, 1, 400)) return null;
-    steps.push(step);
-  }
-  return { summary: value.summary, steps };
 }
 
 function readUpdate(value: unknown): SundayUpdate | null {

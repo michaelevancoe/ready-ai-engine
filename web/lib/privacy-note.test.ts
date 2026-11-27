@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  leaderLessonPrivacy,
   parentReviewPrivacy,
   parentStartPrivacy,
   storyPrivacy,
@@ -42,10 +41,6 @@ test('privacy notes use the default church, leader, room, and child', () => {
     pill: "Ready's simple Sunday story",
     line: "Ready kept this story simple today, using only Harbor Room's plan.",
   });
-  assert.equal(
-    leaderLessonPrivacy(name),
-    "Rowan's parent approved this brief for you and this Sunday's volunteers. Care notes are in the parent's own words.",
-  );
   assert.equal(
     volunteerCheckInPrivacy(name),
     "Shared by Rowan's parent for this Sunday's team only. Care notes are in the parent's own words.",
