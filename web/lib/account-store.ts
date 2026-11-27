@@ -6,6 +6,7 @@ import {
   type ChurchPhotoSlot,
   type ReadyStore,
 } from './ready-store.ts';
+import type { VisitRecord } from './demo-visits.ts';
 import { reduceVisit, type DemoRole, type Visit, type VisitEvent } from './visit.ts';
 
 export interface AccountSession {
@@ -22,7 +23,8 @@ export class AccountStore implements ReadyStore {
   private readonly sessions: readonly AccountSession[];
   private readonly scope: AccountScope;
   private readonly gateway: VisitGateway;
-  private visit: Visit;
+  private record: VisitRecord;
+  private list: readonly VisitRecord[];
   private photos: ChurchPhotoSet = emptyChurchPhotos();
   private readonly epoch: number;
   private readonly listeners = new Set<() => void>();
@@ -37,17 +39,29 @@ export class AccountStore implements ReadyStore {
     this.sessions = sessions;
     this.scope = scope;
     this.gateway = gateway;
-    this.visit = initial;
+    this.record = { id: scope.childId, visit: initial, sample: false, cannedDraft: null };
+    this.list = [this.record];
     this.epoch = epoch;
   }
 
-  getState = (): Visit => this.visit;
+  listVisits = (): readonly VisitRecord[] => this.list;
+
+  getVisit = (id: string): VisitRecord | null => (id === this.record.id ? this.record : null);
+
+  select = (id: string): void => {
+    if (id !== this.record.id) return;
+  };
+
+  selectedId = (): string => this.record.id;
+
+  getState = (): Visit => this.record.visit;
 
   dispatch = (event: VisitEvent): void => {
-    const next = reduceVisit(this.visit, event);
-    if (next === this.visit) return;
-    const plan = persistDispatch(this.visit, next, this.scope);
-    this.visit = next;
+    const next = reduceVisit(this.record.visit, event);
+    if (next === this.record.visit) return;
+    const plan = persistDispatch(this.record.visit, next, this.scope);
+    this.record = { id: this.record.id, visit: next, sample: false, cannedDraft: null };
+    this.list = [this.record];
     this.emit();
     this.persist(plan);
   };

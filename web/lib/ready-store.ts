@@ -1,4 +1,5 @@
-import { initialVisit, reduceVisit, type Visit, type VisitEvent } from './visit.ts';
+import { seedDemoVisits, type VisitRecord } from './demo-visits.ts';
+import { reduceVisit, type Visit, type VisitEvent } from './visit.ts';
 
 export const CHURCH_PHOTO_SLOTS = ['outside', 'doors', 'desk', 'classroom', 'quiet', 'pickup'] as const;
 
@@ -27,6 +28,10 @@ export function replaceChurchPhoto(current: ChurchPhotoSet, slot: ChurchPhotoSlo
 }
 
 export interface ReadyStore {
+  listVisits(): readonly VisitRecord[];
+  getVisit(id: string): VisitRecord | null;
+  select(id: string): void;
+  selectedId(): string;
   getState(): Visit;
   dispatch(event: VisitEvent): void;
   subscribe(listener: () => void): () => void;
@@ -36,16 +41,34 @@ export interface ReadyStore {
 }
 
 export class DemoStore implements ReadyStore {
-  private visit: Visit = initialVisit();
+  private records: VisitRecord[] = seedDemoVisits();
+  private list: readonly VisitRecord[] = this.records;
+  private selected = this.records[0]?.id ?? '';
   private photos: ChurchPhotoSet = emptyChurchPhotos();
   private readonly listeners = new Set<() => void>();
 
-  getState = (): Visit => this.visit;
+  listVisits = (): readonly VisitRecord[] => this.list;
+
+  getVisit = (id: string): VisitRecord | null => this.records.find((record) => record.id === id) ?? null;
+
+  select = (id: string): void => {
+    if (id === this.selected) return;
+    if (!this.records.some((record) => record.id === id)) return;
+    this.selected = id;
+    this.emit();
+  };
+
+  selectedId = (): string => this.selected;
+
+  getState = (): Visit => this.current().visit;
 
   dispatch = (event: VisitEvent): void => {
-    const next = reduceVisit(this.visit, event);
-    if (next === this.visit) return;
-    this.visit = next;
+    const current = this.current();
+    const next = reduceVisit(current.visit, event);
+    if (next === current.visit) return;
+    const updated: VisitRecord = { ...current, visit: next };
+    this.records = this.records.map((record) => (record.id === current.id ? updated : record));
+    this.list = this.records;
     this.emit();
   };
 
@@ -71,6 +94,12 @@ export class DemoStore implements ReadyStore {
     if (next === this.photos) return;
     this.photos = next;
     this.emit();
+  }
+
+  private current(): VisitRecord {
+    const found = this.records.find((record) => record.id === this.selected);
+    if (found === undefined) throw new Error('Selected visit is missing.');
+    return found;
   }
 
   private emit(): void {
