@@ -63,13 +63,13 @@ export class DemoContext {
     assertAdapterAllowed(env, 'memory');
     this.mock = mock;
     this.store = churchStore();
-    const fetch: typeof fetch = async (input, init) => {
+    const countedFetch: typeof globalThis.fetch = async (input, init) => {
       this.gatewayCalls.push(Date.now());
       return fetchImpl(input, init);
     };
     this.deps = {
       env,
-      fetch,
+      fetch: countedFetch,
       storeFactory: () => this.store,
       log: emitSafe,
       now: () => Date.now(),
