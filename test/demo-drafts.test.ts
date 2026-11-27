@@ -847,6 +847,38 @@ test('a church name with a small word is signed once', () => {
   }
 });
 
+test('a closing between the leader and the church is signed once', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const leader = 'Ms. Dana';
+  const between = [
+    { church: 'Example Harbor Fellowship', word: 'Warmly,' },
+    { church: 'Church of the Harbor', word: 'Love,' },
+    { church: 'Church of the Redeemer', word: 'From,' },
+    { church: 'Church of the Harbor', word: 'Thanks,' },
+  ];
+  for (const item of between) {
+    const body = `${prose}\n${leader}\n${item.word}\n${item.church}`;
+    const signed = `${prose}\n\n${leader}\n${item.church}`;
+    assert.equal(parseSundayUpdate({ body }, notes, 'Rowan', { leader, church: item.church }).body, signed);
+  }
+  const churchFirst = `${prose}\nChurch of the Harbor\nThanks,\n${leader}`;
+  assert.equal(
+    parseSundayUpdate({ body: churchFirst }, notes, 'Rowan', { leader, church: 'Church of the Harbor' }).body,
+    `${prose}\n\n${leader}\nChurch of the Harbor`,
+  );
+});
+
+test("a church name that drops an apostrophe is signed once", () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const sign = { leader: 'Ms. Dana', church: "St. John's" };
+  assert.equal(
+    parseSundayUpdate({ body: `${prose}\nSt. Johns` }, notes, 'Rowan', sign).body,
+    `${prose}\n\nMs. Dana\nSt. John's`,
+  );
+});
+
 test('a closing word stays unless it sits on the leader or the church', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const prose = 'Sunday went well. The quiet seat helped.';
