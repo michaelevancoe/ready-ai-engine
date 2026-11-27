@@ -255,11 +255,17 @@ test('withdrawing the brief keeps the parent note', () => {
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
   visit = reduceVisit(visit, { type: 'writeUpdate' });
   visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Sunday went well for Rowan.' } });
-  visit = reduceVisit(visit, { type: 'approveUpdate', body: 'Sunday went well for Rowan.\nJordan Ellis' });
+  visit = reduceVisit(visit, {
+    type: 'approveUpdate',
+    body: 'Sunday went well for Rowan.\n\nMs. Dana\nExample Harbor Fellowship',
+  });
 
   visit = reduceVisit(visit, { type: 'saveCard', card: { ...visit.card, sensory: 'A quieter room.' } });
   assert.equal(checkInBrief(visit).status, 'withheld');
-  assert.equal(approvedValue(visit.update)?.body, 'Sunday went well for Rowan.\nJordan Ellis');
+  assert.equal(
+    approvedValue(visit.update)?.body,
+    'Sunday went well for Rowan.\n\nMs. Dana\nExample Harbor Fellowship',
+  );
 });
 
 test('a correction keeps a draft', () => {

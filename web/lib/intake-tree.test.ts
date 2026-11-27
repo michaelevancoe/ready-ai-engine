@@ -4,7 +4,8 @@ import { intakeTree, parseIntakeTree, type IntakeTree, type Write } from './inta
 
 const NOTE = 'Questions are placeholders pending a professional question set.';
 const BEHAVIOR =
-  'When {child} is very upset, does {child} ever hurt himself or others, or run off? If so, what helps in that moment?';
+  'When {child} is very upset, does that ever lead to hurting themselves or others, or running off? If so, what helps in that moment?';
+const GENDERED = /\b(?:he|him|his|himself|she|her|hers|herself)\b/iu;
 
 test('the shipped tree parses nine required sections', () => {
   const parsed = parseIntakeTree(intakeTree);
@@ -111,6 +112,8 @@ test('the about section starts with the child name and age', () => {
   for (const node of intakeTree.nodes) {
     assert.equal(node.prompt.includes('Rowan'), false, node.id);
     assert.equal(/\b(?:he|his)\b/iu.test(node.prompt), false, node.id);
+    assert.equal(GENDERED.test(node.prompt), false, node.id);
+    assert.equal(/\bthey need\b/iu.test(node.prompt), false, node.id);
   }
 });
 

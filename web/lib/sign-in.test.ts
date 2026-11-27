@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { INACTIVE_BODY, headerTone, reduceSignIn, type SignInView } from './sign-in.ts';
+import { CHURCHES, INACTIVE_BODY, headerTone, reduceSignIn, type SignInView } from './sign-in.ts';
+
+test('the sample church is Example Harbor Fellowship', () => {
+  assert.equal(CHURCHES[0]?.id, 'harbor');
+  assert.equal(CHURCHES[0]?.name, 'Example Harbor Fellowship');
+  assert.equal(CHURCHES[1]?.name, 'Riverside Fellowship');
+});
 
 test('the header color follows the role', () => {
   assert.equal(headerTone('Parent'), 'parent');

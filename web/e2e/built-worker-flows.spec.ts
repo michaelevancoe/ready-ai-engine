@@ -43,10 +43,10 @@ test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
   await send(page, 'Crowded doorways.', 'feel calm again');
   await send(page, 'A quiet corner and a heads-up before the next song.', 'let you know what Rowan needs');
   await send(page, 'Picture cards.', 'What sensory things');
-  await send(page, 'TICK-QUIET-ROOM', 'need the bathroom');
+  await send(page, 'TICK-QUIET-ROOM', 'time for the bathroom');
   await send(page, 'Tells an adult', 'any allergies');
   await send(page, 'Food allergy', 'what should a volunteer do');
-  await send(page, 'TICK-ALLERGY-PLAN', 'hurt himself or others');
+  await send(page, 'TICK-ALLERGY-PLAN', 'hurting themselves or others');
   await send(page, 'No, not usually', "Rowan's brief");
   await page.getByRole('button', { name: 'Looks right, approve' }).click();
   await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();
@@ -161,25 +161,40 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await page.getByRole('button', { name: "Draft a note for Rowan's parent", exact: true }).click();
   const parentNote = page.getByRole('textbox', { name: 'Parent note' });
   await expect(parentNote).toHaveValue(/Sunday went well for Rowan\./);
+  await expect(parentNote).toHaveValue(/\n\nMs\. Dana\nExample Harbor Fellowship$/);
+  await expect(parentNote).not.toHaveValue(/Jordan Ellis/);
   await expect(parentNote).not.toHaveValue(/TICK-AFTER-SUNDAY/);
   await save(page, 'flows-leader-note.png');
-
-  await page.getByRole('link', { name: 'Parent' }).click();
-  await expect(update).not.toContainText('TICK-AFTER-SUNDAY');
-  await expect(update).not.toContainText('Sunday went well');
-  await expect(page.getByRole('button', { name: 'Write the Sunday update', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Write the parent note', exact: true })).toHaveCount(0);
-
-  await page.getByRole('link', { name: 'Leader' }).click();
-  await page.getByRole('button', { name: /Notes from Jordan Ellis/ }).click();
-  await page.getByRole('textbox', { name: 'Parent note' }).fill('Sunday went well for Rowan. The quiet seat helped.\nJordan Ellis');
   await page.getByRole('button', { name: 'Approve and send to parent', exact: true }).click();
 
   await page.getByRole('link', { name: 'Parent' }).click();
-  await expect(update).toContainText('Sunday went well for Rowan. The quiet seat helped.');
-  await expect(update).toContainText('Jordan Ellis');
+  await expect(update).toContainText('Sunday went well for Rowan.');
+  await expect(update).toContainText('Ms. Dana');
+  await expect(update).toContainText('Example Harbor Fellowship');
+  await expect(update).not.toContainText('Jordan Ellis');
   await expect(update).not.toContainText('TICK-AFTER-SUNDAY');
+  await expect(page.getByRole('button', { name: 'Write the Sunday update', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Write the parent note', exact: true })).toHaveCount(0);
   await save(page, 'flows-parent-note.png');
+
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await page.getByRole('button', { name: 'Church settings' }).click();
+  await page.getByLabel('Leader').fill('Ms. Rivera');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: /Notes from Jordan Ellis/ }).click();
+  await page.getByRole('button', { name: "Draft a note for Rowan's parent", exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Parent note' })).toHaveValue(/\n\nMs\. Rivera\nExample Harbor Fellowship$/);
+});
+
+test('the home page description does not name the sample family', async ({ page }) => {
+  const response = await page.goto('/');
+  const html = (await response?.text()) ?? '';
+  expect(html).not.toContain('Rowan Sampleton');
+  const description = await page.locator('meta[name="description"]').getAttribute('content');
+  expect(description ?? '').not.toMatch(/Sampleton|Rowan|Avery/);
+  expect(description).toBe(
+    'Ready helps a family share what helps their child on Sunday, so the kids ministry team is ready to welcome them.',
+  );
 });
 
 test('each example opens a brief for the volunteer', async ({ page }) => {

@@ -120,6 +120,7 @@ test('waits once after a 429 before the second fetch', async () => {
 
 test('a persistent gateway failure makes three calls', async () => {
   let calls = 0;
+  const logs: SafeLog[] = [];
   const pending = generate({
     endpoint: 'intake.profile',
     messages,
@@ -131,6 +132,7 @@ test('a persistent gateway failure makes three calls', async () => {
       calls += 1;
       return new Response('nope', { status: 429 });
     },
+    log: (event) => logs.push(event),
   });
   await assert.rejects(pending, (error: unknown) => {
     assert.ok(error instanceof GenerateError);
@@ -138,6 +140,60 @@ test('a persistent gateway failure makes three calls', async () => {
     return true;
   });
   assert.equal(calls, 3);
+  assert.equal(logs[0]?.statusClass, '429');
+  assert.equal(logs[1]?.statusClass, '429');
+  assert.equal(logs[2]?.statusClass, '429');
+  assert.equal(JSON.stringify(logs).includes('nope'), false);
+});
+
+test('a 429 with Retry-After waits that long and stays under the cap', async () => {
+  let slept = 0;
+  let calls = 0;
+  const profile = await generate({
+    endpoint: 'intake.profile',
+    messages,
+    schemaName: childProfileSchemaName,
+    schema: childProfileSchema,
+    parse: parseChildProfile,
+    env: testEnv,
+    sleep: async (ms: number) => {
+      slept += ms;
+    },
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) return new Response('rate', { status: 429, headers: { 'retry-after': '2' } });
+      return chatEnvelope(sampleProfile());
+    },
+  });
+  assert.deepEqual(profile, sampleProfile());
+  assert.equal(calls, 2);
+  assert.equal(slept, 2000);
+  assert.equal(slept <= 8000, true);
+});
+
+test('a persistent 429 ends in generation_failed within the wait cap', async () => {
+  let slept = 0;
+  const started = Date.now();
+  const pending = generate({
+    endpoint: 'intake.profile',
+    messages,
+    schemaName: childProfileSchemaName,
+    schema: childProfileSchema,
+    parse: parseChildProfile,
+    env: testEnv,
+    sleep: async (ms: number) => {
+      slept += ms;
+    },
+    fetch: async () => new Response('rate', { status: 429, headers: { 'retry-after': '30' } }),
+  });
+  await assert.rejects(pending, (error: unknown) => {
+    assert.ok(error instanceof GenerateError);
+    assert.equal(error.reason, 'gateway');
+    return true;
+  });
+  assert.equal(slept <= 8000, true);
+  assert.equal(slept >= 2000, true);
+  assert.equal(Date.now() - started < 9000, true);
 });
 
 test('falls back to the second configured model after the primary retry fails', async () => {
