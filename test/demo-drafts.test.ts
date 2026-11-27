@@ -2059,3 +2059,187 @@ async function generated(
   const response = await demo.handle(post(pathname, body));
   return { status: response.status, calls, payload: await response.json() };
 }
+
+const LIVE_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+const rowanRequestLines = [
+  { field: 'loves', label: 'Loves', text: 'Rowan loves Disney stories and quiet songs.' },
+  { field: 'overwhelms', label: 'Overwhelms', text: 'A crowded doorway overwhelms Rowan.' },
+  { field: 'whatHelps', label: 'What helps', text: 'A quiet break helps Rowan settle.' },
+  { field: 'communication', label: 'Communication', text: 'Rowan points and uses a few words.' },
+  { field: 'sensory', label: 'Sensory', text: 'Rowan needs a softer seat away from bright lights.' },
+] as const;
+
+function rawChat(content: string): Response {
+  return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+async function storyFromModel(content: string): Promise<{ status: number; body: Record<string, unknown>; logs: string[] }> {
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async () => rawChat(content));
+    const response = await demo.handle(socialStory({ lines: [...rowanRequestLines], childName: 'Rowan' }));
+    return { status: response.status, body: (await response.json()) as Record<string, unknown>, logs };
+  } finally {
+    console.error = original;
+  }
+}
+
+test('a social story asks for enough tokens and names the model that wrote it', async () => {
+  const calls: GatewayCall[] = [];
+  const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
+  const response = await demo.handle(socialStory({ lines: [...rowanRequestLines], childName: 'Rowan' }));
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { source: string; model?: string };
+  assert.equal(body.source, 'model');
+  assert.equal(body.model, LIVE_MODEL);
+  assert.equal(calls[0]?.body.max_tokens !== undefined && calls[0].body.max_tokens >= 1024, true);
+  const system = systemText(calls[0]);
+  assert.equal(system.includes('The pickup page ends with one warm, calm, reassuring line for the child.'), true);
+  assert.equal(system.includes('End with one warm, calm, reassuring line'), false);
+});
+
+test('fenced, trailed, and truncated story JSON still becomes the personal story', async () => {
+  const pages = personalPages();
+  const story = { title: 'Sunday with Rowan', pages };
+  const raw = JSON.stringify(story);
+  const fenced = await storyFromModel(`Here is the story:\n\`\`\`json\n${raw}\n\`\`\`\nYou are welcome here, Rowan.`);
+  assert.equal(fenced.status, 200);
+  assert.equal(fenced.body.source, 'model');
+  assert.equal(fenced.body.model, LIVE_MODEL);
+  assert.deepEqual(fenced.body.pages, pages);
+  const trailed = await storyFromModel(`${raw}\nYou are welcome here, Rowan.`);
+  assert.equal(trailed.body.source, 'model');
+  assert.deepEqual(trailed.body.pages, pages);
+  const pickupAt = raw.lastIndexOf(pages.pickup.slice(0, 12));
+  const cut = raw.slice(0, pickupAt + 8);
+  const truncated = await storyFromModel(cut);
+  assert.equal(truncated.body.source, 'model');
+  const kept = truncated.body.pages as StoryPages;
+  assert.equal(kept.helper, pages.helper);
+  assert.equal(kept.quiet, pages.quiet);
+});
+
+test('an extra closing field is ignored and a third sentence stays off the page', () => {
+  const pages = personalPages();
+  const withClosing = parseSocialStory(
+    { title: 'Sunday with Rowan', pages, closing: 'You are welcome here.' },
+    rowanInput,
+  );
+  assert.equal(withClosing.pages.helper, pages.helper);
+  const warm = 'Rowan can hold a Disney story. Rowan smiles at the doorway. You are welcome here.';
+  const trimmed = parseSocialStory(
+    { title: 'Sunday with Rowan', pages: { ...pages, doors: warm } },
+    rowanInput,
+  );
+  assert.equal(trimmed.pages.doors, 'Rowan can hold a Disney story. Rowan smiles at the doorway.');
+});
+
+test('a short name and a hedged seat survive, and safety reasons stay distinct', () => {
+  const lines = [
+    { field: 'loves', text: 'Pip the fox' },
+    { field: 'whatHelps', text: 'a lap pad' },
+  ];
+  const pages = {
+    ...templateStoryPages(harbor),
+    helper: 'Juniper can hold Pip the fox.',
+    quiet: 'A pad rests on Juniper lap.',
+  };
+  const named = parseSocialStory(
+    { title: 'Sunday with Juniper', pages },
+    { childName: 'Juniper', church: harbor, lines },
+  );
+  assert.equal(named.pages.helper, pages.helper);
+  assert.equal(named.pages.quiet, pages.quiet);
+  const hedged = personalPages();
+  hedged.quiet = 'Rowan could sit in a softer seat.';
+  assert.equal(parseSocialStory({ title: 'Sunday with Rowan', pages: hedged }, rowanInput).pages.quiet, hedged.quiet);
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: { ...hedged, quiet: 'They sit in a soft seat.' } }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'church_detail',
+  );
+  assert.throws(
+    () => parseSocialStory({ title: 'Allergy Sunday with Rowan', pages: personalPages() }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'safety',
+  );
+  const thin = personalPages();
+  for (const beat of STORY_BEATS) thin[beat] = 'Rowan waves.';
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: thin }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'too_short',
+  );
+  const generic = personalPages();
+  for (const beat of STORY_BEATS) generic[beat] = 'Rowan walks along with a grown-up and smiles at the morning.';
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: generic }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'child_detail_min',
+  );
+});
+
+function rejectedReason(error: unknown): string | undefined {
+  if (!(error instanceof SchemaRejected)) return undefined;
+  const record = error as SchemaRejected & { fallbackReason?: string };
+  return record.fallbackReason;
+}
+
+test('a rejected story reports a fallback reason and does not log the model text', async () => {
+  const token = 'TOKEN-MODEL-OUTPUT';
+  const result = await storyFromModel(`not json ${token}`);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.source, 'fallback');
+  assert.equal(result.body.fallbackReason, 'invalid_json');
+  assert.equal(result.body.model, LIVE_MODEL);
+  assert.equal(JSON.stringify(result.body).includes(token), false);
+  assert.equal(result.logs.some((line) => line.includes('"fallbackReason":"invalid_json"')), true);
+  assert.equal(result.logs.some((line) => line.includes(token)), false);
+});
+
+test('a long answer acknowledgement keeps a quoted detail and sends the whole answer', async () => {
+  const answer = juniperAnswers.loves;
+  assert.equal(answer.length > 1500, true);
+  const line = 'The fox is named Pip.';
+  let told = '';
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as { messages?: { role?: string; content?: string }[] };
+    const user = body.messages?.find((message) => message.role === 'user')?.content ?? '';
+    told = user.slice('Answer: '.length, user.indexOf('\nSection: '));
+    return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
+  });
+  const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId: 'loves' }));
+  assert.equal(response.status, 200);
+  assert.equal(told, answer);
+  assert.deepEqual(await response.json(), { relevant: true, line, clarifyingPrompt: '' });
+});
+
+test('a pronoun in a long-answer acknowledgement falls back with a safety reason', async () => {
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async () =>
+      chatEnvelope({ relevant: true, line: 'She holds Pip in both hands.', clarifyingPrompt: '' }),
+    );
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: juniperAnswers.loves, nodeId: 'loves' }),
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { line: string; fallbackReason?: string };
+    assert.equal(body.line, 'Thanks for sharing that.');
+    assert.equal(body.fallbackReason, 'safety');
+    assert.equal(logs.some((line) => line.includes('"fallbackReason":"safety"')), true);
+    assert.equal(logs.some((line) => line.includes('Pip')), false);
+    assert.equal(logs.some((line) => line.includes(juniperAnswers.loves.slice(0, 40))), false);
+  } finally {
+    console.error = original;
+  }
+});
