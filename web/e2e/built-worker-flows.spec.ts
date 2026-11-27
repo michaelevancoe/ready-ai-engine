@@ -41,7 +41,7 @@ test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
   await send(page, 'He likes a quiet hello.', 'What does Rowan love');
   await send(page, 'Trains.', 'What tends to overwhelm');
   await send(page, 'Crowded doorways.', 'feel calm again');
-  await send(page, 'A quiet corner and a heads-up before the next song.', 'let you know what Rowan needs');
+  await send(page, 'A quiet corner and a heads-up before the next song.', 'let you know what they need');
   await send(page, 'Picture cards.', 'What sensory things');
   await send(page, 'TICK-QUIET-ROOM', 'time for the bathroom');
   await send(page, 'Tells an adult', 'any allergies');
@@ -156,7 +156,7 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await save(page, 'flows-volunteer-notes.png');
 
   await page.getByRole('link', { name: 'Leader' }).click();
-  await page.getByRole('button', { name: /Notes from Jordan Ellis/ }).click();
+  await page.getByRole('button', { name: /Rowan, 7\s+Ready to draft/ }).click();
   await expect(page.getByRole('region', { name: 'Internal notes' })).toContainText('TICK-AFTER-SUNDAY');
   await page.getByRole('button', { name: "Draft a note for Rowan's parent", exact: true }).click();
   const parentNote = page.getByRole('textbox', { name: 'Parent note' });
@@ -181,9 +181,9 @@ test('a parent approves a brief before volunteer and leader see it', async ({ pa
   await page.getByRole('button', { name: 'Church settings' }).click();
   await page.getByLabel('Leader').fill('Ms. Rivera');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.getByRole('button', { name: /Notes from Jordan Ellis/ }).click();
-  await page.getByRole('button', { name: "Draft a note for Rowan's parent", exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Parent note' })).toHaveValue(/\n\nMs\. Rivera\nExample Harbor Fellowship$/);
+  await page.getByRole('button', { name: /Rowan, 7\s+Sent to parent/ }).click();
+  await expect(page.getByRole('heading', { name: "Note sent to Rowan's parent" })).toBeVisible();
+  await expect(page.getByRole('button', { name: "Draft a note for Rowan's parent" })).toHaveCount(0);
 });
 
 test('the home page description does not name the sample family', async ({ page }) => {
@@ -382,7 +382,7 @@ test('a nonsense helps answer stays on the question until a real one', async ({ 
   await expect(page.getByRole('button', { name: 'Skip' })).toHaveCount(0);
   await answer.fill('A quiet corner and a heads-up before the next song.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText('let you know what Rowan needs').first()).toBeVisible();
+  await expect(page.getByText('let you know what they need').first()).toBeVisible();
 });
 
 test('a second nonsense helps answer advances', async ({ page }) => {

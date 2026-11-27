@@ -18,7 +18,8 @@ test('leader rows open each sample child and a reload restores the seeds', async
 
   await page.goto('/leader');
   await expect(page.getByRole('heading', { name: 'Good morning, Ms. Dana' })).toBeVisible();
-  await expect(page.getByText('Rowan is at Example Harbor Fellowship.')).toBeVisible();
+  await expect(page.getByText("You're Ms. Dana, the room leader.")).toBeVisible();
+  await expect(page.getByText('6 children are in the room today.')).toBeVisible();
   await expect(page.getByText('Sample children. Tap one to try any leader step.')).toBeVisible();
   const region = page.getByRole('region', { name: 'Other children today' });
   await expect(region.getByRole('button')).toHaveCount(5);
@@ -64,13 +65,15 @@ test('leader rows open each sample child and a reload restores the seeds', async
 test('volunteer rows open each child and return to the list', async ({ page }) => {
   test.skip(accountMode, 'account boot');
   await page.goto('/volunteer');
-  await expect(page.getByRole('button', { name: 'Open Rowan, 7, No brief yet' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Rowan, 7, Brief ready' })).toBeVisible();
   await expect(page.getByText('Owen, Nora, Ezra, Hazel and Lucy are sample children.')).toBeVisible();
   const rows = page.locator('ul.roster > li');
   await expect(rows).toHaveCount(6);
 
-  await page.getByRole('button', { name: 'Open Rowan, 7, No brief yet' }).click();
-  await expect(page.getByText("Rowan's parent has not approved a Sunday brief.")).toBeVisible();
+  await page.getByRole('button', { name: 'Open Rowan, 7, Brief ready' }).click();
+  await expect(page.getByRole('region', { name: 'Sunday brief' })).toContainText('Disney');
+  await expect(page.getByText("Rowan's parent has not approved a Sunday brief.")).toHaveCount(0);
+  await expect(page.getByText('switch to Parent')).toHaveCount(0);
   await expect(page.getByText('Sample child · resets on reload')).toHaveCount(0);
   await page.getByRole('button', { name: 'All children' }).click();
 

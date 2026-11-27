@@ -17,7 +17,7 @@ export async function answerTree(page: Page, sensory: string): Promise<void> {
   await send(page, 'He likes a quiet hello.', 'What does Rowan love');
   await send(page, 'Trains.', 'What tends to overwhelm');
   await send(page, 'Crowded doorways.', 'feel calm again');
-  await send(page, LONG_HELPS, 'let you know what Rowan needs');
+  await send(page, LONG_HELPS, 'let you know what they need');
   await send(page, 'Picture cards.', 'What sensory things');
   await send(page, sensory, 'time for the bathroom');
   await send(page, 'Tells an adult', 'any allergies');

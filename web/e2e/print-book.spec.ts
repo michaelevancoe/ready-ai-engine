@@ -21,6 +21,7 @@ const headerFooter = {
 };
 
 test('Rowan, Maya, and Jonah print one sheet per book page', async ({ page }) => {
+  expect(bookPages).toBe(8);
   test.setTimeout(300_000);
   for (const [button, name] of examples) {
     await openStory(page, button, name);
