@@ -724,14 +724,20 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
+  assert.equal(note.body, `Sunday went well for Rowan.${LEADER_SIGN}`);
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);
-  assert.equal(note.body.endsWith(LEADER_SIGN), true);
   assert.equal(note.body.includes('Jordan Ellis'), false);
-  assert.equal(note.body.split(LEADER_SIGN).length, 2);
   assert.equal(note.body.includes('['), false);
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY');
   assert.notEqual(note.body, 'TICK-AFTER-SUNDAY\nRowan');
   assert.notEqual(note.body.replace(/\s+/g, ''), 'TICK-AFTER-SUNDAYRowan');
+  const redeemer = await demo.handle(
+    post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY', 'Rowan', { church: 'Church of the Redeemer' })),
+  );
+  assert.equal(redeemer.status, 200);
+  assert.deepEqual(await redeemer.json(), {
+    body: 'Sunday went well for Rowan.\n\nMs. Dana\nChurch of the Redeemer',
+  });
 });
 
 test('parseSocialStory rejects a dict and a body that is only the labels', () => {
@@ -790,18 +796,76 @@ test('parseSundayUpdate strips a bracketed name so it never reaches the screen',
   assert.throws(() => parseSundayUpdate({ body: `${notes}\n[Name]` }, notes, 'Juniper', sign), SchemaRejected);
 });
 
-test('parseSundayUpdate keeps one leader sign-off and drops a model sign-off', () => {
+test('parseSundayUpdate keeps another person and drops a closing on the leader', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const prose = 'Sunday went well. The quiet seat helped.';
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   const volunteer = parseSundayUpdate({ body: `${prose}\nJordan Ellis` }, notes, 'Rowan', sign);
-  assert.equal(volunteer.body.endsWith(LEADER_SIGN), true);
-  assert.equal(volunteer.body.includes('Jordan Ellis'), false);
-  assert.equal(volunteer.body.split(LEADER_SIGN).length, 2);
+  assert.equal(volunteer.body, `${prose}\nJordan Ellis${LEADER_SIGN}`);
   const warmly = parseSundayUpdate({ body: `${prose}\nWarmly,\nMs. Dana` }, notes, 'Rowan', sign);
-  assert.equal(warmly.body.endsWith(LEADER_SIGN), true);
-  assert.equal(warmly.body.split(LEADER_SIGN).length, 2);
-  assert.equal(warmly.body.includes('Warmly'), false);
+  assert.equal(warmly.body, `${prose}${LEADER_SIGN}`);
+});
+
+test('a Sunday note keeps a room and a thanks line', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  for (const line of ['Harbor Room', 'Thanks.']) {
+    const note = parseSundayUpdate({ body: `${prose}\n${line}` }, notes, 'Rowan', sign);
+    assert.equal(note.body, `${prose}\n${line}${LEADER_SIGN}`);
+  }
+});
+
+test('a copied leader or church line is signed once', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  const copies = [
+    `${prose}\nLeader: Ms. Dana`,
+    `${prose}\nMs. Dana,`,
+    `${prose}\nChurch: Example Harbor Fellowship`,
+    `${prose}\nFrom: Ms. Dana`,
+    `${prose}\nms. dana\nexample harbor fellowship`,
+    prose,
+    `${prose}${LEADER_SIGN}`,
+  ];
+  for (const body of copies) {
+    assert.equal(parseSundayUpdate({ body }, notes, 'Rowan', sign).body, `${prose}${LEADER_SIGN}`);
+  }
+});
+
+test('a church name with a small word is signed once', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  for (const church of ['Church of the Harbor', 'Church of the Redeemer']) {
+    const sign = { leader: 'Ms. Dana', church };
+    const copied = parseSundayUpdate({ body: `${prose}\n${church}` }, notes, 'Rowan', sign);
+    const exact = parseSundayUpdate({ body: `${prose}\n\nMs. Dana\n${church}` }, notes, 'Rowan', sign);
+    const signed = `${prose}\n\nMs. Dana\n${church}`;
+    assert.equal(copied.body, signed);
+    assert.equal(exact.body, signed);
+  }
+});
+
+test('a closing word stays unless it sits on the leader or the church', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = 'Sunday went well. The quiet seat helped.';
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  for (const word of ['Love,', 'From,', 'Blessings,', 'Thanks,', 'Warmly,']) {
+    const alone = parseSundayUpdate({ body: `${prose}\n${word}` }, notes, 'Rowan', sign);
+    assert.equal(alone.body, `${prose}\n${word}${LEADER_SIGN}`);
+    const above = parseSundayUpdate({ body: `${prose}\n${word}\nMs. Dana` }, notes, 'Rowan', sign);
+    assert.equal(above.body, `${prose}${LEADER_SIGN}`);
+  }
+});
+
+test('a Sunday sentence that starts with Love or From stays', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  const love = 'Sunday went well. The quiet seat helped.\nLove the quiet corner.';
+  assert.equal(parseSundayUpdate({ body: love }, notes, 'Rowan', sign).body, `${love}${LEADER_SIGN}`);
+  const from = 'From the first song, Rowan sat quietly.';
+  assert.equal(parseSundayUpdate({ body: from }, notes, 'Rowan', sign).body, `${from}${LEADER_SIGN}`);
 });
 
 test('a dict story body fails the existing generation retry', async () => {
@@ -915,18 +979,19 @@ test('a model sign-off is replaced by the leader and the church', async () => {
   const prose = 'Sunday went well. The quiet seat helped.';
   const volunteer = await generated('/v1/drafts/sunday-update', sunday(notes), { body: `${prose}\nJordan Ellis` });
   assert.equal(volunteer.status, 200);
-  const volunteerBody = (volunteer.payload as { body: string }).body;
-  assert.equal(volunteerBody.endsWith(LEADER_SIGN), true);
-  assert.equal(volunteerBody.includes('Jordan Ellis'), false);
-  assert.equal(volunteerBody.split(LEADER_SIGN).length, 2);
+  assert.equal(volunteer.calls, 1);
+  assert.deepEqual(volunteer.payload, { body: `${prose}\nJordan Ellis${LEADER_SIGN}` });
   const warmly = await generated('/v1/drafts/sunday-update', sunday(notes), {
     body: `${prose}\nWarmly,\nMs. Dana`,
   });
   assert.equal(warmly.status, 200);
-  const warmlyBody = (warmly.payload as { body: string }).body;
-  assert.equal(warmlyBody.endsWith(LEADER_SIGN), true);
-  assert.equal(warmlyBody.includes('Warmly'), false);
-  assert.equal(warmlyBody.split(LEADER_SIGN).length, 2);
+  assert.equal(warmly.calls, 1);
+  assert.deepEqual(warmly.payload, { body: `${prose}${LEADER_SIGN}` });
+  const sentence = 'From the first song, Rowan sat quietly.';
+  const from = await generated('/v1/drafts/sunday-update', sunday(notes), { body: sentence });
+  assert.equal(from.status, 200);
+  assert.equal(from.calls, 1);
+  assert.deepEqual(from.payload, { body: `${sentence}${LEADER_SIGN}` });
 });
 
 test('a Sunday update without the leader or church, or with an extra key, is rejected', async () => {
