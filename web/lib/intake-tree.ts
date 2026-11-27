@@ -181,7 +181,7 @@ const RAW = {
     {
       id: 'toileting',
       sectionId: 'toileting',
-      prompt: 'How does {child} usually let you know they need the bathroom?',
+      prompt: 'How does {child} usually let you know it\'s time for the bathroom?',
       placeholder: TYPE_ANSWER,
       chips: ['Tells an adult', 'Uses a sign or picture', 'Needs reminders', 'Needs help in the bathroom'],
       writes: [{ target: 'card', key: 'toileting' }],
@@ -206,7 +206,7 @@ const RAW = {
       id: 'behavior',
       sectionId: 'behavior',
       prompt:
-        'When {child} is very upset, does {child} ever hurt himself or others, or run off? If so, what helps in that moment?',
+        'When {child} is very upset, does that ever lead to hurting themselves or others, or running off? If so, what helps in that moment?',
       placeholder: TYPE_ANSWER,
       chips: ['No, not usually', 'Sometimes runs off', 'Sometimes hits or bites', 'Let me explain'],
       writes: [{ target: 'card', key: 'calming' }],

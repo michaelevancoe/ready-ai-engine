@@ -7,7 +7,8 @@ import './globals.css';
 
 export const metadata = {
   title: 'Example Harbor Fellowship',
-  description: 'Avery Sampleton reviews a draft profile for Rowan Sampleton.',
+  description:
+    'Ready helps a family share what helps their child on Sunday, so the kids ministry team is ready to welcome them.',
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
