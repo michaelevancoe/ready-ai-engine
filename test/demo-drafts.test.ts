@@ -11,6 +11,7 @@ import {
 } from '../src/demo-drafts.ts';
 import { SchemaRejected } from '../src/errors.ts';
 import { STORY_BEATS, SUNDAY_STORY_PAGE_MAX, templateStoryPages, type StoryPages } from '../src/sunday-story-text.ts';
+import { postAcknowledgement } from '../web/lib/drafts.ts';
 import { chatEnvelope, testEnv } from './fixtures.ts';
 import { juniperAnswers, juniperName } from './fixtures/long-intake.ts';
 
@@ -212,11 +213,11 @@ test('a failing acknowledgement tries the gateway once and uses the fallback lin
   assert.equal(response.status, 200);
   assert.equal(calls, 1);
   const body = (await response.json()) as { line: string };
-  assert.equal(body.line, "That's really helpful.");
+  assert.equal(body.line, 'Thanks for sharing that.');
 });
 
-test('an acknowledgement longer than 500 characters is rejected before fetch', async () => {
-  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(501), nodeId: 'communication' });
+test('an acknowledgement longer than 2000 characters is rejected before fetch', async () => {
+  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(2001), nodeId: 'communication' });
   assert.equal(result.status, 400);
   assert.equal(result.calls, 0);
 });
@@ -237,6 +238,107 @@ test('an acknowledgement with an extra key is rejected before fetch', async () =
   assert.equal(result.calls, 0);
 });
 
+test('a long answer is acknowledged from its first 1500 characters', async () => {
+  const replies = [
+    'The brother can come along.',
+    'A ribbon can come along.',
+    'The window can stay in view.',
+    'A bakery stop can stay in the story.',
+    'Bottle caps can stay in the story.',
+  ] as const;
+  const sent: string[] = [];
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as { messages?: { role?: string; content?: string }[] };
+    sent.push(body.messages?.find((message) => message.role === 'user')?.content ?? '');
+    const line = replies[calls] ?? replies[0];
+    calls += 1;
+    return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
+  });
+  const openings: string[] = [];
+  const recent: string[] = [];
+  for (let index = 0; index < replies.length; index += 1) {
+    const answer = longAcknowledgement(index);
+    assert.equal(answer.length >= 1500 && answer.length <= 2000, true, String(index));
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', {
+        answer,
+        nodeId: 'loves',
+        ...(recent.length === 0 ? {} : { recent: recent.slice(-3) }),
+      }),
+    );
+    assert.equal(response.status, 200, String(index));
+    const body = (await response.json()) as { line: string };
+    assert.equal(body.line, replies[index], String(index));
+    openings.push(body.line.toLowerCase().split(/\s+/u).slice(0, 3).join(' '));
+    recent.push(body.line);
+  }
+  assert.equal(new Set(openings).size, replies.length);
+  assert.equal(calls, replies.length);
+  const first = sent[0] ?? '';
+  const told = first.slice('Answer: '.length, first.indexOf('\nSection: '));
+  assert.equal(told, juniperAnswers.loves.slice(0, 1500));
+  assert.equal(told.length, 1500);
+  assert.equal(juniperAnswers.loves.length > 1500 && juniperAnswers.loves.length <= 2000, true);
+  assert.equal(sent[4]?.includes(replies[1]), true);
+  assert.equal(sent[4]?.includes(replies[2]), true);
+  assert.equal(sent[4]?.includes(replies[3]), true);
+});
+
+test('a repeated acknowledgement opening is retried once', async () => {
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return chatEnvelope({ relevant: true, line: 'Cards can help on Sunday.', clarifyingPrompt: '' });
+  });
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', {
+      answer: 'Picture cards.',
+      nodeId: 'communication',
+      recent: ['Cards can help the volunteers.'],
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  const body = (await response.json()) as { line: string };
+  assert.equal(body.line.split(/\s+/u).slice(0, 3).join(' ').toLowerCase() === 'cards can help', false);
+});
+
+test('an acknowledgement longer than twenty words falls back without a second call', async () => {
+  const line = `${Array.from({ length: 20 }, () => 'a').join(' ')} cards.`;
+  const result = await acknowledgementFrom(line);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+});
+
+test('the client sends the last three acknowledgement lines', async () => {
+  const bodies: unknown[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({ relevant: true, line: 'Cards can help the volunteers.', clarifyingPrompt: '' });
+  };
+  try {
+    await postAcknowledgement('Picture cards.', 'communication', ['one.', 'two.', 'three.', 'four.']);
+    await postAcknowledgement('Picture cards.', 'communication');
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.deepEqual(bodies[0], {
+    answer: 'Picture cards.',
+    nodeId: 'communication',
+    recent: ['two.', 'three.', 'four.'],
+  });
+  assert.deepEqual(bodies[1], { answer: 'Picture cards.', nodeId: 'communication' });
+});
+
+function longAcknowledgement(index: number): string {
+  if (index === 0) return juniperAnswers.loves;
+  return `${juniperAnswers.loves} ${'colorful bottle caps '.repeat(40)}`.slice(0, 1600 + index * 70);
+}
+
 test('an acknowledgement with a newline comes back as one line', async () => {
   const demo = DemoContext.fromBindings(liveShell(), async () =>
     chatEnvelope({ relevant: true, line: 'Thanks.\nThat helps.', clarifyingPrompt: '' }),
@@ -252,15 +354,16 @@ test('an acknowledgement with a newline comes back as one line', async () => {
   });
 });
 
-const PARENT_FALLBACK = "That's really helpful.";
+const PARENT_FALLBACK = 'Thanks for sharing that.';
 
 const ACKNOWLEDGEMENT_PROMPT = [
   "Ready helps parents of children who need extra support prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
   'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
-  'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
-  'Do not restate or quote the answer.',
+  'line names one specific detail from the answer, in one sentence of at most 20 words.',
+  'line is one warm, plain thank-you to the parent.',
+  'Do not reuse an opening from the recent lines.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
   'Do not label the child.',
@@ -276,15 +379,11 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Relevant: "not sure" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "pizza rocket sandwich" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "asdf qwerty" for "What helps Rowan feel calm again when things get to be too much?"',
-  'Examples of line:',
-  "Thank you, that's really useful to know.",
-  'Got it, that will help the volunteers.',
-  'Thanks, that gives us a clearer picture.',
-  "That's really helpful.",
+  'Example of a line: "Pip the fox can come along." for an answer about a stuffed fox, about Mina rather than the child in the question.',
 ].join('\n');
 
 test('a good acknowledgement is returned unchanged', async () => {
-  const line = "Thank you, that's really useful to know.";
+  const line = 'Cards can help the volunteers.';
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
@@ -602,7 +701,7 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       relevant: true,
-      line: "That's really helpful.",
+      line: 'Thanks for sharing that.',
       clarifyingPrompt: '',
     });
     assert.ok(calls.length >= 1);

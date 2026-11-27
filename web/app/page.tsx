@@ -53,6 +53,7 @@ export default function Page() {
   const nonce = useRef(0);
   const summaryKey = useRef('');
   const summaryRequest = useRef(0);
+  const shownAcks = useRef<string[]>([]);
   const [summary, setSummary] = useState<ShownProfile | null>(null);
   const busy = useRef(false);
   const settling = useRef(false);
@@ -94,11 +95,14 @@ export default function Page() {
     const attempt = attempts.current[nodeId] ?? 0;
     try {
       const raced = await Promise.all([
-        Promise.race([postAcknowledgement(answer, nodeId), delayResult(ACK_LIMIT_MS)]),
+        Promise.race([postAcknowledgement(answer, nodeId, shownAcks.current), delayResult(ACK_LIMIT_MS)]),
         delay(BEAT_MS),
       ]);
       if (token.current !== tokenId) return;
       const decision = decideAck(attempt, ackResult(raced[0]));
+      if (decision.action === 'accept') {
+        shownAcks.current = [...shownAcks.current, decision.line].slice(-3);
+      }
       if (decision.action === 'reask') {
         attempts.current[nodeId] = attempt + 1;
         setReask((previous) => ({ nodeId, prompt: decision.prompt, epoch: (previous?.epoch ?? 0) + 1 }));

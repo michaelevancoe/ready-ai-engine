@@ -60,8 +60,14 @@ export type AckPost =
     }
   | { readonly kind: 'error' };
 
-export function postAcknowledgement(answer: string, nodeId: string): Promise<AckPost> {
-  return post('/v1/drafts/acknowledgement', { answer, nodeId }, readAcknowledgement).then((result) => {
+export function postAcknowledgement(
+  answer: string,
+  nodeId: string,
+  recent: readonly string[] = [],
+): Promise<AckPost> {
+  const shown = recent.slice(-3);
+  const body = shown.length === 0 ? { answer, nodeId } : { answer, nodeId, recent: [...shown] };
+  return post('/v1/drafts/acknowledgement', body, readAcknowledgement).then((result) => {
     if (!result.ok) return { kind: 'error' };
     return { kind: 'line', ...result.value };
   });
