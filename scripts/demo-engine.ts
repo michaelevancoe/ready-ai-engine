@@ -28,6 +28,7 @@ import { churchStore, ids, type MemoryStore } from '../src/memory-store.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
 import { templateStoryPages, type StoryPages } from '../src/sunday-story-text.ts';
+import { filterWhatHelps } from '../src/what-helps.ts';
 import { fictionalDemoEnv } from '../src/demo-env.ts';
 import { sessionAuthVerifier, sessionToken } from '../src/session-auth.ts';
 import { ACK_FALLBACK } from '../web/lib/acknowledgement.ts';
@@ -938,7 +939,29 @@ function profileFromAnswers(answers: IntakeAnswers): ChildProfile {
     avoid: noted(answers.whatToAvoid),
     volunteerGuidance:
       answers.whatHelps.length === 0 ? lead : `${lead} ${answers.whatHelps}`.slice(0, 2000),
+    whatHelps: mockWhatHelps(answers),
   };
+}
+
+function mockWhatHelps(answers: IntakeAnswers): string[] {
+  const name = answers.preferredName.trim().slice(0, 40);
+  const kept = filterWhatHelps([answers.whatHelps, answers.supportNeeds, answers.sensoryNotes].map(clipBullet));
+  const fillers = [
+    `Give ${name} a moment before the next thing.`,
+    `Stay nearby if ${name} needs a break.`,
+    `Show ${name} what happens next.`,
+  ];
+  const bullets = [...kept];
+  for (const filler of fillers) {
+    if (bullets.length >= 3) break;
+    bullets.push(filler);
+  }
+  return [...filterWhatHelps(bullets)].slice(0, 5);
+}
+
+function clipBullet(value: string): string {
+  const sentence = value.split(/(?<=[.!?])\s/u)[0] ?? value;
+  return sentence.trim().split(/\s+/u).slice(0, 16).join(' ').slice(0, 110);
 }
 
 function supportLines(answers: IntakeAnswers): string[] {

@@ -5,8 +5,12 @@ import { isChurchPhotoFile } from '../../lib/church-photo-file';
 import { draftSundayNote, leaderStep, leaderTagKind } from '../../lib/demo-visits';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
-import { childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
+import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
+import { checkInBrief, childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
+import { visitWhatHelps } from '../../lib/what-helps';
+import { PrivacyNote } from '../privacy-note';
 import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
+import { WhatHelpsCard } from '../what-helps';
 import { readChurchPhoto } from './read-church-photo';
 
 const CHURCH_FIELDS = [
@@ -27,7 +31,7 @@ const PHOTO_SLOTS = [
   ['pickup', 'Pickup area'],
 ] as const satisfies ReadonlyArray<readonly [ChurchPhotoSlot, string]>;
 
-type Screen = 'home' | 'after' | 'settings';
+type Screen = 'home' | 'after' | 'brief' | 'settings';
 
 export default function LeaderPage() {
   const store = useReadyStore();
@@ -114,6 +118,16 @@ export default function LeaderPage() {
       />
     );
   }
+  if (screen === 'brief') {
+    return (
+      <LeaderBrief
+        visit={activeVisit}
+        name={name}
+        sample={active.sample}
+        onBack={() => setScreen('after')}
+      />
+    );
+  }
   if (screen === 'after') {
     return (
       <AfterScreen
@@ -123,6 +137,7 @@ export default function LeaderPage() {
         onWrite={() => void onWriteNote()}
         onApprove={onApproveNote}
         onHome={showHome}
+        onOpenBrief={() => setScreen('brief')}
       />
     );
   }
@@ -223,6 +238,7 @@ function AfterScreen({
   onWrite,
   onApprove,
   onHome,
+  onOpenBrief,
 }: {
   visit: Visit;
   name: string;
@@ -230,6 +246,7 @@ function AfterScreen({
   onWrite: () => void;
   onApprove: (event: FormEvent<HTMLFormElement>) => void;
   onHome: () => void;
+  onOpenBrief: () => void;
 }) {
   const writing = visit.update.phase === 'writing';
   return (
@@ -238,6 +255,12 @@ function AfterScreen({
       <span className={tagClass('plain')}>After Sunday</span>
       <h1>After Sunday for {name}</h1>
       {sample ? <p className="sample-tag">Sample child · resets on reload</p> : null}
+      <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+      {visit.brief.phase === 'approved' ? (
+        <button type="button" className="text" onClick={onOpenBrief}>
+          View {name}&apos;s full brief (parent&apos;s own words) ›
+        </button>
+      ) : null}
       {visit.brief.phase === 'open' ? (
         <section aria-label="Sunday brief">
           <h2>Sunday brief</h2>
@@ -317,6 +340,43 @@ function AfterScreen({
           ) : null}
         </>
       ) : null}
+    </main>
+  );
+}
+
+function LeaderBrief({
+  visit,
+  name,
+  sample,
+  onBack,
+}: {
+  visit: Visit;
+  name: string;
+  sample: boolean;
+  onBack: () => void;
+}) {
+  const brief = checkInBrief(visit);
+  return (
+    <main>
+      <div className="top-bar">
+        <button type="button" className="back" onClick={onBack}>
+          ← After Sunday
+        </button>
+      </div>
+      <h1>{name}&apos;s brief</h1>
+      <section aria-label="Sunday brief">
+        <h2>Sunday brief</h2>
+        <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+        <PrivacyNote variant="line" text={volunteerCheckInPrivacy(name)} />
+        {brief.status === 'approved'
+          ? brief.lines.map((line) => (
+              <article key={line.field} className="line" data-field={line.field}>
+                <h3>{line.label}</h3>
+                <p>{line.text}</p>
+              </article>
+            ))
+          : null}
+      </section>
     </main>
   );
 }

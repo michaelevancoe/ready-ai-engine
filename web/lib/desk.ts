@@ -1,3 +1,5 @@
+import { filterWhatHelps } from '../../src/what-helps.ts';
+
 export interface IntakeAnswers {
   preferredName: string;
   ageYears: number;
@@ -20,6 +22,7 @@ export interface ShownProfile {
   readonly id: ProfileId;
   readonly status: 'draft' | 'approved';
   readonly sections: readonly ProfileSection[];
+  readonly whatHelps: readonly string[];
 }
 
 export type IntakeGate =
@@ -203,7 +206,15 @@ function shownProfile(value: unknown, status: 'draft' | 'approved'): ShownProfil
   }
   const text = profileText(value.profile);
   if (text === null) return null;
-  return { id: value.id as ProfileId, status, sections: sectionsFrom(text) };
+  return { id: value.id as ProfileId, status, sections: sectionsFrom(text), whatHelps: helpsFrom(value.profile) };
+}
+
+function helpsFrom(value: unknown): readonly string[] {
+  if (!isRecord(value)) return [];
+  const raw = stringList(value.whatHelps);
+  if (raw === null) return [];
+  const kept = filterWhatHelps(raw);
+  return kept.length >= 3 ? kept : [];
 }
 
 function profileText(value: unknown): ProfileText | null {

@@ -13,7 +13,7 @@ import {
   type Conversation,
 } from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
-import { approveProfile, submitIntake } from '../lib/desk';
+import { approveProfile, submitIntake, type ShownProfile } from '../lib/desk';
 import { intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
 import { parentReviewPrivacy, parentStartPrivacy, storyPrivacy } from '../lib/privacy-note';
@@ -28,6 +28,7 @@ import {
   type VisitEvent,
 } from '../lib/visit';
 import { PrivacyNote } from './privacy-note';
+import { WhatHelpsCard } from './what-helps';
 import { SundayPrint } from './sunday-print';
 import { useAccountChurch, useChurchPhotos, useVisit } from './visit-shell';
 
@@ -50,6 +51,9 @@ export default function Page() {
   const [reask, setReask] = useState<{ nodeId: string; prompt: string; epoch: number } | null>(null);
   const token = useRef(0);
   const nonce = useRef(0);
+  const summaryKey = useRef('');
+  const summaryRequest = useRef(0);
+  const [summary, setSummary] = useState<ShownProfile | null>(null);
   const busy = useRef(false);
   const settling = useRef(false);
   const attempts = useRef<Record<string, number>>({});
@@ -121,6 +125,21 @@ export default function Page() {
     }
   }
 
+  useEffect(() => {
+    if (view.kind !== 'brief' || view.actions !== 'draft' || briefAlreadyApproved(visit)) return;
+    const answers = project(intakeTree, visit.conversation).post;
+    const key = JSON.stringify(answers);
+    if (summaryKey.current === key) return;
+    summaryKey.current = key;
+    setSummary(null);
+    const requestId = summaryRequest.current + 1;
+    summaryRequest.current = requestId;
+    void submitIntake(answers).then((result) => {
+      if (summaryRequest.current !== requestId || result.type !== 'draft') return;
+      setSummary(result.profile);
+    });
+  }, [view, visit]);
+
   async function onApprove(): Promise<void> {
     if (view.kind !== 'brief' || view.actions !== 'draft' || busy.current) return;
     if (briefAlreadyApproved(visit)) {
@@ -131,7 +150,19 @@ export default function Page() {
     busy.current = true;
     const id = nonce.current + 1;
     nonce.current = id;
+    const ready = summary;
     try {
+      if (ready !== null) {
+        dispatch({ type: 'intake', event: { type: 'submit', nonce: id } });
+        dispatch({ type: 'intake', event: { type: 'draft', profile: ready, nonce: id } });
+        dispatch({ type: 'intake', event: { type: 'approve' } });
+        const approved = await approveProfile(ready);
+        dispatch({ type: 'intake', event: approved });
+        if (approved.type !== 'approved') return;
+        dispatch({ type: 'approveBrief' });
+        dispatch({ type: 'conversation', event: { type: 'approve' } });
+        return;
+      }
       dispatch({ type: 'intake', event: { type: 'submit', nonce: id } });
       const result = await submitIntake(project(intakeTree, visit.conversation).post);
       switch (result.type) {
@@ -190,6 +221,7 @@ export default function Page() {
           pending={pending}
           error={visit.intake.status === 'error' ? visit.intake.message : null}
           fixed={visit.conversation.updated.length > 0}
+          helps={summary?.whatHelps ?? []}
           onApprove={() => void onApprove()}
           dispatch={dispatch}
         />
@@ -483,6 +515,7 @@ function BriefScreen({
   pending,
   error,
   fixed,
+  helps,
   onApprove,
   dispatch,
 }: {
@@ -493,6 +526,7 @@ function BriefScreen({
   pending: boolean;
   error: string | null;
   fixed: boolean;
+  helps: readonly string[];
   onApprove: () => void;
   dispatch: Dispatch<VisitEvent>;
 }) {
@@ -559,6 +593,7 @@ function BriefScreen({
           </figure>
         ))}
       </div>
+      {view.actions === 'draft' ? <WhatHelpsCard name={brief.name} bullets={helps} audience="review" /> : null}
       <p className="section-label">{brief.name}&apos;s brief</p>
       {savedTitle === null ? null : (
         <p className="banner" role="status">

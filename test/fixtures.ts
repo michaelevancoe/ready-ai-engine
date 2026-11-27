@@ -15,6 +15,7 @@ export function sampleProfile(): ChildProfile {
     supportStrategies: ['offer a quiet seat'],
     avoid: ['surprises'],
     volunteerGuidance: 'Explain the next activity first.',
+    whatHelps: ['Offer a quiet seat.', 'Give a warning before music.', 'Explain the next activity first.'],
   };
 }
 

@@ -13,6 +13,7 @@ function shown(status: 'draft' | 'approved'): ShownProfile {
       { heading: 'Avoid', lines: ['Surprise loud songs.'] },
       { heading: 'Volunteer guidance', lines: ['Explain the next activity first.'] },
     ],
+    whatHelps: [],
   };
 }
 

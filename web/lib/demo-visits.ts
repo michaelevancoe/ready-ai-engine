@@ -36,6 +36,7 @@ interface SampleSpec {
   readonly age: string;
   readonly about: string;
   readonly lines: readonly string[];
+  readonly helps: readonly string[];
   readonly allergyMore: string | null;
   readonly notes: string;
   readonly draft: string | null;
@@ -53,6 +54,7 @@ const SAMPLES: readonly SampleSpec[] = [
     age: '8',
     about: '',
     lines: [],
+    helps: [],
     allergyMore: null,
     notes: '',
     draft: null,
@@ -73,6 +75,12 @@ const SAMPLES: readonly SampleSpec[] = [
       'No known allergies',
       'No, not usually',
     ],
+    helps: [
+      'Give Nora a two-minute warning before a change.',
+      'Give Nora one step at a time.',
+      'Let Nora sit at the end of the row.',
+      'Stay close to a familiar adult.',
+    ],
     allergyMore: null,
     notes: '',
     draft: null,
@@ -92,6 +100,11 @@ const SAMPLES: readonly SampleSpec[] = [
       'Goes on his own; tells an adult first',
       'Dairy free',
       'May walk away when upset. Stay close and calm',
+    ],
+    helps: [
+      'Give Ezra a 2-minute warning before a change.',
+      'Give Ezra time to answer in full sentences.',
+      'Stay close if Ezra walks away.',
     ],
     allergyMore: 'Dairy-free snack, please',
     notes:
@@ -116,6 +129,11 @@ const SAMPLES: readonly SampleSpec[] = [
       'No known allergies',
       'She comes back on her own after a short break',
     ],
+    helps: [
+      'Offer Hazel a break in the quiet corner.',
+      'Let Hazel read aloud when she is ready.',
+      'Let Hazel come back on her own after a break.',
+    ],
     allergyMore: null,
     notes:
       'Helped set out the craft supplies. Read the memory verse aloud. Took one break in the quiet corner when it got loud and came back on her own.',
@@ -138,6 +156,11 @@ const SAMPLES: readonly SampleSpec[] = [
       'She goes on her own',
       'No known allergies',
       'No, not usually',
+    ],
+    helps: [
+      'Give Lucy one reminder at pickup.',
+      'Let Lucy answer questions at story time.',
+      'Keep Lucy near the rest of the group.',
     ],
     allergyMore: null,
     notes: 'Great morning. Answered two questions at story time. Needed one reminder to stay with the group at pickup.',
@@ -220,8 +243,8 @@ function eventsFor(spec: SampleSpec): VisitEvent[] {
     ...answers.map((text): VisitEvent => ({ type: 'conversation', event: { type: 'answer', text } })),
   ];
   if (spec.lines.length === 0) return events;
-  const draft = fictionalProfile(spec.name, 'draft');
-  const approved = fictionalProfile(spec.name, 'approved');
+  const draft = fictionalProfile(spec.name, 'draft', spec.helps);
+  const approved = fictionalProfile(spec.name, 'approved', spec.helps);
   events.push(
     { type: 'conversation', event: { type: 'approve' } },
     { type: 'intake', event: { type: 'submit', nonce: 1 } },
@@ -289,10 +312,11 @@ function checkSeed(spec: SampleSpec, visit: Visit): void {
   if (spec.stage === 'sent' && visit.update.phase !== 'approved') throw new Error(`${spec.id} was not sent`);
 }
 
-function fictionalProfile(name: string, status: 'draft' | 'approved'): ShownProfile {
+function fictionalProfile(name: string, status: 'draft' | 'approved', helps: readonly string[]): ShownProfile {
   return {
     id: '20000000-0000-4000-8000-0000000000a1' as ProfileId,
     status,
+    whatHelps: helps,
     sections: [
       { heading: 'Summary', lines: [`${name} is a fictional child.`] },
       { heading: 'Sensory considerations', lines: ['None shared.'] },

@@ -9,6 +9,7 @@ import { intakeMessages, parseIntake } from './intake.ts';
 import type { SafeLog } from './log.ts';
 import { authorize } from './policy.ts';
 import { childProfileSchema, childProfileSchemaName, parseChildProfile } from './profile.ts';
+import { filterWhatHelps } from './what-helps.ts';
 import type { ProfileRecord, ProfileStore } from './store.ts';
 import type { AccessSource } from './supabase-access.ts';
 import type { AuthVerifier } from './supabase-auth.ts';
@@ -40,12 +41,13 @@ function present(record: ProfileRecord): {
   profile: ProfileRecord['profile'];
   approvedBy: string | null;
 } {
+  const kept = filterWhatHelps(record.profile.whatHelps);
   return {
     id: record.id,
     organizationId: record.organizationId,
     childId: record.childId,
     status: record.status,
-    profile: record.profile,
+    profile: { ...record.profile, whatHelps: kept.length >= 3 ? [...kept] : [] },
     approvedBy: record.approvedBy,
   };
 }

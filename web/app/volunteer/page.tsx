@@ -4,7 +4,9 @@ import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { volunteerStep, type VisitRecord } from '../../lib/demo-visits';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { checkInBrief, childAgeYears, childPreferredName, type Visit } from '../../lib/visit';
+import { visitWhatHelps } from '../../lib/what-helps';
 import { PrivacyNote } from '../privacy-note';
+import { WhatHelpsCard } from '../what-helps';
 import { useReadyStore } from '../visit-shell';
 
 export default function VolunteerPage() {
@@ -160,6 +162,7 @@ function BriefBody({
   return (
     <section aria-label="Sunday brief">
       <h2>Sunday brief</h2>
+      <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
       <PrivacyNote variant="line" text={volunteerCheckInPrivacy(name)} />
       {brief.lines.length === 0 ? <p>No shared lines.</p> : null}
       {brief.lines.map((line) => (

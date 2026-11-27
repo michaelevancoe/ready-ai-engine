@@ -22,6 +22,7 @@ function shown(status: 'draft' | 'approved'): ShownProfile {
     id: '10000000-0000-4000-8000-000000000031' as ProfileId,
     status,
     sections: [{ heading: 'Summary', lines: ['Rowan, age 7.'] }],
+    whatHelps: [],
   };
 }
 
