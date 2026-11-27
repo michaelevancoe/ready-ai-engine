@@ -26,6 +26,7 @@ test('a Sunday story is a cover plus seven steps in order', () => {
         title: "Rowan's Sunday at",
         churchName: 'Example Harbor Fellowship',
         subtitle: 'A story to read together before Sunday',
+        notice: "Simple version · Ready's personal story wasn't available just now",
       },
       {
         step: 1,
@@ -129,6 +130,7 @@ test('a ready story prints the same seven pages the screen shows', () => {
   const printed = sundayStoryPages(visit);
   assert.equal(printed.length, 8);
   assert.equal(printed[0]?.step, 'cover');
+  if (printed[0]?.step === 'cover') assert.equal(printed[0].notice, null);
   const steps = printed.slice(1);
   assert.deepEqual(
     steps.map((page) => (page.step === 'cover' ? '' : page.text)),
@@ -193,7 +195,46 @@ test('a story picture prefers an upload, then a sample, then a drawing', () => {
   });
 });
 
-function described(page: SundayStoryPage): { step: SundayStoryPage['step']; slot: SundayStoryPage['slot'] } & Record<string, string | number> {
+test('print names the simple version until a personal story is ready', () => {
+  const pill = "Simple version · Ready's personal story wasn't available just now";
+  const template = templatePages();
+  const fallback: SocialStory = { title: 'Sunday with Rowan', pages: template, source: 'fallback' };
+  const stories = [
+    { phase: 'idle' },
+    { phase: 'writing' },
+    { phase: 'failed', message: 'The draft could not be written. Try again.' },
+    { phase: 'ready', value: fallback },
+    { phase: 'approved', value: fallback },
+  ] as const;
+  for (const story of stories) {
+    const pages = sundayStoryPages({ ...initialVisit(), story });
+    assert.equal(pages.length, 8);
+    assert.equal(pages[0]?.step, 'cover');
+    if (pages[0]?.step !== 'cover') continue;
+    assert.equal(pages[0].notice, pill);
+  }
+});
+
+function templatePages(): StoryPages {
+  const visit = initialVisit();
+  const pages = sundayStoryPages(visit);
+  const text = (step: 1 | 2 | 3 | 4 | 5 | 6 | 7) => {
+    const page = pages.find((item) => item.step === step);
+    if (page === undefined || page.step === 'cover') throw new Error(`missing step ${step}`);
+    return page.text;
+  };
+  return {
+    arrive: text(1),
+    doors: text(2),
+    desk: text(3),
+    room: text(4),
+    helper: text(5),
+    quiet: text(6),
+    pickup: text(7),
+  };
+}
+
+function described(page: SundayStoryPage): { step: SundayStoryPage['step']; slot: SundayStoryPage['slot'] } & Record<string, string | number | null> {
   if (page.step === 'cover') {
     return {
       step: page.step,
@@ -201,6 +242,7 @@ function described(page: SundayStoryPage): { step: SundayStoryPage['step']; slot
       title: page.title,
       churchName: page.churchName,
       subtitle: page.subtitle,
+      notice: page.notice,
     };
   }
   return { step: page.step, slot: page.slot, text: page.text };

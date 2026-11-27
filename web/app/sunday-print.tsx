@@ -52,6 +52,7 @@ function PrintPage({ page, photos }: { page: SundayStoryPage; photos: ChurchPhot
           </p>
           {picture}
           <p className="sunday-print-subtitle">{page.subtitle}</p>
+          {page.notice === null ? null : <p className="sunday-print-subtitle">{page.notice}</p>}
           {footer}
         </article>
       );

@@ -1,4 +1,5 @@
 import { sundayStorySentences, type StoryPages } from '../../src/sunday-story-text.ts';
+import { storyPrivacy } from './privacy-note.ts';
 import type { ChurchPhotoSet, ChurchPhotoSlot } from './ready-store.ts';
 import { childPreferredName, type Visit } from './visit.ts';
 
@@ -7,6 +8,7 @@ export interface SundayStoryCover {
   readonly title: string;
   readonly churchName: string;
   readonly subtitle: 'A story to read together before Sunday';
+  readonly notice: string | null;
   readonly slot: 'cover';
 }
 
@@ -62,6 +64,7 @@ export function sundayStoryPages(visit: Visit): readonly [
       title: `${name}'s Sunday at`,
       churchName: church.name,
       subtitle: 'A story to read together before Sunday',
+      notice: simpleNotice(visit),
       slot: 'cover',
     },
     { step: 1, slot: 'outside', text: sentences[0] },
@@ -86,6 +89,27 @@ function storySentences(visit: Visit): readonly [string, string, string, string,
     pages.quiet,
     pages.pickup,
   ];
+}
+
+function simpleNotice(visit: Visit): string | null {
+  const pill = storyPrivacy({
+    name: childPreferredName(visit),
+    room: visit.church.room,
+    source: 'fallback',
+  }).pill;
+  switch (visit.story.phase) {
+    case 'ready':
+    case 'approved':
+      return visit.story.value.source === 'model' ? null : pill;
+    case 'idle':
+    case 'writing':
+    case 'failed':
+      return pill;
+    default: {
+      const leftover: never = visit.story;
+      return leftover;
+    }
+  }
 }
 
 function savedPages(visit: Visit): StoryPages | null {

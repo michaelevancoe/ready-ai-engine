@@ -7,6 +7,7 @@ import {
   parseSocialStoryRequest,
   parseSundayUpdate,
   socialStoryMessages,
+  socialStorySchema,
   storySafety,
 } from '../src/demo-drafts.ts';
 import { SchemaRejected } from '../src/errors.ts';
@@ -71,6 +72,14 @@ function prose(pages: StoryPages): string {
 }
 
 type WritablePages = { -readonly [beat in keyof StoryPages]: string };
+
+function longQuietPage(): string {
+  const stem = 'Rowan can hold a Disney story and wait by the doorway near softer lights';
+  const beat = ' and a quiet hello';
+  let body = stem;
+  while ((body + beat).length + 1 <= 1500) body += beat;
+  return `${body}.`;
+}
 
 function personalPages(): WritablePages {
   return {
@@ -939,6 +948,22 @@ test('parseSocialStory rejects a story with fewer than 40 words or fewer than tw
     long[beat] = 'Rowan walks along with a grown-up and smiles at the morning.';
   }
   assert.throws(() => parseSocialStory({ title: 'Sunday with Rowan', pages: long }, rowanInput), SchemaRejected);
+});
+
+test('a story page longer than 1200 characters is kept', () => {
+  const quiet = longQuietPage();
+  assert.equal(quiet.length > 1200 && quiet.length <= SUNDAY_STORY_PAGE_MAX, true);
+  const pages = socialStorySchema.properties.pages;
+  assert.equal(pages.type, 'object');
+  if (pages.type !== 'object') return;
+  const cap = pages.properties.quiet;
+  assert.equal(cap?.type, 'string');
+  if (cap?.type !== 'string') return;
+  assert.equal(cap.maxLength, SUNDAY_STORY_PAGE_MAX);
+  const story = { ...personalPages(), quiet };
+  const parsed = parseSocialStory({ title: 'Sunday with Rowan', pages: story }, rowanInput);
+  assert.equal(parsed.pages.quiet, quiet);
+  assert.equal(pageSentences(parsed.pages.quiet) <= 2, true);
 });
 
 test('a long Juniper story passes when the pages use her answers', () => {

@@ -27,7 +27,14 @@ test('approve a draft that includes the typed sensory note', async ({ page }) =>
   await expect(page.getByText("Demo: fictional data only. Please don't enter real child information.")).toBeVisible();
   await answerTree(page, 'TICK-QUIET-ROOM');
   await expect(page.getByRole('heading', { name: "Rowan's brief", exact: true })).toBeVisible();
-  await expect(page.getByText('TICK-QUIET-ROOM')).toHaveCount(2);
+  const summary = page.locator('article.what-helps');
+  await expect(summary.getByRole('heading', { name: 'What helps Rowan' })).toBeVisible();
+  await expect(summary.getByText('TICK-QUIET-ROOM')).toBeVisible();
+  const sensory = page.locator('article.brief-card.sectioned').filter({
+    has: page.getByRole('heading', { name: 'Sensory', exact: true }),
+  });
+  await expect(sensory.getByRole('heading', { name: 'Sensory', exact: true })).toBeVisible();
+  await expect(sensory.getByText('TICK-QUIET-ROOM')).toBeVisible();
   await save(page, 'demo-draft.png');
   await page.getByRole('button', { name: 'Looks right, approve' }).click();
   await expect(page.getByRole('heading', { name: 'Rowan is ready for Sunday' })).toBeVisible();

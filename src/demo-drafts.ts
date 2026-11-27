@@ -1,6 +1,12 @@
 import { SchemaRejected } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
-import { STORY_BEATS, templateStoryPages, type StoryBeat, type StoryPages } from './sunday-story-text.ts';
+import {
+  STORY_BEATS,
+  SUNDAY_STORY_PAGE_MAX,
+  templateStoryPages,
+  type StoryBeat,
+  type StoryPages,
+} from './sunday-story-text.ts';
 
 const BRIEF_FIELDS = [
   'loves',
@@ -132,7 +138,7 @@ function boundedText(max: number): JsonSchema {
 
 export const socialStorySchemaName = 'social_story';
 
-const storyPageText = { type: 'string', minLength: 0, maxLength: 1200 } as const;
+const storyPageText = { type: 'string', minLength: 0, maxLength: SUNDAY_STORY_PAGE_MAX } as const;
 
 export const socialStorySchema = {
   type: 'object',
