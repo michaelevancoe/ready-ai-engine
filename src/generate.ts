@@ -6,7 +6,7 @@ import {
   type GenerateFailure,
 } from './errors.ts';
 import { assertTargets, gatewayChatCompletionsUrl, modelTargets, type EndpointId, type ModelTarget } from './gateway.ts';
-import { emitSafe, type LogPhase, type SafeLog } from './log.ts';
+import { emitSafe, type LogPhase, type SafeLog, type StatusClass } from './log.ts';
 import type { JsonSchema } from './schema.ts';
 import { isRecord } from './schema.ts';
 
@@ -25,6 +25,8 @@ export interface GenerateInput<T> {
   fetch: typeof fetch;
   log?: (event: SafeLog) => void;
   maxTokens?: number;
+  attempts?: 'once';
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface Attempt {
@@ -34,7 +36,42 @@ interface Attempt {
 
 const MAX_RESPONSE_CHARS = 100_000;
 
-const GATEWAY_RETRY_DELAY_MS = 300;
+const SHORT_BACKOFF_MS = 300;
+const WAIT_CAP_MS = 8_000;
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function retryAfterMs(header: string | null): number | null {
+  if (header === null) return null;
+  const trimmed = header.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const when = Date.parse(trimmed);
+    if (Number.isNaN(when)) return null;
+    return Math.max(0, when - Date.now());
+  }
+  return Math.round(Number(trimmed) * 1000);
+}
+
+function statusClass(status: number): StatusClass {
+  if (status === 429) return '429';
+  if (status >= 500 && status <= 599) return '5xx';
+  return 'other';
+}
+
+function waitMs(error: unknown, waited: number): number {
+  if (!(error instanceof GatewayRejected)) return 0;
+  const room = WAIT_CAP_MS - waited;
+  if (room <= 0) return 0;
+  if (error.status === 429 || (error.status >= 500 && error.status <= 599)) {
+    return Math.min(retryAfterMs(error.retryAfter) ?? SHORT_BACKOFF_MS, room);
+  }
+  if (waited === 0) return Math.min(SHORT_BACKOFF_MS, room);
+  return 0;
+}
 
 function report(log: ((event: SafeLog) => void) | undefined, event: SafeLog): void {
   (log ?? emitSafe)(event);
@@ -83,13 +120,16 @@ async function callGateway(
         },
       }),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof GatewayRejected) throw error;
     throw new GatewayRejected();
   }
 
   if (!response.ok) {
+    const retryAfter = response.headers.get('retry-after');
+    const status = response.status;
     await response.body?.cancel();
-    throw new GatewayRejected();
+    throw new GatewayRejected(status, retryAfter);
   }
   const text = await response.text();
   if (text.length > MAX_RESPONSE_CHARS) throw new SchemaRejected();
@@ -111,14 +151,18 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
   assertTargets(targets);
   gatewayChatCompletionsUrl(input.env);
 
-  const plan: readonly Attempt[] = [
-    { target: targets.primary, phase: 'primary' },
-    { target: targets.primary, phase: 'retry' },
-    { target: targets.fallback, phase: 'fallback' },
-  ];
+  const plan: readonly Attempt[] =
+    input.attempts === 'once'
+      ? [{ target: targets.primary, phase: 'primary' }]
+      : [
+          { target: targets.primary, phase: 'primary' },
+          { target: targets.primary, phase: 'retry' },
+          { target: targets.fallback, phase: 'fallback' },
+        ];
+  const sleep = input.sleep ?? defaultSleep;
 
   let lastReason: GenerateFailure = 'gateway';
-  let waitedForGateway = false;
+  let waited = 0;
   for (const [index, step] of plan.entries()) {
     const base = {
       endpoint: input.endpoint,
@@ -154,13 +198,19 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
       report(input.log, {
         ...base,
         outcome: reason === 'schema' ? 'schema_rejected' : 'error',
+        ...(error instanceof GatewayRejected ? { statusClass: statusClass(error.status) } : {}),
       });
       if (index === plan.length - 1) throw new GenerateError(lastReason);
-      if (reason === 'gateway' && !waitedForGateway) {
-        waitedForGateway = true;
-        await new Promise((resolve) => {
-          setTimeout(resolve, GATEWAY_RETRY_DELAY_MS);
-        });
+      const pause = waitMs(error, waited);
+      if (pause > 0) {
+        await sleep(pause);
+        waited += pause;
+      } else if (
+        error instanceof GatewayRejected &&
+        (error.status === 429 || (error.status >= 500 && error.status <= 599)) &&
+        waited >= WAIT_CAP_MS
+      ) {
+        throw new GenerateError(lastReason);
       }
     }
   }

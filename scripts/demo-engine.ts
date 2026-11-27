@@ -51,24 +51,44 @@ const ANSWER_KEYS = [
   'whatToAvoid',
 ] as const;
 
+const ACK_GATEWAY_GUARD = 19;
+
 export class DemoContext {
   private readonly store: MemoryStore;
   private readonly deps: AppDeps;
   private readonly mock: boolean;
+  private readonly gatewayCalls: number[] = [];
 
   private constructor(env: WorkerBindings, fetchImpl: typeof fetch, mock: boolean) {
     assertAdapterAllowed(env, 'memory');
     this.mock = mock;
     this.store = churchStore();
+    const fetch: typeof fetch = async (input, init) => {
+      this.gatewayCalls.push(Date.now());
+      return fetchImpl(input, init);
+    };
     this.deps = {
       env,
-      fetch: fetchImpl,
+      fetch,
       storeFactory: () => this.store,
       log: emitSafe,
       now: () => Date.now(),
       auth: sessionAuthVerifier(),
       accessSource: memoryAccessSource(emptyMemoryAccessWorld()),
     };
+  }
+
+  private gatewayBusy(): boolean {
+    const now = Date.now();
+    let keep = 0;
+    for (const time of this.gatewayCalls) {
+      if (now - time < 60_000) {
+        this.gatewayCalls[keep] = time;
+        keep += 1;
+      }
+    }
+    this.gatewayCalls.length = keep;
+    return keep >= ACK_GATEWAY_GUARD;
   }
 
   static fromBindings(
@@ -168,6 +188,9 @@ export class DemoContext {
     const parsed = await parsedBody(request, parseAcknowledgementRequest);
     if (parsed instanceof Response) return parsed;
     if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
+    if (this.gatewayBusy()) {
+      return json({ relevant: true, line: ACK_FALLBACK, clarifyingPrompt: '' }, 200);
+    }
     try {
       const value = await generate({
         endpoint: 'intake.profile',
@@ -179,6 +202,7 @@ export class DemoContext {
         fetch: this.deps.fetch,
         log: this.deps.log,
         maxTokens: 80,
+        attempts: 'once',
       });
       return json(value, 200);
     } catch (error) {

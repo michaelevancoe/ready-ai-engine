@@ -20,9 +20,14 @@ export class SchemaRejected extends Error {
 }
 
 export class GatewayRejected extends Error {
-  constructor() {
+  readonly status: number;
+  readonly retryAfter: string | null;
+
+  constructor(status = 0, retryAfter: string | null = null) {
     super('gateway rejected');
     this.name = 'GatewayRejected';
+    this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 
