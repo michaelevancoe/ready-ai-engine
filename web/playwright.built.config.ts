@@ -11,7 +11,7 @@ export default defineConfig({
     'built-worker-flows.spec.ts',
     'print-book.spec.ts',
     'lesson-removed.spec.ts',
-    'demo-roster.spec.ts',
+    'seeded-visits.spec.ts',
   ],
   timeout: 60_000,
   expect: { timeout: 30_000 },
