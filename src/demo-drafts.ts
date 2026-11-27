@@ -105,8 +105,6 @@ const SUNDAY_RULES = [
 ].join(' ');
 
 const SUNDAY_KEYS = ['notes', 'childName', 'leader', 'church'] as const;
-const SIGN_OFF_LINE = /^(?:from|love|warmly)\b/iu;
-const NAME_LINE = /^[\p{Lu}][\p{L}'.-]*(?:\s+[\p{Lu}][\p{L}'.-]*){0,3}$/u;
 
 const LABEL_WORDS = new Set([
   'loves',
@@ -633,7 +631,7 @@ export function parseSundayUpdate(
   if (!validateJson(sundayUpdateSchema, value) || !isRecord(value)) throw new SchemaRejected();
   if (typeof value.body !== 'string') throw new SchemaRejected();
   const stripped = stripBracketPlaceholders(value.body);
-  const prose = stripSundaySignOff(stripped, signature.leader).trim();
+  const prose = stripSundaySignOff(stripped, signature.leader, signature.church).trim();
   if (!updateBodyAccepted(prose, notes, childName)) throw new SchemaRejected();
   return { body: finishSundayNote(stripped, signature.leader, signature.church) };
 }
@@ -641,25 +639,37 @@ export function parseSundayUpdate(
 export function finishSundayNote(body: string, leader: string, church: string): string {
   const signature = `\n\n${leader}\n${church}`;
   const room = Math.max(0, 2000 - signature.length);
-  const prose = stripSundaySignOff(body, leader).trimEnd();
+  const prose = stripSundaySignOff(body, leader, church).trimEnd();
   const kept = prose.length > room ? prose.slice(0, room).trimEnd() : prose;
   return `${kept}${signature}`;
 }
 
-function stripSundaySignOff(body: string, leader: string): string {
+function signOffKey(line: string): string {
+  const unlabeled = line.trim().replace(/^(?:leader|church|from)\s*:\s*/iu, '');
+  return unlabeled.replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/gu, ' ').trim().toLowerCase();
+}
+
+function stripSundaySignOff(body: string, leader: string, church: string): string {
   const lines = body.replace(/[ \t]+$/gu, '').replace(/\n+$/u, '').split('\n');
-  const leaderLine = leader.trim();
-  for (let guard = 0; guard < 4 && lines.length > 0; guard += 1) {
+  const leaderKey = signOffKey(leader);
+  const churchKey = signOffKey(church);
+  let removedName = false;
+  while (lines.length > 0) {
     const last = lines[lines.length - 1]?.trim() ?? '';
     if (last.length === 0) {
       lines.pop();
       continue;
     }
-    const named = last.length <= 40 && NAME_LINE.test(last);
-    if (last === leaderLine || SIGN_OFF_LINE.test(last) || named) {
+    const key = signOffKey(last);
+    const matchesLeader = leaderKey.length > 0 && key === leaderKey;
+    const matchesChurch = churchKey.length > 0 && key === churchKey;
+    if (matchesLeader || matchesChurch) {
       lines.pop();
+      removedName = true;
       continue;
     }
+    const closing = /^(?:blessings|warmly|thanks|love|from)$/iu.test(last.replace(/,/gu, '').trim());
+    if (removedName && closing) lines.pop();
     break;
   }
   return lines.join('\n');
