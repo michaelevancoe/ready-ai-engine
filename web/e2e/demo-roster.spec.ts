@@ -20,6 +20,8 @@ const leaderRows = [
   ['Lucy, 10', 'Sent to parent'],
 ] as const;
 
+const accountMode = process.env.READY_ACCOUNT_E2E === '1';
+
 async function expectVolunteerRows(page: Page): Promise<void> {
   const rows = page.locator('ul.roster > li');
   await expect(rows).toHaveCount(volunteerRows.length);
@@ -30,12 +32,27 @@ async function expectVolunteerRows(page: Page): Promise<void> {
   }
 }
 
+async function expectAccountRoster(page: Page): Promise<void> {
+  await page.goto('/volunteer');
+  await expect(page.locator('ul.roster > li')).toHaveCount(1);
+  await page.goto('/leader');
+  await expect(page.getByRole('region', { name: 'Other children today' })).toHaveCount(0);
+}
+
 test('a fresh volunteer roster lists the live child and five seeded children', async ({ page }) => {
+  if (accountMode) {
+    await expectAccountRoster(page);
+    return;
+  }
   await page.goto('/volunteer');
   await expectVolunteerRows(page);
 });
 
 test('the leader home lists the other children beside the live child', async ({ page }) => {
+  if (accountMode) {
+    await expectAccountRoster(page);
+    return;
+  }
   await page.goto('/leader');
   await expect(page.getByRole('heading', { name: 'Good morning, Ms. Dana' })).toBeVisible();
   await expect(page.getByText('Rowan is at Example Harbor Fellowship.')).toBeVisible();
@@ -53,6 +70,10 @@ test('the leader home lists the other children beside the live child', async ({ 
 });
 
 test('choosing Maya keeps six rows and a reload returns to Rowan', async ({ page }) => {
+  if (accountMode) {
+    await expectAccountRoster(page);
+    return;
+  }
   await page.goto('/');
   await page.getByRole('button', { name: /Maya, 5/ }).click();
   await page.getByRole('link', { name: 'Volunteer' }).click();
