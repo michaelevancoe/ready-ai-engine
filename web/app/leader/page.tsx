@@ -257,11 +257,13 @@ function AfterScreen({
       <span className={tagClass('plain')}>After Sunday</span>
       <h1>After Sunday for {name}</h1>
       {sample ? <p className="sample-tag">Sample child · resets on reload</p> : null}
-      <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
       {visit.brief.phase === 'approved' ? (
-        <button type="button" className="text" onClick={onOpenBrief}>
-          View {name}&apos;s full brief (parent&apos;s own words) ›
-        </button>
+        <>
+          <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+          <button type="button" className="text" onClick={onOpenBrief}>
+            View {name}&apos;s full brief (parent&apos;s own words) ›
+          </button>
+        </>
       ) : null}
       {visit.brief.phase === 'open' ? (
         <section aria-label="Sunday brief">

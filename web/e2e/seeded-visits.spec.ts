@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { resetSavedVisit } from './walk-tree.ts';
 
@@ -5,8 +6,15 @@ test.beforeEach(({ request }) => resetSavedVisit(request));
 
 const accountMode = process.env.READY_ACCOUNT_E2E === '1';
 
+const artifacts = '/opt/cursor/artifacts';
+
 async function openChild(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: `Open ${name}` }).click();
+}
+
+async function save(page: Page, name: string): Promise<void> {
+  if (!existsSync(artifacts)) return;
+  await page.screenshot({ path: `${artifacts}/${name}`, fullPage: true });
 }
 
 test('leader rows open each sample child and a reload restores the seeds', async ({ page }) => {
@@ -26,7 +34,12 @@ test('leader rows open each sample child and a reload restores the seeds', async
 
   await openChild(page, 'Ezra, 7, Ready to draft');
   await expect(page.getByText('Sample child · resets on reload')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What helps Ezra' })).toBeVisible();
+  await expect(page.getByText('✦ Summary by Ready')).toBeVisible();
+  await expect(page.getByText('Sample summary (pre-written)')).toBeVisible();
+  await expect(page.getByRole('button', { name: "View Ezra's full brief (parent's own words) ›" })).toBeVisible();
   await expect(page.getByText(/block tower/)).toBeVisible();
+  await save(page, 'summary-leader-ezra.png');
   await page.getByRole('button', { name: "Draft a note for Ezra's parent" }).click();
   const note = page.getByRole('textbox', { name: 'Parent note' });
   await expect(note).toHaveValue(/Ezra stayed for the whole story/);
@@ -71,7 +84,11 @@ test('volunteer rows open each child and return to the list', async ({ page }) =
   await expect(rows).toHaveCount(6);
 
   await page.getByRole('button', { name: 'Open Rowan, 7, Brief ready' }).click();
-  await expect(page.getByRole('region', { name: 'Sunday brief' })).toContainText('Disney');
+  const rowanBrief = page.getByRole('region', { name: 'Sunday brief' });
+  await expect(rowanBrief).toContainText('Disney');
+  await expect(rowanBrief.getByRole('heading', { name: 'What helps Rowan' })).toBeVisible();
+  await expect(rowanBrief.getByText('✦ Summary by Ready')).toBeVisible();
+  await save(page, 'summary-volunteer-rowan.png');
   await expect(page.getByText("Rowan's parent has not approved a Sunday brief.")).toHaveCount(0);
   await expect(page.getByText('switch to Parent')).toHaveCount(0);
   await expect(page.getByText('Sample child · resets on reload')).toHaveCount(0);
@@ -98,6 +115,7 @@ test('volunteer rows open each child and return to the list', async ({ page }) =
 
   await page.getByRole('button', { name: 'Open Owen, 8, No brief yet' }).click();
   await expect(page.getByText("Owen's parent hasn't shared a Sunday brief yet.")).toBeVisible();
+  await expect(page.getByText('Summary by Ready')).toHaveCount(0);
   await expect(page.getByText("Volunteers can't make one.")).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save notes' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Update notes' })).toHaveCount(0);

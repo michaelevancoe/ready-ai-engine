@@ -75,9 +75,15 @@ test('demo boot lists Rowan and five sample visits at their steps', () => {
   assert.equal(volunteerStep(rowan.visit), 'Brief ready');
   assert.equal(childPreferredName(rowan.visit), 'Rowan');
   assert.equal(childAgeYears(rowan.visit), 7);
+  assert.equal(rowan.visit.intake.status, 'approved');
+  if (rowan.visit.intake.status === 'approved') {
+    assert.equal(rowan.visit.intake.profile.whatHelps.length >= 3, true);
+    assert.equal(rowan.visit.intake.profile.whatHelps.some((line) => /allerg|medical/i.test(line)), false);
+  }
   const started = reduceVisit(rowan.visit, { type: 'conversation', event: { type: 'beginIntake' } });
   assert.equal(started.brief.phase, 'open');
   assert.equal(started.conversation.talk.mode, 'ask');
+  assert.equal(started.intake.status, 'idle');
 
   for (const record of records.slice(1)) {
     const expected = EXPECTED[record.id as keyof typeof EXPECTED];

@@ -233,6 +233,13 @@ export function draftSundayNote(
   return postSundayUpdate(input.notes, input.childName, input.leader, input.church);
 }
 
+const ROWAN_HELPS = [
+  'Give Rowan a quiet break when the doorway is busy.',
+  'Rowan can point or use a few words.',
+  'A softer seat away from bright lights can help.',
+  'Headphones can help during the song.',
+] as const;
+
 function seededLiveVisit(): Visit {
   const visit = initialVisit();
   const card = exampleProfile('rowan');
@@ -240,6 +247,7 @@ function seededLiveVisit(): Visit {
     ...visit,
     card,
     brief: { phase: 'approved', lines: briefLines(card, visit.visibility) },
+    intake: { status: 'approved', profile: fictionalProfile('Rowan', 'approved', ROWAN_HELPS) },
   };
 }
 

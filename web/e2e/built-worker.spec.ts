@@ -39,13 +39,13 @@ test('the built page hydrates and submits intake without a GET navigation', asyn
   expect(rejected.headers()['content-type'] ?? '').toContain('application/json');
   expect(rejected.headers()['x-robots-tag']).toBe('noindex');
 
-  await page.goto('/');
-  await answerTree(page, 'TICK-QUIET-ROOM');
   const posted = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().includes('/v1/intake/profile'),
   );
-  await page.getByRole('button', { name: 'Looks right, approve' }).click();
+  await page.goto('/');
+  await answerTree(page, 'TICK-QUIET-ROOM');
   const request = await posted;
+  await page.getByRole('button', { name: 'Looks right, approve' }).click();
   expect(request.postDataJSON()).toMatchObject({
     sensoryNotes: 'TICK-QUIET-ROOM.',
     preferredName: 'Rowan',

@@ -12,7 +12,7 @@ export function WhatHelpsCard({
   if (bullets.length < 3) return null;
   return (
     <article className="brief-card what-helps">
-      <p className="pill">Summary by Ready</p>
+      <p className="pill">✦ Summary by Ready</p>
       <h2>What helps {name}</h2>
       <ul>
         {bullets.map((bullet) => (

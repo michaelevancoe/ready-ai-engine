@@ -369,6 +369,7 @@ function applyConversation(visit: Visit, event: ConversationEvent): Visit {
       conversation,
       card,
       cardTouched: false,
+      intake: initialGate(),
       brief: { phase: 'approved', lines: briefLines(card, visit.visibility) },
     };
   }
@@ -378,10 +379,13 @@ function applyConversation(visit: Visit, event: ConversationEvent): Visit {
       conversation,
       card: blankCard(),
       cardTouched: false,
+      intake: initialGate(),
       ...withdrawnBrief(),
     };
   }
-  if (event.type === 'beginIntake') return { ...visit, conversation, ...withdrawnBrief() };
+  if (event.type === 'beginIntake') {
+    return { ...visit, conversation, intake: initialGate(), ...withdrawnBrief() };
+  }
   return { ...visit, conversation };
 }
 
