@@ -38,7 +38,7 @@ test('privacy notes use the default church, leader, room, and child', () => {
     line: "Ready used only your approved answers and Harbor Room's plan. Medical details and labels stay out of Rowan's story.",
   });
   assert.deepEqual(storyPrivacy({ name, room, source: 'fallback' }), {
-    pill: "Ready's simple Sunday story",
+        pill: "Simple version · Ready's personal story wasn't available just now",
     line: "Ready kept this story simple today, using only Harbor Room's plan.",
   });
   assert.equal(

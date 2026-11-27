@@ -11,6 +11,8 @@ import {
   socialStoryMessages,
   socialStorySchema,
   socialStorySchemaName,
+  storyTokenAllowed,
+  type SocialStoryRequest,
   sundayUpdateMessages,
   sundayUpdateSchema,
   sundayUpdateSchemaName,
@@ -25,6 +27,7 @@ import { emptyMemoryAccessWorld, memoryAccessSource } from '../src/memory-access
 import { churchStore, ids, type MemoryStore } from '../src/memory-store.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
+import { templateStoryPages, type StoryPages } from '../src/sunday-story-text.ts';
 import { fictionalDemoEnv } from '../src/demo-env.ts';
 import { sessionAuthVerifier, sessionToken } from '../src/session-auth.ts';
 import { ACK_FALLBACK } from '../web/lib/acknowledgement.ts';
@@ -166,22 +169,36 @@ export class DemoContext {
     const parsed = await parsedBody(request, parseSocialStoryRequest);
     if (parsed instanceof Response) return parsed;
     try {
-      const draft = await generate({
-        endpoint: 'intake.profile',
-        messages: socialStoryMessages(parsed),
-        schemaName: socialStorySchemaName,
-        schema: socialStorySchema,
-        parse: (value) => parseSocialStory(value, parsed),
-        env: this.deps.env,
-        fetch: this.deps.fetch,
-        log: this.deps.log,
-      });
-      return json({ ...draft, source: 'model' }, 200);
+      return json(await this.writeSocialStory(parsed), 200);
+    } catch (error) {
+      if (!(error instanceof GenerateError)) {
+        if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+        throw error;
+      }
+    }
+    try {
+      return json(await this.writeSocialStory(parsed), 200);
     } catch (error) {
       if (error instanceof GenerateError) return json(fallbackSocialStory(parsed), 200);
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
+  }
+
+  private writeSocialStory(
+    parsed: SocialStoryRequest,
+  ): Promise<{ title: string; pages: StoryPages; source: 'model' }> {
+    return generate({
+      endpoint: 'intake.profile',
+      messages: socialStoryMessages(parsed),
+      schemaName: socialStorySchemaName,
+      schema: socialStorySchema,
+      parse: (value) => parseSocialStory(value, parsed),
+      env: this.deps.env,
+      fetch: this.deps.fetch,
+      log: this.deps.log,
+      attempts: 'once',
+    }).then((draft) => ({ ...draft, source: 'model' as const }));
   }
 
   private async handleAcknowledgement(request: Request): Promise<Response> {
@@ -380,7 +397,7 @@ function mockDraft(name: string, content: string): unknown | null {
     case socialStorySchemaName: {
       const parsed = readSocial(content);
       if (parsed === null) return null;
-      return mockSocialStory(parsed.childName, parsed.church);
+      return mockSocialStory(parsed.childName, parsed.church, parsed.lines);
     }
     case sundayUpdateSchemaName: {
       const parsed = readSunday(content);
@@ -860,12 +877,33 @@ function plain(value: string): string {
   return value.toLowerCase().replace(/[.!?]+$/u, '').replace(/\s+/gu, ' ').trim();
 }
 
-function mockSocialStory(childName: string, church: StoryChurch): { title: string; body: string } {
-  const body = `${childName} arrives at ${church.name}. ${childName} goes to ${church.room}. ${church.leader} says hello.`.slice(
-    0,
-    2000,
-  );
-  return { title: `Sunday with ${childName}`.slice(0, 120), body };
+function mockSocialStory(
+  childName: string,
+  church: StoryChurch,
+  lines: readonly { readonly text: string }[],
+): { title: string; pages: StoryPages } {
+  const pages = templateStoryPages(church);
+  const details = personalWords(lines, childName);
+  const first = details[0];
+  const second = details[1];
+  const title = `Sunday with ${childName}`.slice(0, 120);
+  if (first === undefined || second === undefined) return { title, pages };
+  return { title, pages: { ...pages, quiet: `${childName} can see ${first} and ${second}.` } };
+}
+
+function personalWords(lines: readonly { readonly text: string }[], childName: string): string[] {
+  const skip = new Set(childName.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? []);
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const line of lines) {
+    for (const word of line.text.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) {
+      if (word.length < 4 || skip.has(word) || seen.has(word) || !storyTokenAllowed(word)) continue;
+      seen.add(word);
+      words.push(word);
+      if (words.length === 2) return words;
+    }
+  }
+  return words;
 }
 
 function mockSundayUpdate(childName: string, leader: string, church: string): { body: string } {

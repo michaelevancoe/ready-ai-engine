@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { pendingApprovalCopy } from './approve-copy.ts';
+import type { StoryPages } from '../../src/sunday-story-text.ts';
 import { checkInBrief, initialVisit, reduceVisit, volunteerRoster, type Visit } from './visit.ts';
 
 test('a saved room change clears the story and an ages-only save does not', () => {
@@ -11,7 +12,7 @@ test('a saved room change clears the story and an ages-only save does not', () =
   };
   visit = reduceVisit(visit, {
     type: 'noteStory',
-    value: { title: 'Sunday with Rowan', body: 'The Harbor Room is quiet.', source: 'model' },
+    value: { title: 'Sunday with Rowan', pages: sameLine('The Harbor Room is quiet.'), source: 'model' },
   });
   assert.equal(visit.story.phase, 'ready');
 
@@ -35,6 +36,18 @@ test('a saved room change clears the story and an ages-only save does not', () =
   assert.equal(room.church.room, 'Cove Room');
   assert.equal(checkInBrief(room).status, 'approved');
 });
+
+function sameLine(line: string): StoryPages {
+  return {
+    arrive: line,
+    doors: line,
+    desk: line,
+    room: line,
+    helper: line,
+    quiet: line,
+    pickup: line,
+  };
+}
 
 test('pending approval copy names the leader and the child', () => {
   const copy = pendingApprovalCopy('Ms. Dana', 'Rowan');

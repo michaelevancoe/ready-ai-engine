@@ -52,7 +52,7 @@ export function storyPrivacy(input: {
       };
     case 'fallback':
       return {
-        pill: "Ready's simple Sunday story",
+        pill: "Simple version · Ready's personal story wasn't available just now",
         line: `Ready kept this story simple today, using only ${input.room}'s plan.`,
       };
     default: {

@@ -1,4 +1,4 @@
-import { SUNDAY_STORY_BODY_MAX } from '../../src/sunday-story-text.ts';
+import { STORY_BEATS, SUNDAY_STORY_PAGE_MAX, type StoryBeat, type StoryPages } from '../../src/sunday-story-text.ts';
 import type { BriefLine, SocialStory, SundayUpdate } from './visit';
 
 export type DraftResult<T> =
@@ -105,10 +105,21 @@ function messageFor(value: unknown): string {
 }
 
 function readStory(value: unknown): SocialStory | null {
-  if (!isRecord(value) || !isBounded(value.title, 1, 120) || !isBounded(value.body, 1, SUNDAY_STORY_BODY_MAX)) return null;
+  if (!isRecord(value) || !isBounded(value.title, 1, 120)) return null;
   const source = storySource(value.source);
-  if (source === null) return null;
-  return { title: value.title, body: value.body, source };
+  const pages = readPages(value.pages);
+  if (source === null || pages === null) return null;
+  return { title: value.title, pages, source };
+}
+
+function readPages(value: unknown): StoryPages | null {
+  if (!isRecord(value) || Object.keys(value).length !== STORY_BEATS.length) return null;
+  const pages = {} as { [beat in StoryBeat]: string };
+  for (const beat of STORY_BEATS) {
+    if (!isBounded(value[beat], 1, SUNDAY_STORY_PAGE_MAX)) return null;
+    pages[beat] = value[beat];
+  }
+  return pages;
 }
 
 function storySource(value: unknown): 'model' | 'fallback' | null {

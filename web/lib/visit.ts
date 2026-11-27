@@ -1,3 +1,4 @@
+import type { StoryPages } from '../../src/sunday-story-text.ts';
 import {
   UNANSWERED_CHILD,
   answeredChild,
@@ -51,7 +52,7 @@ export type StoryGate = ReviewGate<SocialStory>;
 
 export interface SocialStory {
   readonly title: string;
-  readonly body: string;
+  readonly pages: StoryPages;
   readonly source: 'model' | 'fallback';
 }
 

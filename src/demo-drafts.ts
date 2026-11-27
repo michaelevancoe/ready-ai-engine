@@ -1,6 +1,6 @@
 import { SchemaRejected } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
-import { sundayFallbackSentences } from './sunday-story-text.ts';
+import { STORY_BEATS, templateStoryPages, type StoryBeat, type StoryPages } from './sunday-story-text.ts';
 
 const BRIEF_FIELDS = [
   'loves',
@@ -47,7 +47,7 @@ export interface SundayUpdateRequest {
 
 export interface SocialStoryDraft {
   readonly title: string;
-  readonly body: string;
+  readonly pages: StoryPages;
 }
 
 export interface SundayUpdateDraft {
@@ -85,8 +85,12 @@ const SOCIAL_STORY_RULES = [
   'No labels or medical words.',
   'Never suggest leaving the room or the group.',
   'Use only names that appear in the input.',
-  'Return JSON with title and body, and write the body as prose rather than a dict.',
-  'Write it as a story read aloud to the child, about 40 to 80 words, in 5 to 8 short sentences and short paragraphs, and stay under 90 words.',
+  'Return JSON with title and pages, and write each page as prose rather than a dict.',
+  'pages has arrive, doors, desk, room, helper, quiet, and pickup.',
+  'Each page is one or two short sentences.',
+  'At least 3 pages use a detail from Loves, What helps, Communication, or Sensory.',
+  'One page is a gentle hard moment and never uses the banned tone words.',
+  'Parent-named objects are allowed with can or may, and nothing is promised about the church.',
   'The title is a varied story title for this child and this morning, never a Plan or Supporting title.',
   'Use ordinary spoken English, and put the before a room name.',
   'Describe only what the church plan says will happen. Do not add a seat, a kind of seat, a sound level, a song, or an activity the plan does not name. Do not promise that anything will be ready.',
@@ -127,15 +131,34 @@ function boundedText(max: number): JsonSchema {
 
 export const socialStorySchemaName = 'social_story';
 
+const storyPageText = { type: 'string', minLength: 0, maxLength: 1200 } as const;
+
 export const socialStorySchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'body'],
+  required: ['title', 'pages'],
   properties: {
     title: boundedText(120),
-    body: boundedText(2000),
+    pages: {
+      type: 'object',
+      additionalProperties: false,
+      required: [...STORY_BEATS],
+      properties: storyPageProperties(),
+    },
   },
 } satisfies JsonSchema;
+
+function storyPageProperties(): { [beat in StoryBeat]: typeof storyPageText } {
+  return {
+    arrive: storyPageText,
+    doors: storyPageText,
+    desk: storyPageText,
+    room: storyPageText,
+    helper: storyPageText,
+    quiet: storyPageText,
+    pickup: storyPageText,
+  };
+}
 
 export const sundayUpdateSchemaName = 'sunday_update';
 
@@ -307,8 +330,19 @@ export const STORY_LEAVING_PHRASES = [
   'wander',
 ] as const;
 
+const HARD_MOMENT_LABEL = 'Hard moment (describe gently, never name the word)';
+
 function linesForStoryModel(lines: readonly DraftLine[]): readonly DraftLine[] {
-  return lines.filter((line) => !listed(line.text, STORY_TONE_WORDS) && !listed(line.text, STORY_LEAVING_PHRASES));
+  const kept: DraftLine[] = [];
+  for (const line of lines) {
+    if (line.field === 'overwhelms') {
+      kept.push({ ...line, label: HARD_MOMENT_LABEL });
+      continue;
+    }
+    if (listed(line.text, STORY_TONE_WORDS) || listed(line.text, STORY_LEAVING_PHRASES)) continue;
+    kept.push(line);
+  }
+  return kept;
 }
 
 function socialStorySystem(): string {
@@ -384,7 +418,6 @@ export function storySafety(
     return false;
   }
   if (usesAny(story.title, STORY_VOICE_TITLE_WORDS) || usesAny(text, STORY_VOICE_WORDS)) return false;
-  if (sentenceCount(story.body) > 8 || wordCount(story.body) > 90) return false;
   if (!properNounsAllowed(story.title, story.body, input)) return false;
   if (!preferredNameAppears(text, input.childName)) return false;
   if (otherChildNamed(text, input.childName)) return false;
@@ -595,31 +628,222 @@ export function updateBodyAccepted(body: string, notes: string, childName: strin
   return collapseSpace(withoutChildName(body, childName)) !== collapseSpace(notes);
 }
 
+const NOUN_FIELDS: ReadonlySet<string> = new Set(['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory']);
+
+const STORY_STOPWORDS = new Set([
+  'about',
+  'above',
+  'after',
+  'again',
+  'against',
+  'also',
+  'among',
+  'another',
+  'around',
+  'because',
+  'been',
+  'before',
+  'being',
+  'below',
+  'between',
+  'both',
+  'could',
+  'does',
+  'doing',
+  'down',
+  'during',
+  'each',
+  'else',
+  'enough',
+  'ever',
+  'every',
+  'everyone',
+  'everything',
+  'from',
+  'further',
+  'have',
+  'having',
+  'here',
+  'hers',
+  'herself',
+  'himself',
+  'into',
+  'itself',
+  'just',
+  'more',
+  'most',
+  'much',
+  'must',
+  'myself',
+  'once',
+  'only',
+  'onto',
+  'other',
+  'ours',
+  'ourselves',
+  'over',
+  'same',
+  'should',
+  'some',
+  'such',
+  'than',
+  'that',
+  'their',
+  'theirs',
+  'them',
+  'themselves',
+  'then',
+  'there',
+  'these',
+  'they',
+  'this',
+  'those',
+  'through',
+  'under',
+  'until',
+  'very',
+  'were',
+  'what',
+  'when',
+  'where',
+  'which',
+  'while',
+  'whom',
+  'will',
+  'with',
+  'would',
+  'your',
+  'yours',
+  'yourself',
+  'yourselves',
+]);
+
+const INVENTED_CHURCH_WORDS = ['seat', 'song', 'activity'] as const;
+
 export function parseSocialStory(
   value: unknown,
   input: {
     readonly childName: string;
     readonly church: StoryChurch;
-    readonly lines: readonly { readonly text: string }[];
+    readonly lines: readonly { readonly text: string; readonly field?: string }[];
   },
 ): SocialStoryDraft {
-  if (!validateJson(socialStorySchema, value) || !isRecord(value)) throw new SchemaRejected();
-  if (typeof value.title !== 'string' || typeof value.body !== 'string') throw new SchemaRejected();
-  if (!storyBodyAccepted(value.body)) throw new SchemaRejected();
-  if (!storySafety({ title: value.title, body: value.body }, input)) throw new SchemaRejected();
-  return { title: value.title, body: value.body };
+  if (!validateJson(socialStorySchema, value) || !isRecord(value) || !isRecord(value.pages)) {
+    throw new SchemaRejected();
+  }
+  if (typeof value.title !== 'string') throw new SchemaRejected();
+  const templates = templateStoryPages(input.church);
+  const pages = {} as { [beat in StoryBeat]: string };
+  for (const beat of STORY_BEATS) {
+    const raw = value.pages[beat];
+    if (typeof raw !== 'string') throw new SchemaRejected();
+    pages[beat] = beatKept(raw) ? raw : templates[beat];
+  }
+  const body = STORY_BEATS.map((beat) => pages[beat]).join('\n');
+  if (!storyBodyAccepted(body)) throw new SchemaRejected();
+  if (!storySafety({ title: value.title, body }, input)) throw new SchemaRejected();
+  if (sentenceCount(body) < 5 || wordCount(body) < 40 || childNouns(body, input).size < 2) {
+    throw new SchemaRejected();
+  }
+  if (inventedChurchDetail(body, input)) throw new SchemaRejected();
+  return { title: value.title, pages };
 }
 
 export function fallbackSocialStory(request: SocialStoryRequest): {
   readonly title: string;
-  readonly body: string;
+  readonly pages: StoryPages;
   readonly source: 'fallback';
 } {
   return {
     title: `Sunday with ${request.childName}`.slice(0, 120),
-    body: sundayFallbackSentences(request.church).join('\n\n'),
+    pages: templateStoryPages(request.church),
     source: 'fallback',
   };
+}
+
+export function storyTokenAllowed(word: string): boolean {
+  if (listed(word, STORY_LABEL_WORDS) || listed(word, STORY_TONE_WORDS) || listed(word, STORY_LEAVING_PHRASES)) {
+    return false;
+  }
+  return !usesAny(word, STORY_VOICE_WORDS);
+}
+
+function beatKept(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || !storyBodyAccepted(trimmed)) return false;
+  const sentences = sentenceCount(trimmed);
+  if (sentences < 1 || sentences > 2) return false;
+  if (listed(trimmed, STORY_LABEL_WORDS) || listed(trimmed, STORY_TONE_WORDS) || listed(trimmed, STORY_LEAVING_PHRASES)) {
+    return false;
+  }
+  return !usesAny(trimmed, STORY_VOICE_WORDS);
+}
+
+function childNouns(
+  story: string,
+  input: {
+    readonly childName: string;
+    readonly lines: readonly { readonly text: string; readonly field?: string }[];
+  },
+): Set<string> {
+  const names = new Set(wordsIn(input.childName));
+  const storyWords = new Set(wordsIn(story));
+  const found = new Set<string>();
+  for (const line of input.lines) {
+    if (line.field !== undefined && !NOUN_FIELDS.has(line.field)) continue;
+    for (const word of wordsIn(line.text)) {
+      if (word.length < 4 || STORY_STOPWORDS.has(word) || names.has(word)) continue;
+      if (!storyWords.has(word)) continue;
+      found.add(word);
+    }
+  }
+  return found;
+}
+
+function inventedChurchDetail(
+  text: string,
+  input: {
+    readonly church: StoryChurch;
+    readonly lines: readonly { readonly text: string }[];
+  },
+): boolean {
+  const plan = new Set(wordsIn(input.church.plan));
+  const parent = new Set(input.lines.flatMap((line) => wordsIn(line.text)));
+  for (const word of INVENTED_CHURCH_WORDS) {
+    if (plan.has(word)) continue;
+    for (const sentence of sentencesIn(text)) {
+      if (!hasTerm(sentence, word)) continue;
+      const named = parent.has(word) && (hasTerm(sentence, 'can') || hasTerm(sentence, 'may'));
+      if (!named) return true;
+    }
+  }
+  return false;
+}
+
+function wordsIn(text: string): string[] {
+  return text.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? [];
+}
+
+function sentencesIn(body: string): string[] {
+  const text = body.trim();
+  if (text.length === 0) return [];
+  const sentences: string[] = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const mark = text[index];
+    if (mark !== '.' && mark !== '!' && mark !== '?') continue;
+    if (mark === '.' && ellipsisDot(text, index)) continue;
+    const next = text[index + 1];
+    if (next === '.' || next === '!' || next === '?') continue;
+    if (mark === '.' && abbreviationBefore(text, index)) continue;
+    if (mark === '.' && /\p{N}/u.test(text[index - 1] ?? '') && /\p{N}/u.test(next ?? '')) continue;
+    sentences.push(text.slice(start, index + 1));
+    start = index + 1;
+  }
+  const tail = text.slice(start);
+  if (hasLetterOrNumber(tail)) sentences.push(tail);
+  else if (sentences.length === 0 && hasLetterOrNumber(text)) sentences.push(text);
+  return sentences;
 }
 
 export function parseSundayUpdate(

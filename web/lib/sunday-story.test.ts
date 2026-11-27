@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { exampleBrief } from './example-briefs.ts';
+import { STORY_BEATS, type StoryPages } from '../../src/sunday-story-text.ts';
 import { resolveStoryPicture, sundayStoryPages, type SundayStoryPage } from './sunday-story.ts';
-import { childPreferredName, initialVisit, reduceVisit, type Visit } from './visit.ts';
+import { childPreferredName, initialVisit, reduceVisit, type SocialStory, type Visit } from './visit.ts';
 import type { ChurchPhotoSet } from './ready-store.ts';
 
 const emptyPhotos: ChurchPhotoSet = {
@@ -107,6 +108,41 @@ test('example stories name the child and leave out the brief', () => {
       assert.equal(text.toLowerCase().includes(word), false, word);
     }
   }
+});
+
+test('a ready story prints the same seven pages the screen shows', () => {
+  const pages: StoryPages = {
+    arrive: 'Rowan arrives with a quiet hello.',
+    doors: 'Rowan walks in the front doors.',
+    desk: 'Rowan stops at the welcome desk.',
+    room: 'Rowan finds a picture in the hall.',
+    helper: 'A helper waves at Rowan.',
+    quiet: 'Rowan can hold a small fox.',
+    pickup: 'Rowan goes home with a grown-up.',
+  };
+  const story: SocialStory = { title: 'Sunday with Rowan', pages, source: 'model' };
+  const visit: Visit = {
+    ...initialVisit(),
+    brief: { phase: 'approved', lines: [] },
+    story: { phase: 'ready', value: story },
+  };
+  const printed = sundayStoryPages(visit);
+  assert.equal(printed.length, 8);
+  assert.equal(printed[0]?.step, 'cover');
+  const steps = printed.slice(1);
+  assert.deepEqual(
+    steps.map((page) => (page.step === 'cover' ? '' : page.text)),
+    STORY_BEATS.map((beat) => pages[beat]),
+  );
+  assert.deepEqual(
+    steps.map((page) => page.slot),
+    ['outside', 'doors', 'desk', 'classroom', 'helper', 'quiet', 'pickup'],
+  );
+  const approved: Visit = { ...visit, story: { phase: 'approved', value: story } };
+  assert.deepEqual(
+    sundayStoryPages(approved).slice(1).map((page) => (page.step === 'cover' ? '' : page.text)),
+    STORY_BEATS.map((beat) => pages[beat]),
+  );
 });
 
 test('a story picture prefers an upload, then a sample, then a drawing', () => {

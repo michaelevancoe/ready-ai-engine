@@ -1,3 +1,4 @@
+import { STORY_BEATS } from '../../src/sunday-story-text.ts';
 import type { SocialStory } from './visit.ts';
 
 export type Reader =
@@ -20,13 +21,6 @@ export type ReaderEvent =
 
 export function initialReader(): Reader {
   return { phase: 'closed' };
-}
-
-export function storyParagraphs(body: string): string[] {
-  return body
-    .split(/\n\s*\n/u)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
 }
 
 export function reduceReader(reader: Reader, event: ReaderEvent): Reader {
@@ -55,7 +49,7 @@ function shown(value: SocialStory): Reader {
   return {
     phase: 'shown',
     title: value.title,
-    paragraphs: storyParagraphs(value.body),
+    paragraphs: STORY_BEATS.map((beat) => value.pages[beat]),
     source: value.source,
   };
 }

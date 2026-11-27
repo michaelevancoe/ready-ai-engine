@@ -1,4 +1,4 @@
-import { sundayStorySentences } from '../../src/sunday-story-text.ts';
+import { sundayStorySentences, type StoryPages } from '../../src/sunday-story-text.ts';
 import type { ChurchPhotoSet, ChurchPhotoSlot } from './ready-store.ts';
 import { childPreferredName, type Visit } from './visit.ts';
 
@@ -55,7 +55,7 @@ export function sundayStoryPages(visit: Visit): readonly [
 ] {
   const name = childPreferredName(visit);
   const church = visit.church;
-  const [outside, doors, desk, classroom, helper, quiet, pickup] = sundayStorySentences(church);
+  const sentences = storySentences(visit);
   return [
     {
       step: 'cover',
@@ -64,14 +64,44 @@ export function sundayStoryPages(visit: Visit): readonly [
       subtitle: 'A story to read together before Sunday',
       slot: 'cover',
     },
-    { step: 1, slot: 'outside', text: outside },
-    { step: 2, slot: 'doors', text: doors },
-    { step: 3, slot: 'desk', text: desk },
-    { step: 4, slot: 'classroom', text: classroom },
-    { step: 5, slot: 'helper', text: helper },
-    { step: 6, slot: 'quiet', text: quiet },
-    { step: 7, slot: 'pickup', text: pickup },
+    { step: 1, slot: 'outside', text: sentences[0] },
+    { step: 2, slot: 'doors', text: sentences[1] },
+    { step: 3, slot: 'desk', text: sentences[2] },
+    { step: 4, slot: 'classroom', text: sentences[3] },
+    { step: 5, slot: 'helper', text: sentences[4] },
+    { step: 6, slot: 'quiet', text: sentences[5] },
+    { step: 7, slot: 'pickup', text: sentences[6] },
   ];
+}
+
+function storySentences(visit: Visit): readonly [string, string, string, string, string, string, string] {
+  const pages = savedPages(visit);
+  if (pages === null) return sundayStorySentences(visit.church);
+  return [
+    pages.arrive,
+    pages.doors,
+    pages.desk,
+    pages.room,
+    pages.helper,
+    pages.quiet,
+    pages.pickup,
+  ];
+}
+
+function savedPages(visit: Visit): StoryPages | null {
+  switch (visit.story.phase) {
+    case 'ready':
+    case 'approved':
+      return visit.story.value.pages;
+    case 'idle':
+    case 'writing':
+    case 'failed':
+      return null;
+    default: {
+      const leftover: never = visit.story;
+      return leftover;
+    }
+  }
 }
 
 export function resolveStoryPicture(
