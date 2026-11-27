@@ -461,7 +461,7 @@ function QuestionScreen({
         <button
           type="button"
           className={mic.phase === 'live' ? 'mic live' : 'mic'}
-          aria-label={mic.phase === 'live' ? 'Mic is on' : 'Mic is off'}
+          aria-label={mic.phase === 'live' ? 'Stop recording' : 'Mic is off'}
           disabled={locked}
           onClick={() => {
             if (mic.phase === 'live') {
@@ -485,9 +485,6 @@ function QuestionScreen({
         <p className="draft-status" role="status">
           Mic is on
           <span className="mic-timer">{clock(now - mic.startedAt)}</span>
-          <button type="button" className="inline" onClick={stopMic}>
-            Stop
-          </button>
         </p>
       ) : null}
       {speech === 'missing' ? <p className="hint">This browser can&apos;t use the mic. Type your answer instead.</p> : null}
