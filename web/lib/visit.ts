@@ -55,11 +55,6 @@ export interface SocialStory {
   readonly source: 'model' | 'fallback';
 }
 
-export interface LessonAdaptation {
-  readonly summary: string;
-  readonly steps: readonly string[];
-}
-
 export interface SundayUpdate {
   readonly body: string;
 }
@@ -85,8 +80,6 @@ export interface Visit {
   readonly notes: string;
   readonly update: ReviewGate<SundayUpdate>;
   readonly church: ChurchSetup;
-  readonly lessonSource: string;
-  readonly lesson: ReviewGate<LessonAdaptation>;
 }
 
 export type VisitEvent =
@@ -106,12 +99,7 @@ export type VisitEvent =
   | { readonly type: 'updateReady'; readonly value: SundayUpdate }
   | { readonly type: 'updateFailed'; readonly message: string }
   | { readonly type: 'approveUpdate'; readonly body: string }
-  | { readonly type: 'saveChurch'; readonly church: ChurchSetup }
-  | { readonly type: 'setLesson'; readonly source: string }
-  | { readonly type: 'writeLesson'; readonly source: string }
-  | { readonly type: 'lessonReady'; readonly value: LessonAdaptation }
-  | { readonly type: 'lessonFailed'; readonly message: string }
-  | { readonly type: 'approveLesson'; readonly value?: LessonAdaptation };
+  | { readonly type: 'saveChurch'; readonly church: ChurchSetup };
 
 export type CheckIn =
   | { readonly status: 'withheld' }
@@ -159,8 +147,6 @@ export function initialVisit(): Visit {
       ages: 'Ages 5\u201312',
       plan: 'A short welcome, one song, and a quiet activity.',
     },
-    lessonSource: '',
-    lesson: { phase: 'idle' },
   };
 }
 
@@ -225,21 +211,6 @@ export function reduceVisit(visit: Visit, event: VisitEvent): Visit {
     }
     case 'saveChurch':
       return saveChurch(visit, event.church);
-    case 'setLesson':
-      if (visit.lessonSource === event.source) return visit;
-      return { ...visit, lessonSource: event.source, lesson: { phase: 'idle' } };
-    case 'writeLesson':
-      if (visit.lesson.phase === 'writing') return visit;
-      return { ...visit, lessonSource: event.source, lesson: { phase: 'writing' } };
-    case 'lessonReady':
-      if (visit.lesson.phase !== 'writing') return visit;
-      return { ...visit, lesson: { phase: 'ready', value: event.value } };
-    case 'lessonFailed':
-      if (visit.lesson.phase !== 'writing') return visit;
-      return { ...visit, lesson: { phase: 'failed', message: event.message } };
-    case 'approveLesson':
-      if (visit.role !== 'leader' || visit.lesson.phase !== 'ready') return visit;
-      return { ...visit, lesson: { phase: 'approved', value: event.value ?? visit.lesson.value } };
     default: {
       const leftover: never = event;
       return leftover;
@@ -370,11 +341,10 @@ function saveChurch(visit: Visit, church: ChurchSetup): Visit {
   return { ...visit, church, story: { phase: 'idle' } };
 }
 
-function withdrawnBrief(): Pick<Visit, 'brief' | 'story' | 'lesson'> {
+function withdrawnBrief(): Pick<Visit, 'brief' | 'story'> {
   return {
     brief: { phase: 'open' },
     story: { phase: 'idle' },
-    lesson: { phase: 'idle' },
   };
 }
 

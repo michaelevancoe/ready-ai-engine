@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
-import { approvedValue, checkInBrief, childPreferredName, volunteerRoster } from '../../lib/visit';
+import { checkInBrief, childPreferredName, volunteerRoster } from '../../lib/visit';
 import { PrivacyNote } from '../privacy-note';
 import { useReadyStore } from '../visit-shell';
 
@@ -11,7 +11,6 @@ export default function VolunteerPage() {
   const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const { dispatch } = store;
   const brief = checkInBrief(visit);
-  const lesson = approvedValue(visit.lesson);
   const roster = volunteerRoster(visit);
   const [initialNotes] = useState(visit.notes);
   const [saved, setSaved] = useState(false);
@@ -64,17 +63,6 @@ export default function VolunteerPage() {
             </button>
           </form>
           {saved && visit.notes.trim() !== '' ? <p role="status">Notes saved.</p> : null}
-          {lesson === null ? null : (
-            <section aria-label="Sunday lesson">
-              <h2>Sunday lesson</h2>
-              <p>{lesson.summary}</p>
-              <ol>
-                {lesson.steps.map((step, index) => (
-                  <li key={`${index}-${step}`}>{step}</li>
-                ))}
-              </ol>
-            </section>
-          )}
         </section>
       ) : (
         <p>The parent has not approved a Sunday brief.</p>

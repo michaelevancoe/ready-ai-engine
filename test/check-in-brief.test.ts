@@ -157,7 +157,6 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   assert.deepEqual(checkInBrief(sneaky), hiddenMedical);
 
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
-  visit = reduceVisit(visit, { type: 'setLesson', source: 'TICK-LESSON-PLAN' });
   visit = reduceVisit(visit, {
     type: 'saveChurch',
     church: { ...visit.church, room: 'Other room' },
@@ -192,7 +191,7 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   assert.equal(visit.notes, 'TICK-AFTER-SUNDAY');
 });
 
-test('lesson and Sunday update stop when the draft is ready', () => {
+test('the Sunday update stops when the draft is ready', () => {
   let visit = approveIntake(initialVisit());
   assert.equal(reduceVisit(visit, { type: 'approveStory' }).story.phase, 'idle');
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
@@ -219,31 +218,20 @@ test('lesson and Sunday update stop when the draft is ready', () => {
   assert.equal(readyValue({ phase: 'idle' }), null);
   assert.equal(readyValue({ phase: 'ready', value: { body: 'Rowan waved.' } })?.body, 'Rowan waved.');
 
-  visit = reduceVisit(visit, { type: 'writeLesson', source: 'A short lesson.' });
-  visit = reduceVisit(visit, {
-    type: 'lessonReady',
-    value: { summary: 'A short lesson.', steps: ['A short lesson.'] },
-  });
-  assert.equal(visit.lesson.phase, 'ready');
-  assert.equal(approvedValue(visit.lesson), null);
-  assert.equal(reviewValue(visit.lesson)?.summary, 'A short lesson.');
   const idle = initialVisit();
   assert.equal(reduceVisit(idle, { type: 'storyFailed', message: 'nope' }), idle);
-  assert.equal(reduceVisit(idle, { type: 'lessonFailed', message: 'nope' }), idle);
   assert.equal(reduceVisit(idle, { type: 'updateFailed', message: 'nope' }), idle);
 });
 
-test('a leader approves the edited parent note and the lesson', () => {
+test('a leader approves the edited parent note', () => {
   let visit = reduceVisit(initialVisit(), { type: 'role', role: 'leader' });
   visit = reduceVisit(visit, { type: 'saveNotes', notes: 'TICK-AFTER-SUNDAY' });
   assert.equal(reduceVisit(visit, { type: 'approveUpdate', body: 'Hello' }), visit);
-  assert.equal(reduceVisit(visit, { type: 'approveLesson' }), visit);
 
   visit = reduceVisit(visit, { type: 'writeUpdate' });
   visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Draft line.' } });
   const parent = reduceVisit(visit, { type: 'role', role: 'parent' });
   assert.equal(reduceVisit(parent, { type: 'approveUpdate', body: 'Hello there.' }), parent);
-  assert.equal(reduceVisit(parent, { type: 'approveLesson' }), parent);
   const volunteer = reduceVisit(visit, { type: 'role', role: 'volunteer' });
   const copied = reduceVisit(volunteer, {
     type: 'approveUpdate',
@@ -258,34 +246,9 @@ test('a leader approves the edited parent note and the lesson', () => {
   });
   assert.equal(approvedValue(visit.update)?.body, 'Sunday went well. TICK-AFTER-SUNDAY');
   assert.equal(reduceVisit(visit, { type: 'approveUpdate', body: 'Again' }), visit);
-
-  visit = reduceVisit(visit, { type: 'writeLesson', source: 'A short lesson.' });
-  visit = reduceVisit(visit, {
-    type: 'lessonReady',
-    value: { summary: 'A short lesson.', steps: ['One step.'] },
-  });
-  const parentLesson = reduceVisit(visit, { type: 'role', role: 'parent' });
-  assert.equal(reduceVisit(parentLesson, { type: 'approveLesson' }).lesson.phase, 'ready');
-  visit = reduceVisit(visit, { type: 'approveLesson' });
-  assert.equal(visit.lesson.phase, 'approved');
-  assert.equal(approvedValue(visit.lesson)?.steps[0], 'One step.');
-  assert.equal(reduceVisit(visit, { type: 'approveLesson' }), visit);
-
-  let edited = reduceVisit(initialVisit(), { type: 'role', role: 'leader' });
-  edited = reduceVisit(edited, { type: 'writeLesson', source: 'A short lesson.' });
-  edited = reduceVisit(edited, {
-    type: 'lessonReady',
-    value: { summary: 'A short lesson.', steps: ['One step.'] },
-  });
-  edited = reduceVisit(edited, {
-    type: 'approveLesson',
-    value: { summary: 'Edited for Rowan.', steps: ['Sit quietly.', 'Sing one song.'] },
-  });
-  assert.equal(approvedValue(edited.lesson)?.summary, 'Edited for Rowan.');
-  assert.deepEqual(approvedValue(edited.lesson)?.steps, ['Sit quietly.', 'Sing one song.']);
 });
 
-test('withdrawing the brief clears an approved lesson and keeps the parent note', () => {
+test('withdrawing the brief keeps the parent note', () => {
   let visit = approveIntake(initialVisit());
   visit = reduceVisit(visit, { type: 'approveBrief' });
   visit = reduceVisit(visit, { type: 'role', role: 'leader' });
@@ -293,47 +256,10 @@ test('withdrawing the brief clears an approved lesson and keeps the parent note'
   visit = reduceVisit(visit, { type: 'writeUpdate' });
   visit = reduceVisit(visit, { type: 'updateReady', value: { body: 'Sunday went well for Rowan.' } });
   visit = reduceVisit(visit, { type: 'approveUpdate', body: 'Sunday went well for Rowan.\nJordan Ellis' });
-  visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
-  visit = reduceVisit(visit, {
-    type: 'lessonReady',
-    value: { summary: 'Plan for Rowan', steps: ['TICK-LESSON-PLAN'] },
-  });
-  visit = reduceVisit(visit, { type: 'approveLesson' });
-  assert.equal(visit.lesson.phase, 'approved');
 
   visit = reduceVisit(visit, { type: 'saveCard', card: { ...visit.card, sensory: 'A quieter room.' } });
   assert.equal(checkInBrief(visit).status, 'withheld');
-  assert.equal(visit.lesson.phase, 'idle');
-  assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
   assert.equal(approvedValue(visit.update)?.body, 'Sunday went well for Rowan.\nJordan Ellis');
-});
-
-test('withdrawing the brief clears the lesson and keeps the typed lesson', () => {
-  let visit = approveIntake(initialVisit());
-  visit = reduceVisit(visit, { type: 'approveBrief' });
-  visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
-  visit = reduceVisit(visit, {
-    type: 'lessonReady',
-    value: { summary: 'Plan for Rowan', steps: ['TICK-LESSON-PLAN', 'TICK-MEDICAL'] },
-  });
-  visit = reduceVisit(visit, { type: 'visibility', field: 'medical', on: true });
-  assert.equal(checkInBrief(visit).status, 'withheld');
-  assert.equal(visit.lesson.phase, 'idle');
-  assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
-
-  visit = reduceVisit(visit, { type: 'approveBrief' });
-  visit = reduceVisit(visit, { type: 'writeLesson', source: 'TICK-LESSON-PLAN' });
-  visit = reduceVisit(visit, {
-    type: 'lessonReady',
-    value: { summary: 'Plan for Rowan', steps: ['TICK-LESSON-PLAN'] },
-  });
-  visit = reduceVisit(visit, {
-    type: 'saveCard',
-    card: { ...visit.card, sensory: 'A quieter room.' },
-  });
-  assert.equal(checkInBrief(visit).status, 'withheld');
-  assert.equal(visit.lesson.phase, 'idle');
-  assert.equal(visit.lessonSource, 'TICK-LESSON-PLAN');
 });
 
 test('a correction keeps a draft', () => {
@@ -449,7 +375,6 @@ test('opening an example approves that child and leaving withdraws the brief', (
     assert.equal(left.card.medical, '');
     assert.equal(left.cardTouched, false);
     assert.equal(left.story.phase, 'idle');
-    assert.equal(left.lesson.phase, 'idle');
     assert.equal(childPreferredName(left), 'Rowan');
     assert.equal(childAgeYears(left), 7);
     assert.equal(reduceVisit(visit, { type: 'conversation', event: { type: 'openExample', id } }), visit);

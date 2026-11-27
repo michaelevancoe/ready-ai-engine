@@ -62,10 +62,6 @@ export function storyPrivacy(input: {
   }
 }
 
-export function leaderLessonPrivacy(name: string): string {
-  return `${name}'s parent approved this brief for you and this Sunday's volunteers. Care notes are in the parent's own words.`;
-}
-
 export function volunteerCheckInPrivacy(name: string): string {
   return `Shared by ${name}'s parent for this Sunday's team only. Care notes are in the parent's own words.`;
 }

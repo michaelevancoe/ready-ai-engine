@@ -615,16 +615,12 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   const calls: GatewayCall[] = [];
   const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
   const story = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan' }));
-  const lesson = await demo.handle(
-    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory], childName: 'Rowan' }),
-  );
   const update = await demo.handle(
     post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
   );
   assert.equal(story.status, 200);
-  assert.equal(lesson.status, 200);
   assert.equal(update.status, 200);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assertCall(
     calls[0],
     'social_story',
@@ -640,11 +636,6 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   );
   assertCall(
     calls[1],
-    'lesson_adaptation',
-    'Child: Rowan\nLesson:\nTICK-LESSON-PLAN\nApproved needs:\nSensory needs: TICK-QUIET-ROOM',
-  );
-  assertCall(
-    calls[2],
     'sunday_update',
     'Child: Rowan\nVolunteer: Jordan Ellis\nNotes:\nTICK-AFTER-SUNDAY',
   );
@@ -660,10 +651,7 @@ test('live drafts call the intake model and hide the gateway token', async () =>
   assert.equal(storySystem.includes('leaving the room'), true);
   assert.equal(storySystem.includes('names that appear in the input'), true);
   assert.equal(storySystem.includes('you, Name,'), false);
-  const lessonSystem = systemText(calls[1]);
-  assert.equal(lessonSystem.includes('the individual'), true);
-  assert.equal(lessonSystem.includes('Do not drop a lesson step.'), true);
-  const updateSystem = systemText(calls[2]);
+  const updateSystem = systemText(calls[1]);
   assert.equal(updateSystem.includes('your own words'), true);
   assert.equal(updateSystem.includes('Do not copy the notes.'), true);
   assert.equal(updateSystem.includes('Jordan Ellis'), true);
@@ -698,12 +686,9 @@ test('a failed draft does not return the gateway body', async () => {
   assert.equal(text.includes(testEnv.AI_GATEWAY_TOKEN), false);
 });
 
-test('social story and lesson requests require childName', async () => {
+test('social story requests require childName', async () => {
   const demo = await DemoContext.open('1');
   const story = await demo.handle(socialStory({ lines: [sensory] }));
-  const lesson = await demo.handle(
-    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory] }),
-  );
   const empty = await demo.handle(
     socialStory({ lines: [sensory], childName: '' }),
   );
@@ -711,7 +696,6 @@ test('social story and lesson requests require childName', async () => {
     post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'R'.repeat(81) }),
   );
   assert.equal(story.status, 400);
-  assert.equal(lesson.status, 400);
   assert.equal(empty.status, 400);
   assert.equal(long.status, 400);
   assert.deepEqual(await story.json(), { error: 'invalid_input' });
@@ -1606,7 +1590,7 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   assert.equal(aged.status, 400);
 
   const broken = await demo.handle(
-    new Request('http://example.com/v1/drafts/lesson', {
+    new Request('http://example.com/v1/drafts/sunday-update', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{',
@@ -1614,56 +1598,6 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
   );
   assert.equal(broken.status, 400);
   assert.deepEqual(await broken.json(), { error: 'invalid_input' });
-
-  const lesson = await demo.handle(
-    post('/v1/drafts/lesson', { lesson: 'TICK-LESSON-PLAN', lines: [sensory], childName: 'Rowan' }),
-  );
-  assert.equal(lesson.status, 200);
-  const adapted = (await lesson.json()) as { summary: string; steps: string[] };
-  assert.equal(adapted.summary.includes('TICK-LESSON-PLAN'), true);
-  assert.equal(adapted.summary.includes('Rowan'), true);
-  assert.equal(
-    adapted.steps.some((step) => step.includes('TICK-LESSON-PLAN')),
-    true,
-  );
-  assert.equal(
-    adapted.steps.some((step) => step.includes('TICK-QUIET-ROOM')),
-    true,
-  );
-  assert.equal(
-    adapted.steps.some((step) => step.includes('Rowan')),
-    true,
-  );
-  assert.equal(JSON.stringify(adapted).includes('TICK-MEDICAL'), false);
-
-  const counted = await demo.handle(
-    post('/v1/drafts/lesson', {
-      lesson: 'Sing a song.\n\nSit down.',
-      lines: [sensory],
-      childName: 'Rowan',
-    }),
-  );
-  assert.equal(counted.status, 200);
-  const countedBody = (await counted.json()) as { steps: string[] };
-  assert.equal(countedBody.steps.length, 3);
-  assert.equal(countedBody.steps[0]?.includes('Sing a song.'), true);
-  assert.equal(countedBody.steps[0]?.includes('Rowan'), true);
-  assert.equal(countedBody.steps[1]?.includes('Sit down.'), true);
-  assert.equal(countedBody.steps[1]?.includes('Rowan'), true);
-  assert.equal(countedBody.steps[2]?.includes('TICK-QUIET-ROOM'), true);
-
-  const capped = await demo.handle(
-    post('/v1/drafts/lesson', {
-      lesson: 'L'.repeat(900),
-      lines: [{ field: 'sensory', label: 'Sensory needs', text: 'S'.repeat(500) }],
-      childName: 'Rowan',
-    }),
-  );
-  assert.equal(capped.status, 200);
-  const cappedBody = (await capped.json()) as { summary: string; steps: string[] };
-  assert.equal(cappedBody.summary.length, 600);
-  assert.equal(cappedBody.steps[0]?.length, 400);
-  assert.equal(cappedBody.steps[1]?.length, 400);
 
   const update = await demo.handle(
     post('/v1/drafts/sunday-update', { notes: 'TICK-AFTER-SUNDAY', childName: 'Rowan' }),
@@ -1767,7 +1701,6 @@ function recordingFetch(calls: GatewayCall[]): typeof fetch {
     calls.push({ headers: request.headers, body });
     const name = body.response_format?.json_schema?.name;
     if (name === 'social_story') return chatEnvelope({ title: 'Sunday with Rowan', body: 'echo' });
-    if (name === 'lesson_adaptation') return chatEnvelope({ summary: 'echo', steps: ['echo'] });
     if (name === 'sunday_update') return chatEnvelope({ body: 'echo' });
     return new Response(null, { status: 502 });
   };

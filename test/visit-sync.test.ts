@@ -108,7 +108,6 @@ test('a sync body cannot publish a medical line', () => {
       },
       notes: null,
       church: null,
-      lesson: null,
       update: null,
     },
   };

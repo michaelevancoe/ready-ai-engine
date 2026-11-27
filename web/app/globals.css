@@ -136,11 +136,9 @@ section,
 #sunday-update,
 #story-draft,
 #update-draft,
-#lesson-draft,
 #desk-status,
 #story-status,
-#update-status,
-#lesson-status {
+#update-status {
   scroll-margin-top: 5.25rem;
 }
 
@@ -739,11 +737,6 @@ button.home-card {
   padding: 0.2rem 0.55rem;
 }
 
-.tag.waiting {
-  background: var(--overwhelms);
-  color: var(--terracotta);
-}
-
 .tag.ready {
   background: var(--helps);
   color: var(--focus);
@@ -759,24 +752,6 @@ button.home-card {
   border-radius: 0.8rem;
   padding: 0.7rem 0.8rem;
   margin-top: 0.8rem;
-}
-
-.lesson-card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  padding: 0.85rem 1rem;
-  margin-top: 0.9rem;
-}
-
-.lesson-card ol {
-  margin: 0.35rem 0 0;
-  padding-left: 1.2rem;
-}
-
-.lesson-card textarea,
-.lesson-card input {
-  width: 100%;
 }
 
 .sign-in {

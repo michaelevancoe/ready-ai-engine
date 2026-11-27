@@ -96,31 +96,6 @@ export function visitWrites(userId: string, scope: AccountScope, plan: PersistPl
       },
     });
   }
-  if (plan.lesson?.action === 'upsert') {
-    writes.push({
-      method: 'POST',
-      table: 'lessons',
-      conflict: 'organization_id',
-      row: {
-        id: scope.organizationId,
-        organization_id: scope.organizationId,
-        author_user_id: userId,
-        source: plan.lesson.source,
-        summary: plan.lesson.summary,
-        steps: plan.lesson.steps,
-        status: 'approved',
-        title: plan.lesson.summary.trim().length > 0 ? plan.lesson.summary : 'Lesson',
-        body: '',
-      },
-    });
-  }
-  if (plan.lesson?.action === 'delete') {
-    writes.push({
-      method: 'DELETE',
-      table: 'lessons',
-      query: `organization_id=eq.${scope.organizationId}`,
-    });
-  }
   if (plan.update?.action === 'upsert') {
     writes.push({
       method: 'POST',
@@ -211,7 +186,6 @@ function parsePlan(value: Record<string, unknown>, scope: AccountScope): Persist
   const publication = parsePublication(value.publication, scope);
   const notes = parseNotes(value.notes, scope);
   const church = parseChurch(value.church, scope);
-  const lesson = parseLesson(value.lesson, scope);
   const update = parseUpdate(value.update, scope);
   if (
     answers === undefined ||
@@ -219,12 +193,11 @@ function parsePlan(value: Record<string, unknown>, scope: AccountScope): Persist
     publication === undefined ||
     notes === undefined ||
     church === undefined ||
-    lesson === undefined ||
     update === undefined
   ) {
     return null;
   }
-  return { answers, brief, publication, notes, church, lesson, update };
+  return { answers, brief, publication, notes, church, update };
 }
 
 function parseAnswers(value: unknown, scope: AccountScope): PersistPlan['answers'] | undefined {
@@ -307,28 +280,6 @@ function parseChurch(value: unknown, scope: AccountScope): PersistPlan['church']
       ages: church.ages,
       plan: church.plan,
     },
-  };
-}
-
-function parseLesson(value: unknown, scope: AccountScope): PersistPlan['lesson'] | undefined {
-  if (value === null) return null;
-  if (!isRecord(value) || value.organizationId !== scope.organizationId) return undefined;
-  if (value.action === 'delete') return { action: 'delete', organizationId: scope.organizationId };
-  if (value.action !== 'upsert' || typeof value.source !== 'string' || typeof value.summary !== 'string') {
-    return undefined;
-  }
-  if (!Array.isArray(value.steps)) return undefined;
-  const steps: string[] = [];
-  for (const step of value.steps) {
-    if (typeof step !== 'string') return undefined;
-    steps.push(step);
-  }
-  return {
-    action: 'upsert',
-    organizationId: scope.organizationId,
-    source: value.source,
-    summary: value.summary,
-    steps,
   };
 }
 
