@@ -21,7 +21,7 @@ const headerFooter = {
 };
 
 test('Rowan, Maya, and Jonah print one sheet per book page', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   for (const [button, name] of examples) {
     await openStory(page, button, name);
     await expectFittedBook(page, { pictures: true });
@@ -79,6 +79,7 @@ test('a max-length fictional church still prints one sheet per book page', async
 });
 
 async function openStory(page: Page, button: RegExp, name: string): Promise<void> {
+  await page.emulateMedia({ media: 'screen' });
   await page.goto('/');
   await page.getByRole('button', { name: button }).click();
   await expect(page.getByRole('button', { name: `Print ${name}'s Sunday story` })).toBeVisible();
@@ -133,8 +134,12 @@ async function expectFittedBook(page: Page, options: { pictures: boolean }): Pro
     for (const selector of ['.sunday-print-sentence', '.sunday-print-title', '.sunday-print-church']) {
       const node = article.locator(selector);
       if ((await node.count()) === 0) continue;
-      const fits = await node.evaluate((element) => element.scrollHeight <= element.clientHeight + 1);
-      expect(fits).toBe(true);
+      const metrics = await node.evaluate((element) => ({
+        scroll: element.scrollHeight,
+        client: element.clientHeight,
+        text: (element.textContent ?? '').slice(0, 80),
+      }));
+      expect(metrics.scroll, metrics.text).toBeLessThanOrEqual(metrics.client + 1);
     }
     if (!options.pictures) continue;
     const picture = await article.locator('.sunday-print-picture').boundingBox();

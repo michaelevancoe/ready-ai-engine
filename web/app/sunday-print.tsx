@@ -19,7 +19,16 @@ export function SundayPrint({ visit, photos }: { visit: Visit; photos: ChurchPho
   );
 }
 
+function printTypeSize(text: string): '30' | '22' | '16' | '12' {
+  const length = text.length;
+  if (length <= 90) return '30';
+  if (length <= 200) return '22';
+  if (length <= 600) return '16';
+  return '12';
+}
+
 function PrintPage({ page, photos }: { page: SundayStoryPage; photos: ChurchPhotoSet }) {
+  const pageSize = printTypeSize(page.step === 'cover' ? page.churchName : page.text);
   const picture = (
     <div className="sunday-print-picture">
       <StoryPictureView picture={resolveStoryPicture(page.slot, photos)} />
@@ -34,9 +43,13 @@ function PrintPage({ page, photos }: { page: SundayStoryPage; photos: ChurchPhot
   switch (page.step) {
     case 'cover':
       return (
-        <article className="sunday-print-page">
-          <h1 className="sunday-print-title">{page.title}</h1>
-          <p className="sunday-print-church">{page.churchName}</p>
+        <article className="sunday-print-page" data-print-size={pageSize}>
+          <h1 className="sunday-print-title" data-print-size={printTypeSize(page.title)}>
+            {page.title}
+          </h1>
+          <p className="sunday-print-church" data-print-size={printTypeSize(page.churchName)}>
+            {page.churchName}
+          </p>
           {picture}
           <p className="sunday-print-subtitle">{page.subtitle}</p>
           {footer}
@@ -50,9 +63,11 @@ function PrintPage({ page, photos }: { page: SundayStoryPage; photos: ChurchPhot
     case 6:
     case 7:
       return (
-        <article className="sunday-print-page">
+        <article className="sunday-print-page" data-print-size={pageSize}>
           {picture}
-          <p className="sunday-print-sentence">{page.text}</p>
+          <p className="sunday-print-sentence" data-print-size={printTypeSize(page.text)}>
+            {page.text}
+          </p>
           {footer}
         </article>
       );
