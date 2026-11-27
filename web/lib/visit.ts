@@ -1,3 +1,4 @@
+import type { StoryPages } from '../../src/sunday-story-text.ts';
 import {
   UNANSWERED_CHILD,
   answeredChild,
@@ -51,7 +52,7 @@ export type StoryGate = ReviewGate<SocialStory>;
 
 export interface SocialStory {
   readonly title: string;
-  readonly body: string;
+  readonly pages: StoryPages;
   readonly source: 'model' | 'fallback';
 }
 
@@ -368,6 +369,7 @@ function applyConversation(visit: Visit, event: ConversationEvent): Visit {
       conversation,
       card,
       cardTouched: false,
+      intake: initialGate(),
       brief: { phase: 'approved', lines: briefLines(card, visit.visibility) },
     };
   }
@@ -377,8 +379,12 @@ function applyConversation(visit: Visit, event: ConversationEvent): Visit {
       conversation,
       card: blankCard(),
       cardTouched: false,
+      intake: initialGate(),
       ...withdrawnBrief(),
     };
+  }
+  if (event.type === 'beginIntake') {
+    return { ...visit, conversation, intake: initialGate(), ...withdrawnBrief() };
   }
   return { ...visit, conversation };
 }

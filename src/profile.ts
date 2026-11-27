@@ -7,9 +7,11 @@ export interface ChildProfile {
   supportStrategies: string[];
   avoid: string[];
   volunteerGuidance: string;
+  whatHelps: string[];
 }
 
 const shortText = { type: 'string', minLength: 1, maxLength: 400 } as const;
+const helpText = { type: 'string', minLength: 1, maxLength: 110 } as const;
 
 export const childProfileSchema = {
   type: 'object',
@@ -20,6 +22,7 @@ export const childProfileSchema = {
     'supportStrategies',
     'avoid',
     'volunteerGuidance',
+    'whatHelps',
   ],
   properties: {
     summary: { type: 'string', minLength: 1, maxLength: 2000 },
@@ -27,6 +30,7 @@ export const childProfileSchema = {
     supportStrategies: { type: 'array', maxItems: 12, items: shortText },
     avoid: { type: 'array', maxItems: 12, items: shortText },
     volunteerGuidance: { type: 'string', minLength: 1, maxLength: 2000 },
+    whatHelps: { type: 'array', minItems: 3, maxItems: 5, items: helpText },
   },
 } satisfies JsonSchema;
 
@@ -42,12 +46,14 @@ export function parseChildProfile(value: unknown): ChildProfile {
   const sensoryConsiderations = stringArray(value.sensoryConsiderations);
   const supportStrategies = stringArray(value.supportStrategies);
   const avoid = stringArray(value.avoid);
+  const whatHelps = stringArray(value.whatHelps);
   if (
     typeof value.summary !== 'string' ||
     typeof value.volunteerGuidance !== 'string' ||
     sensoryConsiderations === null ||
     supportStrategies === null ||
-    avoid === null
+    avoid === null ||
+    whatHelps === null
   ) {
     throw new SchemaRejected();
   }
@@ -57,5 +63,6 @@ export function parseChildProfile(value: unknown): ChildProfile {
     supportStrategies,
     avoid,
     volunteerGuidance: value.volunteerGuidance,
+    whatHelps,
   };
 }

@@ -2,9 +2,12 @@
 
 import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { volunteerStep, type VisitRecord } from '../../lib/demo-visits';
+import { behaviorAsked } from '../../lib/intake-tree';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { checkInBrief, childAgeYears, childPreferredName, type Visit } from '../../lib/visit';
+import { visitWhatHelps } from '../../lib/what-helps';
 import { PrivacyNote } from '../privacy-note';
+import { WhatHelpsCard } from '../what-helps';
 import { useReadyStore } from '../visit-shell';
 
 export default function VolunteerPage() {
@@ -44,7 +47,7 @@ export default function VolunteerPage() {
   return (
     <main>
       <h1>Sunday check-in</h1>
-      <p>Jordan Ellis</p>
+      <p>You&apos;re Jordan Ellis, a volunteer in the {home.visit.church.room}.</p>
       {samples ? (
         <p className="sample-caption">
           Tap a child to open their brief. Owen, Nora, Ezra, Hazel and Lucy are sample children.
@@ -55,14 +58,6 @@ export default function VolunteerPage() {
           <RosterButton key={record.id} record={record} onOpen={() => openChild(record.id)} />
         ))}
       </ul>
-      <BriefBody
-        visit={home.visit}
-        sample={false}
-        onSave={(notes) => {
-          focus(home.id);
-          store.dispatch({ type: 'saveNotes', notes });
-        }}
-      />
     </main>
   );
 }
@@ -87,9 +82,11 @@ function ChildDetail({
         </button>
       </div>
       <h1>Sunday check-in</h1>
-      <p>Jordan Ellis</p>
+      <p>You&apos;re Jordan Ellis, a volunteer in the {record.visit.church.room}.</p>
       <div className="roster-card">
-        <span className="portrait">Placeholder photo</span>
+        <span className="portrait" aria-hidden="true">
+          {name.slice(0, 1)}
+        </span>
         <span>
           <h2>
             {name}, {age}
@@ -110,7 +107,9 @@ function RosterButton({ record, onOpen }: { record: VisitRecord; onOpen: () => v
   return (
     <li>
       <button type="button" className="child-row roster-row" aria-label={`Open ${name}, ${age}, ${step}`} onClick={onOpen}>
-        <span className="portrait">Placeholder photo</span>
+        <span className="portrait" aria-hidden="true">
+          {name.slice(0, 1)}
+        </span>
         <span>
           <h2>
             {name}, {age}
@@ -160,11 +159,13 @@ function BriefBody({
   return (
     <section aria-label="Sunday brief">
       <h2>Sunday brief</h2>
+      <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
       <PrivacyNote variant="line" text={volunteerCheckInPrivacy(name)} />
       {brief.lines.length === 0 ? <p>No shared lines.</p> : null}
       {brief.lines.map((line) => (
         <article key={line.field} className="line" data-field={line.field}>
           <h3>{line.label}</h3>
+          {line.field === 'calming' ? <p>{behaviorAsked(name)}</p> : null}
           <p>{line.text}</p>
         </article>
       ))}

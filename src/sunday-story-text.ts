@@ -17,10 +17,13 @@ const fullestChurch = {
   plan: 'p'.repeat(CHURCH_PLAN_MAX),
 };
 
-export const SUNDAY_STORY_BODY_MAX = Math.max(
-  joinedLength(sundayStorySentences(fullestChurch)),
-  joinedLength(sundayFallbackSentences(fullestChurch)),
-);
+export const STORY_BEATS = ['arrive', 'doors', 'desk', 'room', 'helper', 'quiet', 'pickup'] as const;
+
+export type StoryBeat = (typeof STORY_BEATS)[number];
+
+export type StoryPages = { readonly [beat in StoryBeat]: string };
+
+export const SUNDAY_STORY_PAGE_MAX = Math.max(...sundayStorySentences(fullestChurch).map((sentence) => sentence.length));
 
 export function sundayStorySentences(
   church: SundaySentenceChurch,
@@ -36,29 +39,9 @@ export function sundayStorySentences(
   ];
 }
 
-export function sundayFallbackSentences(
-  church: SundaySentenceChurch,
-): readonly [string, string, string, string, string, string, string] {
-  return [
-    arrival(church),
-    'You walk in the front doors, and a greeter smiles and says hello.',
-    classroom(church),
-    `${church.leader} and the helpers are there to help you.`,
-    'If you need a break, there is a quiet spot in the room.',
-    'When it is over, your grown-up comes back for you.',
-    welcome(church.leader),
-  ];
-}
-
-function joinedLength(sentences: readonly string[]): number {
-  return sentences.join('\n\n').length;
-}
-
-function welcome(leader: string): string {
-  const name = leader.trim();
-  if (name === '') return 'We are glad you came.';
-  const verb = /\band\b/iu.test(name) ? 'are' : 'is';
-  return `${name} ${verb} glad you came.`;
+export function templateStoryPages(church: SundaySentenceChurch): StoryPages {
+  const [arrive, doors, desk, room, helper, quiet, pickup] = sundayStorySentences(church);
+  return { arrive, doors, desk, room, helper, quiet, pickup };
 }
 
 function arrival(church: SundaySentenceChurch): string {

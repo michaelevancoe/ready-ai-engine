@@ -22,7 +22,7 @@ const BEHAVIOR =
 const HELPS_FOLLOW =
   'One more about what helps: is there anything else that calms Rowan, like a quiet spot or a heads-up before changes?';
 const ABOUT = 'To start: how would you describe Rowan in a sentence or two?';
-const COMMUNICATION = 'How does Rowan usually let you know what Rowan needs?';
+const COMMUNICATION = 'How does Rowan usually let you know what they need?';
 const NAME_NOTICE = 'Use 1 to 40 letters, spaces, hyphens, or apostrophes.';
 const AGE_NOTICE = 'Use a whole number from 0 to 18.';
 

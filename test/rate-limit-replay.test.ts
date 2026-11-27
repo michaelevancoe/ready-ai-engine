@@ -21,6 +21,7 @@ const profile = {
   supportStrategies: ['A quiet corner helps.'],
   avoid: ['Sudden loud songs.'],
   volunteerGuidance: 'Explain the next activity first.',
+  whatHelps: ['Offer a quiet corner.', 'Give a heads-up before changes.', 'Use picture cards and a few words.'],
 };
 
 const ack = { relevant: true, line: 'Thanks. That helps.', clarifyingPrompt: '' };

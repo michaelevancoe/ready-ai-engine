@@ -7,11 +7,14 @@ import {
   parseSocialStoryRequest,
   parseSundayUpdate,
   socialStoryMessages,
+  socialStorySchema,
   storySafety,
 } from '../src/demo-drafts.ts';
 import { SchemaRejected } from '../src/errors.ts';
-import { SUNDAY_STORY_BODY_MAX, sundayFallbackSentences } from '../src/sunday-story-text.ts';
+import { STORY_BEATS, SUNDAY_STORY_PAGE_MAX, templateStoryPages, type StoryPages } from '../src/sunday-story-text.ts';
+import { postAcknowledgement } from '../web/lib/drafts.ts';
 import { chatEnvelope, testEnv } from './fixtures.ts';
+import { juniperAnswers, juniperName } from './fixtures/long-intake.ts';
 
 interface DraftLine {
   field: string;
@@ -64,19 +67,40 @@ const jonahLines = [
 ];
 const mayaInput = { childName: 'Maya', church: harbor, lines: mayaLines };
 const jonahInput = { childName: 'Jonah', church: harbor, lines: jonahLines };
-const fallbackBody = [
-  'On Sunday at 9:30, you and your grown-up go to Example Harbor Fellowship.',
-  'You walk in the front doors, and a greeter smiles and says hello.',
-  'You go to the Harbor Room. You will have a short welcome, one song, and a quiet activity.',
-  'Ms. Dana and the helpers are there to help you.',
-  'If you need a break, there is a quiet spot in the room.',
-  'When it is over, your grown-up comes back for you.',
-  'Ms. Dana is glad you came.',
-].join('\n\n');
+function prose(pages: StoryPages): string {
+  return STORY_BEATS.map((beat) => pages[beat]).join('\n');
+}
+
+type WritablePages = { -readonly [beat in keyof StoryPages]: string };
+
+function longQuietPage(): string {
+  const stem = 'Rowan can hold a Disney story and wait by the doorway near softer lights';
+  const beat = ' and a quiet hello';
+  let body = stem;
+  while ((body + beat).length + 1 <= 1500) body += beat;
+  return `${body}.`;
+}
+
+function personalPages(): WritablePages {
+  return {
+    ...templateStoryPages(harbor),
+    helper: 'Rowan can hold a Disney story.',
+    quiet: 'Rowan can sit in a softer seat away from bright lights.',
+  };
+}
+
+function pageSentences(text: string): number {
+  let count = 0;
+  for (const mark of text) {
+    if (mark === '.' || mark === '!' || mark === '?') count += 1;
+  }
+  return count;
+}
+
 const labelStory =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
 
-const NEXT_QUESTION = 'How does {child} usually let you know what {child} needs?';
+const NEXT_QUESTION = 'How does {child} usually let you know what they need?';
 const CHILD_PRONOUN = /\b(?:he|she|him|his|her|hers|they|them|their|theirs)\b/iu;
 const ACK_USER = `Answer: Picture cards.\nSection: communication\nQuestion: ${NEXT_QUESTION}`;
 
@@ -198,11 +222,11 @@ test('a failing acknowledgement tries the gateway once and uses the fallback lin
   assert.equal(response.status, 200);
   assert.equal(calls, 1);
   const body = (await response.json()) as { line: string };
-  assert.equal(body.line, "That's really helpful.");
+  assert.equal(body.line, 'Thanks for sharing that.');
 });
 
-test('an acknowledgement longer than 500 characters is rejected before fetch', async () => {
-  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(501), nodeId: 'communication' });
+test('an acknowledgement longer than 2000 characters is rejected before fetch', async () => {
+  const result = await rejectedAcknowledgement({ answer: 'a'.repeat(2001), nodeId: 'communication' });
   assert.equal(result.status, 400);
   assert.equal(result.calls, 0);
 });
@@ -223,6 +247,107 @@ test('an acknowledgement with an extra key is rejected before fetch', async () =
   assert.equal(result.calls, 0);
 });
 
+test('a long answer is acknowledged from its first 1500 characters', async () => {
+  const replies = [
+    'The brother can come along.',
+    'A ribbon can come along.',
+    'The window can stay in view.',
+    'A bakery stop can stay in the story.',
+    'Bottle caps can stay in the story.',
+  ] as const;
+  const sent: string[] = [];
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as { messages?: { role?: string; content?: string }[] };
+    sent.push(body.messages?.find((message) => message.role === 'user')?.content ?? '');
+    const line = replies[calls] ?? replies[0];
+    calls += 1;
+    return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
+  });
+  const openings: string[] = [];
+  const recent: string[] = [];
+  for (let index = 0; index < replies.length; index += 1) {
+    const answer = longAcknowledgement(index);
+    assert.equal(answer.length >= 1500 && answer.length <= 2000, true, String(index));
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', {
+        answer,
+        nodeId: 'loves',
+        ...(recent.length === 0 ? {} : { recent: recent.slice(-3) }),
+      }),
+    );
+    assert.equal(response.status, 200, String(index));
+    const body = (await response.json()) as { line: string };
+    assert.equal(body.line, replies[index], String(index));
+    openings.push(body.line.toLowerCase().split(/\s+/u).slice(0, 3).join(' '));
+    recent.push(body.line);
+  }
+  assert.equal(new Set(openings).size, replies.length);
+  assert.equal(calls, replies.length);
+  const first = sent[0] ?? '';
+  const told = first.slice('Answer: '.length, first.indexOf('\nSection: '));
+  assert.equal(told, juniperAnswers.loves.slice(0, 1500));
+  assert.equal(told.length, 1500);
+  assert.equal(juniperAnswers.loves.length > 1500 && juniperAnswers.loves.length <= 2000, true);
+  assert.equal(sent[4]?.includes(replies[1]), true);
+  assert.equal(sent[4]?.includes(replies[2]), true);
+  assert.equal(sent[4]?.includes(replies[3]), true);
+});
+
+test('a repeated acknowledgement opening is retried once', async () => {
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return chatEnvelope({ relevant: true, line: 'Cards can help on Sunday.', clarifyingPrompt: '' });
+  });
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', {
+      answer: 'Picture cards.',
+      nodeId: 'communication',
+      recent: ['Cards can help the volunteers.'],
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  const body = (await response.json()) as { line: string };
+  assert.equal(body.line.split(/\s+/u).slice(0, 3).join(' ').toLowerCase() === 'cards can help', false);
+});
+
+test('an acknowledgement longer than twenty words falls back without a second call', async () => {
+  const line = `${Array.from({ length: 20 }, () => 'a').join(' ')} cards.`;
+  const result = await acknowledgementFrom(line);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls, 1);
+  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+});
+
+test('the client sends the last three acknowledgement lines', async () => {
+  const bodies: unknown[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({ relevant: true, line: 'Cards can help the volunteers.', clarifyingPrompt: '' });
+  };
+  try {
+    await postAcknowledgement('Picture cards.', 'communication', ['one.', 'two.', 'three.', 'four.']);
+    await postAcknowledgement('Picture cards.', 'communication');
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.deepEqual(bodies[0], {
+    answer: 'Picture cards.',
+    nodeId: 'communication',
+    recent: ['two.', 'three.', 'four.'],
+  });
+  assert.deepEqual(bodies[1], { answer: 'Picture cards.', nodeId: 'communication' });
+});
+
+function longAcknowledgement(index: number): string {
+  if (index === 0) return juniperAnswers.loves;
+  return `${juniperAnswers.loves} ${'colorful bottle caps '.repeat(40)}`.slice(0, 1600 + index * 70);
+}
+
 test('an acknowledgement with a newline comes back as one line', async () => {
   const demo = DemoContext.fromBindings(liveShell(), async () =>
     chatEnvelope({ relevant: true, line: 'Thanks.\nThat helps.', clarifyingPrompt: '' }),
@@ -238,15 +363,16 @@ test('an acknowledgement with a newline comes back as one line', async () => {
   });
 });
 
-const PARENT_FALLBACK = "That's really helpful.";
+const PARENT_FALLBACK = 'Thanks for sharing that.';
 
 const ACKNOWLEDGEMENT_PROMPT = [
   "Ready helps parents of children who need extra support prepare a church kids' ministry, its volunteers and leaders, for Sunday.",
   'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
-  'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
-  'Do not restate or quote the answer.',
+  'line names one specific detail from the answer, in one sentence of at most 20 words.',
+  'line is one warm, plain thank-you to the parent.',
+  'Do not reuse an opening from the recent lines.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
   'Do not label the child.',
@@ -262,15 +388,11 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Relevant: "not sure" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "pizza rocket sandwich" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "asdf qwerty" for "What helps Rowan feel calm again when things get to be too much?"',
-  'Examples of line:',
-  "Thank you, that's really useful to know.",
-  'Got it, that will help the volunteers.',
-  'Thanks, that gives us a clearer picture.',
-  "That's really helpful.",
+  'Example of a line: "Pip the fox can come along." for an answer about a stuffed fox, about Mina rather than the child in the question.',
 ].join('\n');
 
 test('a good acknowledgement is returned unchanged', async () => {
-  const line = "Thank you, that's really useful to know.";
+  const line = 'Cards can help the volunteers.';
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
@@ -588,7 +710,7 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       relevant: true,
-      line: "That's really helpful.",
+      line: 'Thanks for sharing that.',
       clarifyingPrompt: '',
     });
     assert.ok(calls.length >= 1);
@@ -618,15 +740,16 @@ test('mock drafts stay on the church story and ignore fetch', async () => {
   const story = await bound.handle(socialStory({ lines: [sensory], childName: 'Rowan' }));
   assert.equal(story.status, 200);
   assert.equal(calls, 0);
-  const body = (await story.json()) as { title: string; body: string };
+  const body = (await story.json()) as { title: string; pages: StoryPages };
+  const text = prose(body.pages);
   assert.equal(body.title, 'Sunday with Rowan');
-  assert.equal(body.body.includes('TICK-QUIET-ROOM'), false);
-  assert.equal(body.body.includes('TICK-MEDICAL'), false);
-  assert.equal(body.body.includes(harbor.name), true);
-  assert.equal(body.body.includes(harbor.room), true);
-  assert.equal(body.body.includes(harbor.leader), true);
+  assert.equal(text.includes('TICK-QUIET-ROOM'), false);
+  assert.equal(text.includes('TICK-MEDICAL'), false);
+  assert.equal(text.includes(harbor.name), true);
+  assert.equal(text.includes(harbor.room), true);
+  assert.equal(text.includes(harbor.leader), true);
   assert.equal(
-    storySafety(body, { childName: 'Rowan', church: harbor, lines: [{ text: sensory.text }] }),
+    storySafety({ title: body.title, body: text }, { childName: 'Rowan', church: harbor, lines: [{ text: sensory.text }] }),
     true,
   );
 });
@@ -740,30 +863,143 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   });
 });
 
-test('parseSocialStory rejects a dict and a body that is only the labels', () => {
-  assert.throws(
-    () => parseSocialStory({ title: 'Sunday', body: "{ 'loves': 'Soft music' }" }, rowanInput),
-    SchemaRejected,
-  );
+test('parseSocialStory replaces a bad page and rejects a payload that is not pages', () => {
   assert.throws(() => parseSocialStory({ title: 'Sunday', body: labelStory }, rowanInput), SchemaRejected);
-  assert.throws(
-    () => parseSocialStory({ title: 'Sunday', body: 'The room has "sensory": quiet corners.' }, rowanInput),
-    SchemaRejected,
+  const pages = personalPages();
+  const template = templateStoryPages(harbor);
+  const parsed = parseSocialStory(
+    {
+      title: 'Sunday with Rowan',
+      pages: {
+        ...pages,
+        helper: "{ 'loves': 'Soft music' }",
+        desk: labelStory,
+        arrive: 'The room has "sensory": quiet corners.',
+      },
+    },
+    rowanInput,
   );
+  assert.equal(parsed.pages.helper, template.helper);
+  assert.equal(parsed.pages.desk, template.desk);
+  assert.equal(parsed.pages.arrive, template.arrive);
+  assert.equal(parsed.pages.quiet, pages.quiet);
 });
 
-test('parseSocialStory accepts a short prose body', () => {
-  assert.deepEqual(parseSocialStory({ title: 'Sunday with Rowan', body: safeBody }, rowanInput), {
+test('parseSocialStory accepts a personal seven-page story', () => {
+  const pages = personalPages();
+  assert.deepEqual(parseSocialStory({ title: 'Sunday with Rowan', pages }, rowanInput), {
     title: 'Sunday with Rowan',
-    body: safeBody,
+    pages,
   });
 });
 
 test('parseSocialStory rejects a care-plan title', () => {
   assert.throws(
-    () => parseSocialStory({ title: "Rowan's Sunday Plan", body: safeBody }, rowanInput),
+    () => parseSocialStory({ title: "Rowan's Sunday Plan", pages: personalPages() }, rowanInput),
     SchemaRejected,
   );
+});
+
+test('parseSocialStory fills an empty page or a page with three sentences from the template', () => {
+  const template = templateStoryPages(harbor);
+  const pages = personalPages();
+  const parsed = parseSocialStory(
+    {
+      title: 'Sunday with Rowan',
+      pages: {
+        ...pages,
+        doors: 'Rowan waves. Rowan smiles. Rowan sits down.',
+        pickup: '   ',
+      },
+    },
+    rowanInput,
+  );
+  assert.equal(parsed.pages.doors, template.doors);
+  assert.equal(parsed.pages.pickup, template.pickup);
+  assert.equal(parsed.pages.helper, pages.helper);
+});
+
+test('parseSocialStory allows a parent-named object and rejects an invented seat', () => {
+  const lines = [
+    { text: 'Rowan loves Shelly the turtle and quiet trains.' },
+    { text: 'They like a softer seat and bright lights.' },
+    { text: 'A doorway and a Disney story help Rowan.' },
+  ];
+  const input = { childName: 'Rowan', church: harbor, lines };
+  const pages = personalPages();
+  pages.helper = 'Rowan can hold Shelly the turtle.';
+  assert.equal(parseSocialStory({ title: 'Sunday with Rowan', pages }, input).pages.helper, pages.helper);
+  const held = { ...pages, quiet: 'Rowan can sit in a soft seat.' };
+  assert.equal(parseSocialStory({ title: 'Sunday with Rowan', pages: held }, input).pages.quiet, held.quiet);
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: { ...pages, quiet: 'They sit in a soft seat.' } }, input),
+    SchemaRejected,
+  );
+});
+
+test('parseSocialStory rejects a story with fewer than 40 words or fewer than two child nouns', () => {
+  const thin = personalPages();
+  for (const beat of STORY_BEATS) thin[beat] = 'Rowan waves.';
+  thin.helper = 'Rowan sees Disney.';
+  thin.quiet = 'Rowan sees a doorway.';
+  assert.throws(() => parseSocialStory({ title: 'Sunday with Rowan', pages: thin }, rowanInput), SchemaRejected);
+  const long = personalPages();
+  for (const beat of STORY_BEATS) {
+    long[beat] = 'Rowan walks along with a grown-up and smiles at the morning.';
+  }
+  assert.throws(() => parseSocialStory({ title: 'Sunday with Rowan', pages: long }, rowanInput), SchemaRejected);
+});
+
+test('a story page longer than 1200 characters is kept', () => {
+  const quiet = longQuietPage();
+  assert.equal(quiet.length > 1200 && quiet.length <= SUNDAY_STORY_PAGE_MAX, true);
+  const pages = socialStorySchema.properties.pages;
+  assert.equal(pages.type, 'object');
+  if (pages.type !== 'object') return;
+  const cap = pages.properties.quiet;
+  assert.equal(cap?.type, 'string');
+  if (cap?.type !== 'string') return;
+  assert.equal(cap.maxLength, SUNDAY_STORY_PAGE_MAX);
+  const story = { ...personalPages(), quiet };
+  const parsed = parseSocialStory({ title: 'Sunday with Rowan', pages: story }, rowanInput);
+  assert.equal(parsed.pages.quiet, quiet);
+  assert.equal(pageSentences(parsed.pages.quiet) <= 2, true);
+});
+
+test('a long Juniper story passes when the pages use her answers', () => {
+  for (const [field, answer] of Object.entries(juniperAnswers)) {
+    assert.equal(answer.length >= 800 && answer.length <= 1900, true, field);
+    assert.equal(answer.includes('\n\n'), true, field);
+  }
+  assert.equal(juniperAnswers.allergies.toLowerCase().includes('gluten'), true);
+  for (const field of ['loves', 'overwhelms', 'whatHelps', 'communication', 'sensory'] as const) {
+    assert.equal(juniperAnswers[field].toLowerCase().includes('gluten'), false, field);
+  }
+  const lines = [
+    { field: 'loves', text: juniperAnswers.loves },
+    { field: 'overwhelms', text: juniperAnswers.overwhelms },
+    { field: 'whatHelps', text: juniperAnswers.whatHelps },
+    { field: 'communication', text: juniperAnswers.communication },
+    { field: 'sensory', text: juniperAnswers.sensory },
+  ];
+  const pages: StoryPages = {
+    arrive: 'Juniper goes to Example Harbor Fellowship with a grown-up. Juniper can hold Pip the fox.',
+    doors: 'Juniper walks in the front doors. A greeter smiles and says hello.',
+    desk: 'At the welcome desk, Juniper checks in and gets a name tag.',
+    room: 'Juniper looks at a picture schedule in the hall. The picture schedule shows what is next.',
+    helper: 'A helper stays nearby. Juniper can use a weighted lap pad.',
+    quiet: 'Hand dryers are loud in the hall. Juniper can stand where the hand dryers are far away.',
+    pickup: 'When it is over, Juniper goes home with a grown-up and Pip.',
+  };
+  const parsed = parseSocialStory({ title: `Sunday with ${juniperName}`, pages }, { childName: juniperName, church: harbor, lines });
+  assert.deepEqual(parsed.pages, pages);
+  const joined = prose(parsed.pages);
+  const details = ['Pip', 'lap pad', 'picture schedule', 'hand dryers'].filter((detail) => joined.includes(detail));
+  assert.equal(details.length >= 3, true);
+  for (const beat of STORY_BEATS) {
+    const sentences = pageSentences(parsed.pages[beat]);
+    assert.equal(sentences >= 1 && sentences <= 2, true, beat);
+  }
 });
 
 test('parseSundayUpdate rejects the notes and the notes plus only the child name', () => {
@@ -779,6 +1015,16 @@ test('parseSundayUpdate accepts the model words around the notes', () => {
   const body = `Sunday went well. ${notes} The quiet seat helped.`;
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper', sign), { body: `${body}${LEADER_SIGN}` });
+});
+
+test('parseSundayUpdate drops a leading leader-at-church prefix and signs off once', () => {
+  const notes = 'TICK-AFTER-SUNDAY';
+  const prose = `Sunday went well. ${notes} The quiet seat helped.`;
+  const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
+  const prefixed = `Ms. Dana at Example Harbor Fellowship: ${prose}`;
+  const lined = `Ms. Dana at Example Harbor Fellowship:\n${prose}`;
+  assert.equal(parseSundayUpdate({ body: prefixed }, notes, 'Juniper', sign).body, `${prose}${LEADER_SIGN}`);
+  assert.equal(parseSundayUpdate({ body: lined }, notes, 'Juniper', sign).body, `${prose}${LEADER_SIGN}`);
 });
 
 test('parseSundayUpdate strips a bracketed name so it never reaches the screen', () => {
@@ -900,72 +1146,53 @@ test('a Sunday sentence that starts with Love or From stays', () => {
   assert.equal(parseSundayUpdate({ body: from }, notes, 'Rowan', sign).body, `${from}${LEADER_SIGN}`);
 });
 
-test('a dict story body fails the existing generation retry', async () => {
+test('a story that is not seven pages retries once and then uses the template', async () => {
+  const fallback = fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] });
   const dict = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
     { title: 'Sunday', body: "{ 'loves': 'Soft music' }" },
   );
   assert.equal(dict.status, 200);
-  assert.equal(dict.calls, 3);
-  assert.deepEqual(dict.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
-  const banned = await generated(
-    '/v1/drafts/social-story',
-    { lines: [sensory], childName: 'Rowan', church: harbor },
-    { title: 'Sunday with Rowan', body: 'Rowan has a peanut allergy.' },
-  );
-  assert.equal(banned.status, 200);
-  assert.equal(banned.calls, 3);
-  assert.deepEqual(banned.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
-  const inflected = await generated(
-    '/v1/drafts/social-story',
-    { lines: [sensory], childName: 'Rowan', church: harbor },
-    {
-      title: 'Sunday with Rowan',
-      body: 'On Sunday, Rowan goes to Example Harbor Fellowship. Rowan walks to Harbor Room. Ms. Dana says hello. Rowan has peanuts and carries inhalers. Rowan leaves the room. Rowan sits by herself.',
-    },
-  );
-  assert.equal(inflected.status, 200);
-  assert.equal(inflected.calls, 3);
-  assert.deepEqual(inflected.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
+  assert.equal(dict.calls, 2);
+  assert.deepEqual(dict.payload, fallback);
   const missingName = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Al', church: harbor },
-    {
-      title: 'Sunday',
-      body: 'On Sunday, everyone will walk to Example Harbor Fellowship. Harbor Room is quiet. Ms. Dana says hello.',
-    },
+    { title: 'Sunday', pages: templateStoryPages(harbor) },
   );
   assert.equal(missingName.status, 200);
-  assert.equal(missingName.calls, 3);
-  assert.deepEqual(missingName.payload, { title: 'Sunday with Al', body: fallbackBody, source: 'fallback' });
+  assert.equal(missingName.calls, 2);
+  assert.deepEqual(missingName.payload, fallbackSocialStory({ childName: 'Al', church: harbor, lines: [] }));
+  const pages = templateStoryPages(harbor);
   const clean = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
-    { title: 'Sunday with Rowan', body: safeBody },
+    { title: 'Sunday with Rowan', pages },
   );
   assert.equal(clean.status, 200);
   assert.equal(clean.calls, 1);
-  assert.deepEqual(clean.payload, { title: 'Sunday with Rowan', body: safeBody, source: 'model' });
+  assert.deepEqual(clean.payload, { title: 'Sunday with Rowan', pages, source: 'model' });
 });
 
-test('a care-plan story title fails the existing generation retry', async () => {
+test('a banned story page is replaced and a care-plan title still falls back', async () => {
+  const template = templateStoryPages(harbor);
+  const repaired = await generated(
+    '/v1/drafts/social-story',
+    { lines: [sensory], childName: 'Rowan', church: harbor },
+    { title: 'Sunday with Rowan', pages: { ...template, helper: 'Rowan has a peanut allergy.' } },
+  );
+  assert.equal(repaired.status, 200);
+  assert.equal(repaired.calls, 1);
+  assert.deepEqual(repaired.payload, { title: 'Sunday with Rowan', pages: template, source: 'model' });
   const planned = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
-    { title: "Rowan's Sunday Plan", body: safeBody },
+    { title: "Rowan's Sunday Plan", pages: template },
   );
   assert.equal(planned.status, 200);
-  assert.equal(planned.calls, 3);
-  assert.deepEqual(planned.payload, { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
-  const clean = await generated(
-    '/v1/drafts/social-story',
-    { lines: [sensory], childName: 'Rowan', church: harbor },
-    { title: 'Sunday with Rowan', body: safeBody },
-  );
-  assert.equal(clean.status, 200);
-  assert.equal(clean.calls, 1);
-  assert.deepEqual(clean.payload, { title: 'Sunday with Rowan', body: safeBody, source: 'model' });
+  assert.equal(planned.calls, 2);
+  assert.deepEqual(planned.payload, fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }));
 });
 
 test('a copied Sunday update fails the existing generation retry', async () => {
@@ -1346,7 +1573,7 @@ test('socialStoryMessages leaves tone and leaving lines out of the model input',
   assert.equal(user.includes(harbor.room), true);
   assert.equal(user.includes(harbor.leader), true);
   assert.equal(user.includes(harbor.plan), true);
-  assert.equal(user.includes('overwhelms Rowan'), false);
+  assert.equal(user.includes('Hard moment (describe gently, never name the word): A crowded doorway overwhelms Rowan.'), true);
   assert.equal(user.includes('hurt himself'), false);
   assert.equal(user.includes('run off'), false);
 });
@@ -1371,7 +1598,11 @@ test('socialStoryMessages asks for a short story read aloud to the child', () =>
     'names that appear in the input',
     "use the child's name instead of he or she",
     'Never use these words:',
-    'Write it as a story read aloud to the child, about 40 to 80 words, in 5 to 8 short sentences and short paragraphs, and stay under 90 words.',
+    'pages has arrive, doors, desk, room, helper, quiet, and pickup.',
+    'Each page is one or two short sentences.',
+    'At least 3 pages use a detail from Loves, What helps, Communication, or Sensory.',
+    'One page is a gentle hard moment and never uses the banned tone words.',
+    'Parent-named objects are allowed with can or may, and nothing is promised about the church.',
     'The title is a varied story title for this child and this morning, never a Plan or Supporting title.',
     'Use ordinary spoken English, and put the before a room name.',
     'Describe only what the church plan says will happen. Do not add a seat, a kind of seat, a sound level, a song, or an activity the plan does not name. Do not promise that anything will be ready.',
@@ -1432,18 +1663,8 @@ test('storySafety keeps supporter and upsetting', () => {
   }
 });
 
-test('storySafety rejects a body longer than 90 words', () => {
-  const sits = (words: number) => `Rowan ${'sits '.repeat(words - 2)}sits.`;
-  assert.equal(storySafety({ title: 'Sunday with Rowan', body: sits(90) }, rowanInput), true);
-  assert.equal(
-    storySafety({ title: 'Sunday with Rowan', body: `Hello, world. ${sits(88)}` }, rowanInput),
-    true,
-  );
-  assert.equal(storySafety({ title: 'Sunday with Rowan', body: sits(91) }, rowanInput), false);
-});
-
-test('storySafety rejects a body longer than eight sentences', () => {
-  const pass = [
+test('storySafety accepts a story longer than 90 words and eight sentences', () => {
+  const sentences = [
     'On Sunday, Rowan goes to Example Harbor Fellowship.',
     'Rowan walks to Harbor Room.',
     'Ms. Dana says hello.',
@@ -1451,21 +1672,14 @@ test('storySafety rejects a body longer than eight sentences', () => {
     'Rowan listens.',
     'Rowan smiles.',
     'Rowan waves.',
-    'Rowan goes home.',
-  ].join('\n\n');
-  const fail = [
-    'On Sunday, Rowan goes to Example Harbor Fellowship.',
-    'Rowan walks to Harbor Room.',
-    'Rowan sits.',
-    'Rowan listens.',
-    'Rowan smiles.',
-    'Rowan waves.',
     'Rowan claps.',
-    'Rowan reads.',
+    'Rowan reads a Disney story.',
+    'Rowan sees a doorway.',
     'Rowan goes home.',
-  ].join(' ');
-  assert.equal(storySafety({ title: 'Sunday with Rowan', body: pass }, rowanInput), true);
-  assert.equal(storySafety({ title: 'Sunday with Rowan', body: fail }, rowanInput), false);
+  ];
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: sentences.join(' ') }, rowanInput), true);
+  const sits = `Rowan ${'sits '.repeat(100)}quietly.`;
+  assert.equal(storySafety({ title: 'Sunday with Rowan', body: sits }, rowanInput), true);
 });
 
 test('storySafety counts an ellipsis as one sentence', () => {
@@ -1491,17 +1705,6 @@ test('storySafety counts an ellipsis as one sentence', () => {
   ].join('\n\n');
   assert.equal(storySafety({ title: 'Sunday with Rowan', body }, rowanInput), true);
   assert.equal(storySafety({ title: 'Sunday with Rowan', body: spaced }, rowanInput), true);
-});
-
-test('storySafety rejects the long grounded Rowan story', () => {
-  const body = [
-    'On Sunday at 9:30, Rowan and his grown-up go to Example Harbor Fellowship.',
-    'Rowan walks to Harbor Room. Ms. Dana is there to say hello.',
-    'First there is a short welcome. Then everyone sings one song. Rowan likes quiet songs.',
-    'Next there is a quiet activity. Rowan can sit in a soft seat away from bright lights. If Rowan needs a quiet break, a grown-up will help.',
-    "When it is over, Rowan's grown-up comes back to Harbor Room, and it is time to go home.",
-  ].join('\n\n');
-  assert.equal(storySafety({ title: 'Sunday with Rowan', body }, rowanInput), false);
 });
 
 test('storySafety accepts the grounded Rowan story', () => {
@@ -1534,13 +1737,11 @@ test('a story request with no care lines still returns a church story', async ()
   const demo = await DemoContext.open('1');
   const response = await demo.handle(socialStory({ lines: [], childName: 'Rowan' }));
   assert.equal(response.status, 200);
-  const body = (await response.json()) as { title: string; body: string; source: string };
-  assert.equal(body.source, 'model');
-  assert.equal(body.body.includes('Example Harbor Fellowship'), true);
-  assert.equal(
-    storySafety(body, { childName: 'Rowan', church: harbor, lines: [] }),
-    true,
-  );
+  const body = (await response.json()) as { title: string; pages: StoryPages; source: string };
+  const text = prose(body.pages);
+  assert.equal(body.source, 'fallback');
+  assert.equal(text.includes('Example Harbor Fellowship'), true);
+  assert.equal(storySafety({ title: body.title, body: text }, { childName: 'Rowan', church: harbor, lines: [] }), true);
 });
 
 test('socialStoryMessages drops allergies and medical and names the church', () => {
@@ -1585,52 +1786,37 @@ test('a social story gateway failure returns the Sunday fallback', async () => {
   });
   const response = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan' }));
   assert.equal(response.status, 200);
-  assert.equal(calls, 3);
+  assert.equal(calls, 2);
   const text = await response.text();
   assert.equal(text.includes('GATEWAY-BODY-SHOULD-NOT-LEAK'), false);
-  assert.deepEqual(JSON.parse(text), { title: 'Sunday with Rowan', body: fallbackBody, source: 'fallback' });
+  assert.deepEqual(JSON.parse(text), fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }));
 });
 
-test('the Sunday fallback passes storySafety, stays short, and keeps pickup', () => {
-  const { title, body } = fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] });
-  assert.equal(storySafety({ title, body }, { childName: 'Rowan', church: harbor, lines: rowanLines }), true);
-  assert.equal(countedSentences(body) <= 8, true);
-  assert.equal(countedWords(body) <= 90, true);
-  assert.equal(body.includes('comes back for you'), true);
-  assert.equal(body.endsWith('Ms. Dana is glad you came.'), true);
-  assert.equal(body.includes('the Harbor Room'), true);
-  assert.equal(body.includes('welcome desk'), false);
-  assert.equal(body.includes('pick you up'), false);
-});
-
-test('the fallback welcome agrees with one leader or two', () => {
-  for (const [leader, closing] of [
-    ['Ms. Dana', 'Ms. Dana is glad you came.'],
-    ['Amanda', 'Amanda is glad you came.'],
-    ['Dana and Lee', 'Dana and Lee are glad you came.'],
-    ['', 'We are glad you came.'],
-    ['   ', 'We are glad you came.'],
-  ] as const) {
-    const { body } = fallbackSocialStory({ childName: 'Rowan', church: { ...harbor, leader }, lines: [] });
-    assert.equal(body.split('\n\n').at(-1), closing, leader);
-    assert.equal(body.includes('comes back for you'), true, leader);
-  }
+test('the Sunday fallback is the seven template pages', () => {
+  const story = fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] });
+  assert.equal(story.source, 'fallback');
+  assert.deepEqual(story.pages, templateStoryPages(harbor));
+  assert.equal(
+    storySafety({ title: story.title, body: prose(story.pages) }, { childName: 'Rowan', church: harbor, lines: rowanLines }),
+    true,
+  );
+  assert.equal(story.pages.pickup.includes('pick you up'), true);
+  assert.equal(story.pages.desk.includes('welcome desk'), true);
+  assert.equal(story.pages.room.includes('the Harbor Room'), true);
+  assert.equal(story.pages.helper.includes('Ms. Dana'), true);
 });
 
 test('a long church plan keeps every Sunday sentence in the fallback', async () => {
   const plan = `${'Sing a short song and sit quietly. '.repeat(50)}End.`.slice(0, 1800);
   const church = { ...harbor, plan };
-  const full = sundayFallbackSentences(church).join('\n\n');
   const demo = DemoContext.fromBindings(liveShell(), async () => new Response('down', { status: 502 }));
   const response = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan', church }));
   assert.equal(response.status, 200);
-  const payload = (await response.json()) as { title: string; body: string; source: string };
+  const payload = (await response.json()) as { title: string; pages: StoryPages; source: string };
   assert.equal(payload.source, 'fallback');
-  assert.equal(payload.body, full);
-  assert.equal(payload.body.includes('there is a quiet spot in the room.'), true);
-  assert.equal(payload.body.endsWith('is glad you came.'), true);
-  assert.equal(payload.body.length > 2000, true);
-  assert.equal(payload.body.length <= SUNDAY_STORY_BODY_MAX, true);
+  assert.deepEqual(payload.pages, templateStoryPages(church));
+  assert.equal(payload.pages.quiet.includes('there is a quiet spot in the room.'), true);
+  assert.equal(payload.pages.room.length <= SUNDAY_STORY_PAGE_MAX, true);
 });
 
 test('mock mode story passes storySafety', async () => {
@@ -1643,41 +1829,26 @@ test('mock mode story passes storySafety', async () => {
   ];
   const response = await demo.handle(socialStory({ lines, childName: 'Rowan' }));
   assert.equal(response.status, 200);
-  const body = (await response.json()) as { title: string; body: string; source: string };
+  const body = (await response.json()) as { title: string; pages: StoryPages; source: string };
+  const text = prose(body.pages);
   assert.equal(body.title, 'Sunday with Rowan');
   assert.equal(body.source, 'model');
-  assert.equal(body.body.includes('Peanut'), false);
-  assert.equal(body.body.includes('inhaler'), false);
-  assert.equal(body.body.includes('hurt'), false);
-  assert.equal(body.body.includes('run off'), false);
+  assert.equal(text.includes('Peanut'), false);
+  assert.equal(text.includes('inhaler'), false);
+  assert.equal(text.includes('hurt'), false);
+  assert.equal(text.includes('run off'), false);
   assert.equal(
-    storySafety(body, {
-      childName: 'Rowan',
-      church: harbor,
-      lines: lines.map((line) => ({ text: line.text })),
-    }),
+    storySafety(
+      { title: body.title, body: text },
+      {
+        childName: 'Rowan',
+        church: harbor,
+        lines: lines.map((line) => ({ text: line.text })),
+      },
+    ),
     true,
   );
 });
-
-function countedWords(body: string): number {
-  let count = 0;
-  for (const token of body.split(/\s+/u)) {
-    if (/[\p{L}\p{N}]/u.test(token)) count += 1;
-  }
-  return count;
-}
-
-function countedSentences(body: string): number {
-  let count = 0;
-  for (let index = 0; index < body.length; index += 1) {
-    const mark = body[index];
-    if (mark !== '.' && mark !== '!' && mark !== '?') continue;
-    if (mark === '.' && /(?:^|[^\p{L}])Ms$/iu.test(body.slice(0, index))) continue;
-    count += 1;
-  }
-  return count;
-}
 
 function cased(term: string): string {
   return [...term].map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase())).join('');
@@ -1694,20 +1865,22 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
       }),
     );
     assert.equal(response.status, 200, field);
-    const body = (await response.json()) as { title: string; body: string };
+    const body = (await response.json()) as { title: string; pages: StoryPages };
+    const told = prose(body.pages);
     assert.equal(body.title, 'Sunday with Rowan');
-    assert.equal(body.body.includes(text), false);
-    assert.equal(body.body.includes(harbor.name), true);
-    assert.equal(body.body.includes(harbor.room), true);
-    assert.equal(body.body.includes(harbor.leader), true);
-    assert.equal(storySafety(body, { childName: 'Rowan', church: harbor, lines: [{ text }] }), true);
+    assert.equal(told.includes(text), false);
+    assert.equal(told.includes(harbor.name), true);
+    assert.equal(told.includes(harbor.room), true);
+    assert.equal(told.includes(harbor.leader), true);
+    assert.equal(storySafety({ title: body.title, body: told }, { childName: 'Rowan', church: harbor, lines: [{ text }] }), true);
   }
 
   const hidden = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan' }));
   assert.equal(hidden.status, 200);
-  const hiddenBody = (await hidden.json()) as { body: string };
-  assert.equal(hiddenBody.body.includes('TICK-QUIET-ROOM'), false);
-  assert.equal(hiddenBody.body.includes('TICK-MEDICAL'), false);
+  const hiddenBody = (await hidden.json()) as { pages: StoryPages };
+  const hiddenText = prose(hiddenBody.pages);
+  assert.equal(hiddenText.includes('TICK-QUIET-ROOM'), false);
+  assert.equal(hiddenText.includes('TICK-MEDICAL'), false);
 
   const shown = await demo.handle(
     socialStory({
@@ -1715,8 +1888,8 @@ async function assertDrafts(demo: DemoContext): Promise<void> {
       childName: 'Rowan',
     }),
   );
-  const shownBody = (await shown.json()) as { body: string };
-  assert.equal(shownBody.body.includes('TICK-MEDICAL'), false);
+  const shownBody = (await shown.json()) as { pages: StoryPages };
+  assert.equal(prose(shownBody.pages).includes('TICK-MEDICAL'), false);
 
   const extra = await demo.handle(socialStory({ lines: [sensory], childName: 'Rowan', extra: true }));
   assert.equal(extra.status, 400);
@@ -1848,7 +2021,7 @@ function recordingFetch(calls: GatewayCall[]): typeof fetch {
     const body = JSON.parse(await request.text()) as GatewayCall['body'];
     calls.push({ headers: request.headers, body });
     const name = body.response_format?.json_schema?.name;
-    if (name === 'social_story') return chatEnvelope({ title: 'Sunday with Rowan', body: 'echo' });
+    if (name === 'social_story') return chatEnvelope({ title: 'Sunday with Rowan', pages: templateStoryPages(harbor) });
     if (name === 'sunday_update') return chatEnvelope({ body: 'echo' });
     return new Response(null, { status: 502 });
   };

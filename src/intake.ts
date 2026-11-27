@@ -73,7 +73,7 @@ export function intakeMessages(answers: IntakeAnswers): ChatMessage[] {
     {
       role: 'system',
       content:
-        'Write a draft child profile for a parent to approve before anyone else sees it. Return JSON only, matching the schema. volunteerGuidance must help a Sunday volunteer without repeating the child\'s name.',
+        'Write a draft child profile for a parent to approve before anyone else sees it. Return JSON only, matching the schema. volunteerGuidance must help a Sunday volunteer without repeating the child\'s name. whatHelps is a short summary for a volunteer, not a copy of the answers. Condense. Use only what the parent said. Name the child. Do not include a diagnosis, a condition, a label, medical detail, or an allergy. Use plain words a volunteer can act on. Return 3 to 5 bullets even when the answers are long.',
     },
     {
       role: 'user',

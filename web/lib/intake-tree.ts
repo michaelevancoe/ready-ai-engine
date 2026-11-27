@@ -161,7 +161,7 @@ const RAW = {
     {
       id: 'communication',
       sectionId: 'communication',
-      prompt: 'How does {child} usually let you know what {child} needs?',
+      prompt: 'How does {child} usually let you know what they need?',
       placeholder: TYPE_ANSWER,
       writes: [
         { target: 'post', key: 'supportNeeds' },
@@ -215,6 +215,12 @@ const RAW = {
 };
 
 export const intakeTree = ship(RAW);
+
+export function behaviorAsked(name: string): string {
+  const node = intakeTree.nodes.find((item) => item.id === 'behavior');
+  const prompt = node === undefined ? '' : node.prompt.replaceAll('{child}', name);
+  return `Asked: ${prompt}`;
+}
 
 export function parseIntakeTree(input: unknown): TreeParse {
   if (!isRecord(input)) return fail('invalid-tree');

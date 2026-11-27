@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type { StoryPages } from '../src/sunday-story-text.ts';
 import type { ProfileId, ShownProfile } from '../web/lib/desk.ts';
 import { exampleBrief, type ExampleId } from '../web/lib/example-briefs.ts';
 import {
@@ -21,10 +22,23 @@ function shown(status: 'draft' | 'approved'): ShownProfile {
     id: '10000000-0000-4000-8000-000000000031' as ProfileId,
     status,
     sections: [{ heading: 'Summary', lines: ['Rowan, age 7.'] }],
+    whatHelps: [],
   };
 }
 
 const HELPS = 'A warning before music, with a quiet seat nearby.';
+
+function sameLine(line: string): StoryPages {
+  return {
+    arrive: line,
+    doors: line,
+    desk: line,
+    room: line,
+    helper: line,
+    quiet: line,
+    pickup: line,
+  };
+}
 
 function approveIntake(visit: Visit, lines: TreeLines = {}): Visit {
   let next = reduceVisit(visit, { type: 'conversation', event: { type: 'beginIntake' } });
@@ -179,7 +193,7 @@ test('a brief stays withheld until approval, then keeps the snapshot', () => {
   visit = reduceVisit(visit, { type: 'writeStory' });
   visit = reduceVisit(visit, {
     type: 'storyReady',
-    value: { title: 'Sunday with Rowan', body: 'TICK-QUIET-ROOM', source: 'model' },
+    value: { title: 'Sunday with Rowan', pages: sameLine('TICK-QUIET-ROOM'), source: 'model' },
   });
   visit = reduceVisit(visit, { type: 'approveStory' });
   assert.equal(visit.story.phase, 'approved');
@@ -341,14 +355,14 @@ test('noteStory ignores a story that is still being written', () => {
   assert.equal(
     reduceVisit(writing, {
       type: 'noteStory',
-      value: { title: 'Sunday with Rowan', body: 'A quiet room.', source: 'model' },
+      value: { title: 'Sunday with Rowan', pages: sameLine('A quiet room.'), source: 'model' },
     }),
     writing,
   );
   visit = reduceVisit(writing, { type: 'storyFailed', message: 'The draft could not be written. Try again.' });
   visit = reduceVisit(visit, {
     type: 'noteStory',
-    value: { title: 'Sunday with Rowan', body: 'A quiet room.', source: 'model' },
+    value: { title: 'Sunday with Rowan', pages: sameLine('A quiet room.'), source: 'model' },
   });
   assert.equal(visit.story.phase, 'ready');
   assert.deepEqual(checkInBrief(visit), lines);

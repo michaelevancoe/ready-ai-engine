@@ -22,7 +22,7 @@ const EXPECTED = {
   ezra: {
     name: 'Ezra',
     age: 7,
-    leader: 'Notes from Jordan',
+    leader: 'Ready to draft',
     volunteer: 'Brief ready \u00b7 Notes saved',
     sample: true,
   },
@@ -63,11 +63,27 @@ test('demo boot lists Rowan and five sample visits at their steps', () => {
   assert.ok(rowan);
   assert.equal(rowan.sample, false);
   assert.equal(rowan.cannedDraft, null);
-  assert.deepEqual(rowan.visit, initialVisit());
-  assert.equal(leaderStep(rowan.visit), 'No brief yet');
-  assert.equal(volunteerStep(rowan.visit), 'No brief yet');
+  assert.equal(rowan.visit.conversation.talk.mode, 'start');
+  assert.equal(rowan.visit.brief.phase, 'approved');
+  assert.equal(rowan.visit.notes, '');
+  assert.equal(rowan.visit.update.phase, 'idle');
+  if (rowan.visit.brief.phase === 'approved') {
+    assert.equal(rowan.visit.brief.lines.some((line) => line.field === 'medical'), false);
+    assert.equal(rowan.visit.brief.lines.some((line) => line.text.includes('Disney')), true);
+  }
+  assert.equal(leaderStep(rowan.visit), 'No notes yet');
+  assert.equal(volunteerStep(rowan.visit), 'Brief ready');
   assert.equal(childPreferredName(rowan.visit), 'Rowan');
   assert.equal(childAgeYears(rowan.visit), 7);
+  assert.equal(rowan.visit.intake.status, 'approved');
+  if (rowan.visit.intake.status === 'approved') {
+    assert.equal(rowan.visit.intake.profile.whatHelps.length >= 3, true);
+    assert.equal(rowan.visit.intake.profile.whatHelps.some((line) => /allerg|medical/i.test(line)), false);
+  }
+  const started = reduceVisit(rowan.visit, { type: 'conversation', event: { type: 'beginIntake' } });
+  assert.equal(started.brief.phase, 'open');
+  assert.equal(started.conversation.talk.mode, 'ask');
+  assert.equal(started.intake.status, 'idle');
 
   for (const record of records.slice(1)) {
     const expected = EXPECTED[record.id as keyof typeof EXPECTED];

@@ -56,6 +56,7 @@ h1 {
   font-size: 2rem;
   line-height: 1.1;
   letter-spacing: -0.03em;
+  scroll-margin-top: 5rem;
 }
 
 h2 {
@@ -635,6 +636,26 @@ button.mic .mic-ring {
   }
   to {
     transform: scale(1.15);
+  }
+}
+
+.story-pulse {
+  animation: story-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes story-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-pulse,
+  button.mic .mic-ring {
+    animation: none;
   }
 }
 

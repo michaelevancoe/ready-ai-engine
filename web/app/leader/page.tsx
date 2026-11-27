@@ -5,8 +5,14 @@ import { isChurchPhotoFile } from '../../lib/church-photo-file';
 import { draftSundayNote, leaderStep, leaderTagKind } from '../../lib/demo-visits';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
-import { childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
+import { behaviorAsked } from '../../lib/intake-tree';
+import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
+import { checkInBrief, childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
+import { visitWhatHelps } from '../../lib/what-helps';
+import { PrivacyNote } from '../privacy-note';
 import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
+import { DraftStatus } from '../draft-status';
+import { WhatHelpsCard } from '../what-helps';
 import { readChurchPhoto } from './read-church-photo';
 
 const CHURCH_FIELDS = [
@@ -27,7 +33,7 @@ const PHOTO_SLOTS = [
   ['pickup', 'Pickup area'],
 ] as const satisfies ReadonlyArray<readonly [ChurchPhotoSlot, string]>;
 
-type Screen = 'home' | 'after' | 'settings';
+type Screen = 'home' | 'after' | 'brief' | 'settings';
 
 export default function LeaderPage() {
   const store = useReadyStore();
@@ -73,7 +79,6 @@ export default function LeaderPage() {
   }
 
   function openAfter(): void {
-    if (homeVisit.notes.trim() === '') return;
     openChild(home.id);
   }
 
@@ -114,6 +119,16 @@ export default function LeaderPage() {
       />
     );
   }
+  if (screen === 'brief') {
+    return (
+      <LeaderBrief
+        visit={activeVisit}
+        name={name}
+        sample={active.sample}
+        onBack={() => setScreen('after')}
+      />
+    );
+  }
   if (screen === 'after') {
     return (
       <AfterScreen
@@ -123,6 +138,7 @@ export default function LeaderPage() {
         onWrite={() => void onWriteNote()}
         onApprove={onApproveNote}
         onHome={showHome}
+        onOpenBrief={() => setScreen('brief')}
       />
     );
   }
@@ -139,13 +155,14 @@ export default function LeaderPage() {
         </button>
       </div>
       <h1>Good morning, {homeVisit.church.leader}</h1>
+      <p>You&apos;re {homeVisit.church.leader}, the room leader.</p>
       <p>
-        {liveName} is at {homeVisit.church.name}.
+        {records.length === 1 ? '1 child is' : `${records.length} children are`} in the room today.
       </p>
       <AfterCard
         name={liveName}
-        notes={homeVisit.notes}
-        sent={homeVisit.update.phase === 'approved'}
+        age={childAgeYears(homeVisit)}
+        visit={homeVisit}
         onOpen={openAfter}
       />
       {records.some((record) => record.sample) ? (
@@ -187,31 +204,31 @@ export default function LeaderPage() {
 
 function AfterCard({
   name,
-  notes,
-  sent,
+  age,
+  visit,
   onOpen,
 }: {
   name: string;
-  notes: string;
-  sent: boolean;
+  age: number;
+  visit: Visit;
   onOpen: () => void;
 }) {
-  const empty = notes.trim() === '';
-  const tag = empty ? 'plain' : sent ? 'approved' : 'ready';
-  const label = empty ? 'No notes yet' : sent ? 'Sent to parent' : 'Notes from Jordan';
-  const body = (
-    <>
-      <h2>Notes from Jordan Ellis</h2>
-      {empty ? (
-        <p>No notes yet. Jordan adds them after class, then you can draft a note for {name}&apos;s parent.</p>
-      ) : null}
-      <span className={tagClass(tag)}>{label}</span>
-    </>
-  );
-  if (empty) return <article className="home-card">{body}</article>;
+  const step = leaderStep(visit);
   return (
     <button type="button" className="home-card" onClick={onOpen}>
-      {body}
+      <h2>
+        {name}, {age}
+      </h2>
+      {step === 'No notes yet' ? (
+        <p>
+          Brief approved by his parent. Jordan adds notes after class, then you can draft a note for {name}&apos;s
+          parent.
+        </p>
+      ) : null}
+      {step === 'No brief yet' ? (
+        <p>No notes yet. Jordan adds them after class, then you can draft a note for {name}&apos;s parent.</p>
+      ) : null}
+      <span className={tagClass(leaderTagKind(step))}>{step}</span>
     </button>
   );
 }
@@ -223,6 +240,7 @@ function AfterScreen({
   onWrite,
   onApprove,
   onHome,
+  onOpenBrief,
 }: {
   visit: Visit;
   name: string;
@@ -230,6 +248,7 @@ function AfterScreen({
   onWrite: () => void;
   onApprove: (event: FormEvent<HTMLFormElement>) => void;
   onHome: () => void;
+  onOpenBrief: () => void;
 }) {
   const writing = visit.update.phase === 'writing';
   return (
@@ -238,6 +257,14 @@ function AfterScreen({
       <span className={tagClass('plain')}>After Sunday</span>
       <h1>After Sunday for {name}</h1>
       {sample ? <p className="sample-tag">Sample child · resets on reload</p> : null}
+      {visit.brief.phase === 'approved' ? (
+        <>
+          <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+          <button type="button" className="text" onClick={onOpenBrief}>
+            View {name}&apos;s full brief (parent&apos;s own words) ›
+          </button>
+        </>
+      ) : null}
       {visit.brief.phase === 'open' ? (
         <section aria-label="Sunday brief">
           <h2>Sunday brief</h2>
@@ -277,15 +304,14 @@ function AfterScreen({
               ) : null}
             </>
           ) : null}
-          {writing ? (
-            <p id="update-status" className="draft-status" role="status">
-              Writing the draft.
-            </p>
-          ) : null}
+          {writing ? <DraftStatus id="update-status" copy="Writing the draft." /> : null}
           {visit.update.phase === 'ready' ? (
             <form id="update-draft" onSubmit={onApprove}>
+              <p className="drafted">
+                <Spark /> Drafted by Ready from Jordan&apos;s notes · edit before sending
+              </p>
               <label htmlFor="parent-note">Parent note</label>
-              <textarea id="parent-note" name="parentNote" rows={5} defaultValue={visit.update.value.body} autoComplete="off" />
+              <textarea id="parent-note" name="parentNote" rows={8} defaultValue={visit.update.value.body} autoComplete="off" />
               <button type="submit" className="approve">
                 Approve and send to parent
               </button>
@@ -299,25 +325,69 @@ function AfterScreen({
           ) : null}
           {visit.update.phase === 'approved' ? (
             <>
-              <p className="draft-text">{visit.update.value.body}</p>
+              <article className="brief-card">
+                <h2>Note sent to {name}&apos;s parent</h2>
+                <p>{visit.update.value.body}</p>
+              </article>
               {sample ? (
                 <>
                   <p className="tag approved">Sent to {name}&apos;s parent · Sunday 12:05 PM</p>
                   <p>{name}&apos;s parent can read this note now. They never see Jordan&apos;s internal notes.</p>
                 </>
               ) : (
-                <>
-                  <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
-                  <button type="button" className="primary" onClick={onWrite}>
-                    Draft a note for {name}&apos;s parent
-                  </button>
-                </>
+                <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
               )}
             </>
           ) : null}
         </>
       ) : null}
     </main>
+  );
+}
+
+function LeaderBrief({
+  visit,
+  name,
+  sample,
+  onBack,
+}: {
+  visit: Visit;
+  name: string;
+  sample: boolean;
+  onBack: () => void;
+}) {
+  const brief = checkInBrief(visit);
+  return (
+    <main>
+      <div className="top-bar">
+        <button type="button" className="back" onClick={onBack}>
+          ← After Sunday
+        </button>
+      </div>
+      <h1>{name}&apos;s brief</h1>
+      <section aria-label="Sunday brief">
+        <h2>Sunday brief</h2>
+        <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+        <PrivacyNote variant="line" text={volunteerCheckInPrivacy(name)} />
+        {brief.status === 'approved'
+          ? brief.lines.map((line) => (
+              <article key={line.field} className="line" data-field={line.field}>
+                <h3>{line.label}</h3>
+                {line.field === 'calming' ? <p>{behaviorAsked(name)}</p> : null}
+                <p>{line.text}</p>
+              </article>
+            ))
+          : null}
+      </section>
+    </main>
+  );
+}
+
+function Spark() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path fill="currentColor" d="M8 1.2 9.1 6 13.8 8 9.1 10 8 14.8 6.9 10 2.2 8 6.9 6 8 1.2Z" />
+    </svg>
   );
 }
 

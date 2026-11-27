@@ -13,8 +13,8 @@ import {
   type Conversation,
 } from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
-import { approveProfile, submitIntake } from '../lib/desk';
-import { intakeTree, type SectionId } from '../lib/intake-tree';
+import { approveProfile, submitIntake, type ShownProfile } from '../lib/desk';
+import { behaviorAsked, intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
 import { parentReviewPrivacy, parentStartPrivacy, storyPrivacy } from '../lib/privacy-note';
 import { initialReader, reduceReader, type Reader } from '../lib/story-reader';
@@ -27,7 +27,9 @@ import {
   type Visit,
   type VisitEvent,
 } from '../lib/visit';
+import { DraftStatus } from './draft-status';
 import { PrivacyNote } from './privacy-note';
+import { WhatHelpsCard } from './what-helps';
 import { SundayPrint } from './sunday-print';
 import { useAccountChurch, useChurchPhotos, useVisit } from './visit-shell';
 
@@ -50,6 +52,10 @@ export default function Page() {
   const [reask, setReask] = useState<{ nodeId: string; prompt: string; epoch: number } | null>(null);
   const token = useRef(0);
   const nonce = useRef(0);
+  const summaryKey = useRef('');
+  const summaryRequest = useRef(0);
+  const shownAcks = useRef<string[]>([]);
+  const [summary, setSummary] = useState<ShownProfile | null>(null);
   const busy = useRef(false);
   const settling = useRef(false);
   const attempts = useRef<Record<string, number>>({});
@@ -90,11 +96,14 @@ export default function Page() {
     const attempt = attempts.current[nodeId] ?? 0;
     try {
       const raced = await Promise.all([
-        Promise.race([postAcknowledgement(answer, nodeId), delayResult(ACK_LIMIT_MS)]),
+        Promise.race([postAcknowledgement(answer, nodeId, shownAcks.current), delayResult(ACK_LIMIT_MS)]),
         delay(BEAT_MS),
       ]);
       if (token.current !== tokenId) return;
       const decision = decideAck(attempt, ackResult(raced[0]));
+      if (decision.action === 'accept') {
+        shownAcks.current = [...shownAcks.current, decision.line].slice(-3);
+      }
       if (decision.action === 'reask') {
         attempts.current[nodeId] = attempt + 1;
         setReask((previous) => ({ nodeId, prompt: decision.prompt, epoch: (previous?.epoch ?? 0) + 1 }));
@@ -121,6 +130,21 @@ export default function Page() {
     }
   }
 
+  useEffect(() => {
+    if (view.kind !== 'brief' || view.actions !== 'draft' || briefAlreadyApproved(visit)) return;
+    const answers = project(intakeTree, visit.conversation).post;
+    const key = JSON.stringify(answers);
+    if (summaryKey.current === key) return;
+    summaryKey.current = key;
+    setSummary(null);
+    const requestId = summaryRequest.current + 1;
+    summaryRequest.current = requestId;
+    void submitIntake(answers).then((result) => {
+      if (summaryRequest.current !== requestId || result.type !== 'draft') return;
+      setSummary(result.profile);
+    });
+  }, [view, visit]);
+
   async function onApprove(): Promise<void> {
     if (view.kind !== 'brief' || view.actions !== 'draft' || busy.current) return;
     if (briefAlreadyApproved(visit)) {
@@ -131,7 +155,19 @@ export default function Page() {
     busy.current = true;
     const id = nonce.current + 1;
     nonce.current = id;
+    const ready = summary;
     try {
+      if (ready !== null) {
+        dispatch({ type: 'intake', event: { type: 'submit', nonce: id } });
+        dispatch({ type: 'intake', event: { type: 'draft', profile: ready, nonce: id } });
+        dispatch({ type: 'intake', event: { type: 'approve' } });
+        const approved = await approveProfile(ready);
+        dispatch({ type: 'intake', event: approved });
+        if (approved.type !== 'approved') return;
+        dispatch({ type: 'approveBrief' });
+        dispatch({ type: 'conversation', event: { type: 'approve' } });
+        return;
+      }
       dispatch({ type: 'intake', event: { type: 'submit', nonce: id } });
       const result = await submitIntake(project(intakeTree, visit.conversation).post);
       switch (result.type) {
@@ -190,6 +226,7 @@ export default function Page() {
           pending={pending}
           error={visit.intake.status === 'error' ? visit.intake.message : null}
           fixed={visit.conversation.updated.length > 0}
+          helps={summary?.whatHelps ?? []}
           onApprove={() => void onApprove()}
           dispatch={dispatch}
         />
@@ -215,9 +252,7 @@ function StartScreen({
     <section aria-label="Start">
       <h1>Who are we getting ready for?</h1>
       <p>
-        {church === null
-          ? "Start a new child with Ready's guided questions, or open a finished example to see the whole flow."
-          : `Signed in to ${church}. Only your family's children show here.`}
+        You're a parent, getting your child ready for Sunday.
       </p>
       <PrivacyNote variant="full" note={parentStartPrivacy(churchName)} />
       <button type="button" className="primary" onClick={onBegin}>
@@ -426,7 +461,7 @@ function QuestionScreen({
         <button
           type="button"
           className={mic.phase === 'live' ? 'mic live' : 'mic'}
-          aria-label={mic.phase === 'live' ? 'Mic is on' : 'Mic is off'}
+          aria-label={mic.phase === 'live' ? 'Stop recording' : 'Mic is off'}
           disabled={locked}
           onClick={() => {
             if (mic.phase === 'live') {
@@ -450,9 +485,6 @@ function QuestionScreen({
         <p className="draft-status" role="status">
           Mic is on
           <span className="mic-timer">{clock(now - mic.startedAt)}</span>
-          <button type="button" className="inline" onClick={stopMic}>
-            Stop
-          </button>
         </p>
       ) : null}
       {speech === 'missing' ? <p className="hint">This browser can&apos;t use the mic. Type your answer instead.</p> : null}
@@ -483,6 +515,7 @@ function BriefScreen({
   pending,
   error,
   fixed,
+  helps,
   onApprove,
   dispatch,
 }: {
@@ -493,6 +526,7 @@ function BriefScreen({
   pending: boolean;
   error: string | null;
   fixed: boolean;
+  helps: readonly string[];
   onApprove: () => void;
   dispatch: Dispatch<VisitEvent>;
 }) {
@@ -527,7 +561,7 @@ function BriefScreen({
           <p className="guided">Approved</p>
         ) : (
           <p className="drafted">
-            <Spark /> Ready drafted this
+            <Spark /> Built from your answers
           </p>
         )}
       </div>
@@ -559,6 +593,7 @@ function BriefScreen({
           </figure>
         ))}
       </div>
+      {view.actions === 'draft' ? <WhatHelpsCard name={brief.name} bullets={helps} audience="review" /> : null}
       <p className="section-label">{brief.name}&apos;s brief</p>
       {savedTitle === null ? null : (
         <p className="banner" role="status">
@@ -571,6 +606,7 @@ function BriefScreen({
             {card.label}
             {card.updated ? <span className="badge">Updated</span> : null}
           </h2>
+          {card.sectionId === 'behavior' ? <p>{behaviorAsked(brief.name)}</p> : null}
           <ul>
             {spokenLines(card.text).map((line, index) => (
               <li key={`${index}-${line}`}>{line}</li>
@@ -727,7 +763,7 @@ function ApprovedScreen({
         {reader.phase === 'writing' ? (
           <>
             <h1>A Sunday story for {view.name}</h1>
-            <p role="status">Writing {view.name}&apos;s story.</p>
+            <DraftStatus copy={`Ready is writing ${view.name}'s story from your answers…`} />
           </>
         ) : null}
         {reader.phase === 'failed' ? (

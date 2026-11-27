@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { exampleBrief } from './example-briefs.ts';
+import { STORY_BEATS, type StoryPages } from '../../src/sunday-story-text.ts';
 import { resolveStoryPicture, sundayStoryPages, type SundayStoryPage } from './sunday-story.ts';
-import { childPreferredName, initialVisit, reduceVisit, type Visit } from './visit.ts';
+import { childPreferredName, initialVisit, reduceVisit, type SocialStory, type Visit } from './visit.ts';
 import type { ChurchPhotoSet } from './ready-store.ts';
 
 const emptyPhotos: ChurchPhotoSet = {
@@ -25,6 +26,7 @@ test('a Sunday story is a cover plus seven steps in order', () => {
         title: "Rowan's Sunday at",
         churchName: 'Example Harbor Fellowship',
         subtitle: 'A story to read together before Sunday',
+        notice: "Simple version · Ready's personal story wasn't available just now",
       },
       {
         step: 1,
@@ -109,6 +111,42 @@ test('example stories name the child and leave out the brief', () => {
   }
 });
 
+test('a ready story prints the same seven pages the screen shows', () => {
+  const pages: StoryPages = {
+    arrive: 'Rowan arrives with a quiet hello.',
+    doors: 'Rowan walks in the front doors.',
+    desk: 'Rowan stops at the welcome desk.',
+    room: 'Rowan finds a picture in the hall.',
+    helper: 'A helper waves at Rowan.',
+    quiet: 'Rowan can hold a small fox.',
+    pickup: 'Rowan goes home with a grown-up.',
+  };
+  const story: SocialStory = { title: 'Sunday with Rowan', pages, source: 'model' };
+  const visit: Visit = {
+    ...initialVisit(),
+    brief: { phase: 'approved', lines: [] },
+    story: { phase: 'ready', value: story },
+  };
+  const printed = sundayStoryPages(visit);
+  assert.equal(printed.length, 8);
+  assert.equal(printed[0]?.step, 'cover');
+  if (printed[0]?.step === 'cover') assert.equal(printed[0].notice, null);
+  const steps = printed.slice(1);
+  assert.deepEqual(
+    steps.map((page) => (page.step === 'cover' ? '' : page.text)),
+    STORY_BEATS.map((beat) => pages[beat]),
+  );
+  assert.deepEqual(
+    steps.map((page) => page.slot),
+    ['outside', 'doors', 'desk', 'classroom', 'helper', 'quiet', 'pickup'],
+  );
+  const approved: Visit = { ...visit, story: { phase: 'approved', value: story } };
+  assert.deepEqual(
+    sundayStoryPages(approved).slice(1).map((page) => (page.step === 'cover' ? '' : page.text)),
+    STORY_BEATS.map((beat) => pages[beat]),
+  );
+});
+
 test('a story picture prefers an upload, then a sample, then a drawing', () => {
   const upload = { ...emptyPhotos, classroom: 'blob:room' };
   const samples = { classroom: { src: '/custom/classroom.jpg', alt: 'Custom classroom' } };
@@ -157,7 +195,46 @@ test('a story picture prefers an upload, then a sample, then a drawing', () => {
   });
 });
 
-function described(page: SundayStoryPage): { step: SundayStoryPage['step']; slot: SundayStoryPage['slot'] } & Record<string, string | number> {
+test('print names the simple version until a personal story is ready', () => {
+  const pill = "Simple version · Ready's personal story wasn't available just now";
+  const template = templatePages();
+  const fallback: SocialStory = { title: 'Sunday with Rowan', pages: template, source: 'fallback' };
+  const stories = [
+    { phase: 'idle' },
+    { phase: 'writing' },
+    { phase: 'failed', message: 'The draft could not be written. Try again.' },
+    { phase: 'ready', value: fallback },
+    { phase: 'approved', value: fallback },
+  ] as const;
+  for (const story of stories) {
+    const pages = sundayStoryPages({ ...initialVisit(), story });
+    assert.equal(pages.length, 8);
+    assert.equal(pages[0]?.step, 'cover');
+    if (pages[0]?.step !== 'cover') continue;
+    assert.equal(pages[0].notice, pill);
+  }
+});
+
+function templatePages(): StoryPages {
+  const visit = initialVisit();
+  const pages = sundayStoryPages(visit);
+  const text = (step: 1 | 2 | 3 | 4 | 5 | 6 | 7) => {
+    const page = pages.find((item) => item.step === step);
+    if (page === undefined || page.step === 'cover') throw new Error(`missing step ${step}`);
+    return page.text;
+  };
+  return {
+    arrive: text(1),
+    doors: text(2),
+    desk: text(3),
+    room: text(4),
+    helper: text(5),
+    quiet: text(6),
+    pickup: text(7),
+  };
+}
+
+function described(page: SundayStoryPage): { step: SundayStoryPage['step']; slot: SundayStoryPage['slot'] } & Record<string, string | number | null> {
   if (page.step === 'cover') {
     return {
       step: page.step,
@@ -165,6 +242,7 @@ function described(page: SundayStoryPage): { step: SundayStoryPage['step']; slot
       title: page.title,
       churchName: page.churchName,
       subtitle: page.subtitle,
+      notice: page.notice,
     };
   }
   return { step: page.step, slot: page.slot, text: page.text };

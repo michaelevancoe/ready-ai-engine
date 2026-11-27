@@ -11,6 +11,8 @@ import {
   socialStoryMessages,
   socialStorySchema,
   socialStorySchemaName,
+  storyTokenAllowed,
+  type SocialStoryRequest,
   sundayUpdateMessages,
   sundayUpdateSchema,
   sundayUpdateSchemaName,
@@ -25,9 +27,10 @@ import { emptyMemoryAccessWorld, memoryAccessSource } from '../src/memory-access
 import { churchStore, ids, type MemoryStore } from '../src/memory-store.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
+import { templateStoryPages, type StoryPages } from '../src/sunday-story-text.ts';
+import { filterWhatHelps } from '../src/what-helps.ts';
 import { fictionalDemoEnv } from '../src/demo-env.ts';
 import { sessionAuthVerifier, sessionToken } from '../src/session-auth.ts';
-import { ACK_FALLBACK } from '../web/lib/acknowledgement.ts';
 import { intakeTree, isSectionId, type SectionId } from '../web/lib/intake-tree.ts';
 import { demoModelMode, localDemoEnabled } from '../web/lib/local-demo.ts';
 import { liveDemoBindings, mergeDemoEnv, parseDevVars } from './live-env.ts';
@@ -166,17 +169,15 @@ export class DemoContext {
     const parsed = await parsedBody(request, parseSocialStoryRequest);
     if (parsed instanceof Response) return parsed;
     try {
-      const draft = await generate({
-        endpoint: 'intake.profile',
-        messages: socialStoryMessages(parsed),
-        schemaName: socialStorySchemaName,
-        schema: socialStorySchema,
-        parse: (value) => parseSocialStory(value, parsed),
-        env: this.deps.env,
-        fetch: this.deps.fetch,
-        log: this.deps.log,
-      });
-      return json({ ...draft, source: 'model' }, 200);
+      return json(await this.writeSocialStory(parsed), 200);
+    } catch (error) {
+      if (!(error instanceof GenerateError)) {
+        if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+        throw error;
+      }
+    }
+    try {
+      return json(await this.writeSocialStory(parsed), 200);
     } catch (error) {
       if (error instanceof GenerateError) return json(fallbackSocialStory(parsed), 200);
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
@@ -184,31 +185,68 @@ export class DemoContext {
     }
   }
 
+  private writeSocialStory(
+    parsed: SocialStoryRequest,
+  ): Promise<{ title: string; pages: StoryPages; source: 'model' }> {
+    return generate({
+      endpoint: 'intake.profile',
+      messages: socialStoryMessages(parsed),
+      schemaName: socialStorySchemaName,
+      schema: socialStorySchema,
+      parse: (value) => parseSocialStory(value, parsed),
+      env: this.deps.env,
+      fetch: this.deps.fetch,
+      log: this.deps.log,
+      attempts: 'once',
+    }).then((draft) => ({ ...draft, source: 'model' as const }));
+  }
+
   private async handleAcknowledgement(request: Request): Promise<Response> {
     const parsed = await parsedBody(request, parseAcknowledgementRequest);
     if (parsed instanceof Response) return parsed;
     if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
-    if (this.gatewayBusy()) {
-      return json({ relevant: true, line: ACK_FALLBACK, clarifyingPrompt: '' }, 200);
-    }
-    try {
-      const value = await generate({
+    if (this.gatewayBusy()) return json(fallbackAck(parsed), 200);
+    const write = (): Promise<{ relevant: boolean; line: string; clarifyingPrompt: string }> => {
+      let repeated = false;
+      return generate({
         endpoint: 'intake.profile',
         messages: acknowledgementMessages(parsed),
         schemaName: intakeAcknowledgementSchemaName,
         schema: acknowledgementSchema,
-        parse: (value) => parseAcknowledgement(value, parsed),
+        parse: (value) => {
+          try {
+            return parseAcknowledgement(value, parsed);
+          } catch (error) {
+            if (error instanceof RecentRepeat) repeated = true;
+            throw error;
+          }
+        },
         env: this.deps.env,
         fetch: this.deps.fetch,
         log: this.deps.log,
         maxTokens: 80,
         attempts: 'once',
-      });
-      return json(value, 200);
+      }).then(
+        (value) => value,
+        (error: unknown) => {
+          if (repeated) throw new RecentRepeat();
+          throw error;
+        },
+      );
+    };
+    try {
+      return json(await write(), 200);
     } catch (error) {
-      if (error instanceof GenerateError) {
-        return json({ relevant: true, line: ACK_FALLBACK, clarifyingPrompt: '' }, 200);
+      if (error instanceof RecentRepeat) {
+        try {
+          return json(await write(), 200);
+        } catch (again) {
+          if (again instanceof GenerateError || again instanceof RecentRepeat) return json(fallbackAck(parsed), 200);
+          if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+          throw again;
+        }
       }
+      if (error instanceof GenerateError) return json(fallbackAck(parsed), 200);
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
@@ -380,7 +418,7 @@ function mockDraft(name: string, content: string): unknown | null {
     case socialStorySchemaName: {
       const parsed = readSocial(content);
       if (parsed === null) return null;
-      return mockSocialStory(parsed.childName, parsed.church);
+      return mockSocialStory(parsed.childName, parsed.church, parsed.lines);
     }
     case sundayUpdateSchemaName: {
       const parsed = readSunday(content);
@@ -508,18 +546,35 @@ interface AckRequest {
   readonly nodeId: string;
   readonly sectionId: SectionId;
   readonly question: string;
+  readonly recent: readonly string[];
 }
+
+class RecentRepeat extends SchemaRejected {}
 
 function parseAcknowledgementRequest(value: unknown): AckRequest | null {
   if (!isRecord(value)) return null;
   const keys = Object.keys(value);
-  if (keys.length !== 2 || !Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'nodeId')) return null;
+  const withRecent = keys.length === 3 && Object.hasOwn(value, 'recent');
+  if (keys.length !== 2 && !withRecent) return null;
+  if (!Object.hasOwn(value, 'answer') || !Object.hasOwn(value, 'nodeId')) return null;
   if (typeof value.answer !== 'string' || typeof value.nodeId !== 'string') return null;
   const answer = value.answer.trim();
-  if (answer.length < 1 || answer.length > 500) return null;
+  if (answer.length < 1 || answer.length > 2000) return null;
+  const recent = withRecent ? readRecent(value.recent) : [];
+  if (recent === null) return null;
   const node = intakeTree.nodes.find((item) => item.id === value.nodeId);
   if (node === undefined || !isSectionId(node.sectionId)) return null;
-  return { answer, nodeId: node.id, sectionId: node.sectionId, question: node.prompt };
+  return { answer, nodeId: node.id, sectionId: node.sectionId, question: node.prompt, recent };
+}
+
+function readRecent(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > 3) return null;
+  const lines: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string' || item.length > 120) return null;
+    lines.push(item);
+  }
+  return lines;
 }
 
 const ACKNOWLEDGEMENT_PROMPT = [
@@ -527,8 +582,9 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
-  'line is one warm, plain thank-you to the parent, in 15 words or fewer, as one sentence.',
-  'Do not restate or quote the answer.',
+  'line names one specific detail from the answer, in one sentence of at most 20 words.',
+  'line is one warm, plain thank-you to the parent.',
+  'Do not reuse an opening from the recent lines.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
   'Do not label the child.',
@@ -544,12 +600,16 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Relevant: "not sure" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "pizza rocket sandwich" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "asdf qwerty" for "What helps Rowan feel calm again when things get to be too much?"',
-  'Examples of line:',
-  "Thank you, that's really useful to know.",
-  'Got it, that will help the volunteers.',
-  'Thanks, that gives us a clearer picture.',
-  "That's really helpful.",
+  'Example of a line: "Pip the fox can come along." for an answer about a stuffed fox, about Mina rather than the child in the question.',
 ].join('\n');
+
+const ACK_FALLBACKS = [
+  'Thanks for sharing that.',
+  'Got it, that detail helps.',
+  'Thanks, that is useful.',
+  'Noted, that helps the team.',
+  'Thank you for that detail.',
+] as const;
 
 const ACK_BLOCKED = ['autism', 'aphasia', 'diagnos', 'disorder', 'disabilit', 'impair', 'individuals'];
 
@@ -775,11 +835,12 @@ function mockAcknowledgement(answer: string, sectionId: SectionId): {
 }
 
 function acknowledgementMessages(request: AckRequest): { role: 'system' | 'user'; content: string }[] {
+  const recent = request.recent.length === 0 ? '' : `\nRecent lines to avoid: ${request.recent.join(' | ')}`;
   return [
     { role: 'system', content: ACKNOWLEDGEMENT_PROMPT },
     {
       role: 'user',
-      content: `Answer: ${request.answer}\nSection: ${request.sectionId}\nQuestion: ${request.question}`,
+      content: `Answer: ${request.answer.slice(0, 1500)}\nSection: ${request.sectionId}\nQuestion: ${request.question}${recent}`,
     },
   ];
 }
@@ -816,11 +877,37 @@ function parseAcknowledgement(
   if (line.length < 1) throw new SchemaRejected();
   const relevant = value.relevant || careSignal(request.answer) || uncertainOrNo(request.answer);
   const prompt = oneLine(value.clarifyingPrompt);
+  const accepted = lineAccepted(line, request.answer);
+  if (accepted && repeatsRecent(line, request.recent)) throw new RecentRepeat();
   return {
     relevant,
-    line: lineAccepted(line, request.answer) ? line : ACK_FALLBACK,
+    line: accepted ? line : fallbackLine(request.recent),
     clarifyingPrompt: relevant ? '' : promptAccepted(prompt, request.answer) ? prompt : cannedPrompt(request.sectionId),
   };
+}
+
+function fallbackAck(request: AckRequest): { relevant: true; line: string; clarifyingPrompt: '' } {
+  return { relevant: true, line: fallbackLine(request.recent), clarifyingPrompt: '' };
+}
+
+function fallbackLine(recent: readonly string[]): string {
+  return ACK_FALLBACKS.find((line) => !repeatsRecent(line, recent)) ?? ACK_FALLBACKS[0];
+}
+
+function repeatsRecent(line: string, recent: readonly string[]): boolean {
+  const text = plain(line);
+  const opening = firstWords(line);
+  return recent.some((item) => plain(item) === text || firstWords(item) === opening);
+}
+
+function firstWords(line: string): string {
+  return line
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .trim()
+    .split(/\s+/u)
+    .slice(0, 3)
+    .join(' ');
 }
 
 function oneLine(value: string): string {
@@ -830,7 +917,8 @@ function oneLine(value: string): string {
 function lineAccepted(line: string, answer: string): boolean {
   if (!surfaceAccepted(line, answer)) return false;
   if (!line.endsWith('.') && !line.endsWith('!')) return false;
-  return !line.includes('?');
+  if (line.includes('?')) return false;
+  return line.trim().split(/\s+/u).length <= 20;
 }
 
 function promptAccepted(prompt: string, answer: string): boolean {
@@ -860,12 +948,33 @@ function plain(value: string): string {
   return value.toLowerCase().replace(/[.!?]+$/u, '').replace(/\s+/gu, ' ').trim();
 }
 
-function mockSocialStory(childName: string, church: StoryChurch): { title: string; body: string } {
-  const body = `${childName} arrives at ${church.name}. ${childName} goes to ${church.room}. ${church.leader} says hello.`.slice(
-    0,
-    2000,
-  );
-  return { title: `Sunday with ${childName}`.slice(0, 120), body };
+function mockSocialStory(
+  childName: string,
+  church: StoryChurch,
+  lines: readonly { readonly text: string }[],
+): { title: string; pages: StoryPages } {
+  const pages = templateStoryPages(church);
+  const details = personalWords(lines, childName);
+  const first = details[0];
+  const second = details[1];
+  const title = `Sunday with ${childName}`.slice(0, 120);
+  if (first === undefined || second === undefined) return { title, pages };
+  return { title, pages: { ...pages, quiet: `${childName} can see ${first} and ${second}.` } };
+}
+
+function personalWords(lines: readonly { readonly text: string }[], childName: string): string[] {
+  const skip = new Set(childName.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? []);
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const line of lines) {
+    for (const word of line.text.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) {
+      if (word.length < 4 || skip.has(word) || seen.has(word) || !storyTokenAllowed(word)) continue;
+      seen.add(word);
+      words.push(word);
+      if (words.length === 2) return words;
+    }
+  }
+  return words;
 }
 
 function mockSundayUpdate(childName: string, leader: string, church: string): { body: string } {
@@ -900,7 +1009,29 @@ function profileFromAnswers(answers: IntakeAnswers): ChildProfile {
     avoid: noted(answers.whatToAvoid),
     volunteerGuidance:
       answers.whatHelps.length === 0 ? lead : `${lead} ${answers.whatHelps}`.slice(0, 2000),
+    whatHelps: mockWhatHelps(answers),
   };
+}
+
+function mockWhatHelps(answers: IntakeAnswers): string[] {
+  const name = answers.preferredName.trim().slice(0, 40);
+  const kept = filterWhatHelps([answers.whatHelps, answers.supportNeeds, answers.sensoryNotes].map(clipBullet));
+  const fillers = [
+    `Give ${name} a moment before the next thing.`,
+    `Stay nearby if ${name} needs a break.`,
+    `Show ${name} what happens next.`,
+  ];
+  const bullets = [...kept];
+  for (const filler of fillers) {
+    if (bullets.length >= 3) break;
+    bullets.push(filler);
+  }
+  return [...filterWhatHelps(bullets)].slice(0, 5);
+}
+
+function clipBullet(value: string): string {
+  const sentence = value.split(/(?<=[.!?])\s/u)[0] ?? value;
+  return sentence.trim().split(/\s+/u).slice(0, 16).join(' ').slice(0, 110);
 }
 
 function supportLines(answers: IntakeAnswers): string[] {
