@@ -26,3 +26,7 @@ export function selectReadyStore(boot: StoreBoot): ReadyStore {
     }
   }
 }
+
+export function demoMode(boot: StoreBoot): boolean {
+  return boot.mode === 'demo';
+}

@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, useSyncExternalStore, type FormEvent } from 'react';
+import { seededChildren } from '../../lib/demo-roster';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { checkInBrief, childPreferredName, volunteerRoster } from '../../lib/visit';
 import { PrivacyNote } from '../privacy-note';
-import { useReadyStore } from '../visit-shell';
+import { useDemoMode, useReadyStore } from '../visit-shell';
 
 export default function VolunteerPage() {
   const store = useReadyStore();
+  const demo = useDemoMode();
   const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const { dispatch } = store;
   const brief = checkInBrief(visit);
   const roster = volunteerRoster(visit);
+  const seeded = demo ? seededChildren(childPreferredName(visit)) : [];
   const [initialNotes] = useState(visit.notes);
   const [saved, setSaved] = useState(false);
 
@@ -33,6 +36,17 @@ export default function VolunteerPage() {
             <div>
               <h2>{row.heading}</h2>
               <p className="muted">{row.status}</p>
+            </div>
+          </li>
+        ))}
+        {seeded.map((child) => (
+          <li key={child.name}>
+            <span className="portrait">Placeholder photo</span>
+            <div>
+              <h2>
+                {child.name}, {child.ageYears}
+              </h2>
+              <p className="muted">{child.volunteer}</p>
             </div>
           </li>
         ))}

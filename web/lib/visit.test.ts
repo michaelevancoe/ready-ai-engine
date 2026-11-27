@@ -42,7 +42,7 @@ test('pending approval copy names the leader and the child', () => {
   assert.equal(copy.status, "Sharing Rowan's brief with Ms. Dana. This takes a few seconds.");
 });
 
-test('the volunteer page lists one child', () => {
+test('the live child has one roster row', () => {
   const source = readFileSync(new URL('../app/volunteer/page.tsx', import.meta.url), 'utf8');
   assert.equal(source.includes('Quinn'), false);
   assert.equal(source.includes('Sampleton'), false);

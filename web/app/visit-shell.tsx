@@ -13,7 +13,7 @@ import {
 } from 'react';
 import { FICTIONAL_DATA_LABEL } from '../lib/fictional-label';
 import type { ChurchPhotoSet, ReadyStore } from '../lib/ready-store';
-import { selectReadyStore, type StoreBoot } from '../lib/select-store';
+import { demoMode, selectReadyStore, type StoreBoot } from '../lib/select-store';
 import type { DemoRole, Visit, VisitEvent } from '../lib/visit';
 
 interface VisitState {
@@ -22,6 +22,7 @@ interface VisitState {
 }
 
 const VisitContext = createContext<ReadyStore | null>(null);
+const DemoModeContext = createContext(false);
 const AccountChurchContext = createContext<string | null>(null);
 
 export function useAccountChurch(): string | null {
@@ -32,6 +33,10 @@ export function useReadyStore(): ReadyStore {
   const store = useContext(VisitContext);
   if (store === null) throw new Error('Visit state is missing.');
   return store;
+}
+
+export function useDemoMode(): boolean {
+  return useContext(DemoModeContext);
 }
 
 export function useVisit(): VisitState {
@@ -116,6 +121,7 @@ export function VisitShell({
   }, [role]);
 
   return (
+    <DemoModeContext.Provider value={demoMode(boot)}>
     <VisitContext.Provider value={store}>
       <AccountChurchContext.Provider value={churchName}>
       <div className="frame">
@@ -139,6 +145,7 @@ export function VisitShell({
       </div>
       </AccountChurchContext.Provider>
     </VisitContext.Provider>
+    </DemoModeContext.Provider>
   );
 }
 
