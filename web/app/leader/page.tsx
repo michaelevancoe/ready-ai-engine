@@ -2,11 +2,12 @@
 
 import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { isChurchPhotoFile } from '../../lib/church-photo-file';
+import { leaderTagKind, seededChildren } from '../../lib/demo-roster';
 import { postSundayUpdate } from '../../lib/drafts';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
 import { childPreferredName, type ChurchSetup, type Visit } from '../../lib/visit';
-import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
+import { useChurchPhotos, useDemoMode, useReadyStore, useScrollWhen } from '../visit-shell';
 import { readChurchPhoto } from './read-church-photo';
 
 const CHURCH_FIELDS = [
@@ -31,6 +32,7 @@ type Screen = 'home' | 'after' | 'settings';
 
 export default function LeaderPage() {
   const store = useReadyStore();
+  const demo = useDemoMode();
   const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const { dispatch } = store;
   const name = childPreferredName(visit);
@@ -120,6 +122,21 @@ export default function LeaderPage() {
         sent={visit.update.phase === 'approved'}
         onOpen={openAfter}
       />
+      {demo ? (
+        <section aria-label="Other children today">
+          <h2>Other children today</h2>
+          <ul className="other-children">
+            {seededChildren(name).map((child) => (
+              <li key={child.name}>
+                <span>
+                  {child.name}, {child.ageYears}
+                </span>
+                <span className={tagClass(leaderTagKind(child.leader))}>{child.leader}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </main>
   );
 }
