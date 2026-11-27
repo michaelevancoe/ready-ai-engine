@@ -116,6 +116,50 @@ test('account boot chooses the one church and restores the leader row', async ()
   }
 });
 
+test('an older approved lesson row does not block boot and is not copied onto the visit', async () => {
+  const previous = new Map(names.map((name) => [name, process.env[name]]));
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const path = new URL(url).pathname;
+    if (path.endsWith('/memberships')) return Response.json([{ organization_id: orgId, role: 'parent' }]);
+    if (path.endsWith('/children')) return Response.json([{ id: childId }]);
+    if (path.endsWith('/church_setup')) {
+      return Response.json([
+        {
+          name: 'Harbor',
+          service: 'Sunday 9:30',
+          room: 'Harbor Room',
+          leader_label: 'Ms. Dana',
+          ages: 'Ages 5-12',
+          plan: 'A short welcome.',
+        },
+      ]);
+    }
+    if (path.endsWith('/lessons')) return Response.json([{ status: 'approved', source: 12 }]);
+    return Response.json([]);
+  };
+  try {
+    process.env.READY_VISIT_STORE = 'account';
+    process.env.READY_LOCAL_API_URL = 'http://127.0.0.1:54321/';
+    process.env.READY_LOCAL_ANON_KEY = 'local-anon';
+    delete process.env.READY_ORGANIZATION_ID;
+    process.env.READY_ACCOUNT_SESSIONS = JSON.stringify([
+      { userId: parentId, accessToken: 'parent-token', role: 'parent' },
+      { userId: leaderId, accessToken: 'leader-token', role: 'leader' },
+    ]);
+    const boot = await readStoreBoot();
+    assert.equal(boot.mode, 'account');
+    if (boot.mode !== 'account') return;
+    assert.equal(boot.initial.church.name, 'Harbor');
+    assert.equal(Object.hasOwn(boot.initial, 'lesson'), false);
+    assert.equal(Object.hasOwn(boot.initial, 'lessonSource'), false);
+  } finally {
+    globalThis.fetch = original;
+    restore(previous);
+  }
+});
+
 test('saved answers reopen on the next question', async () => {
   const previous = new Map(names.map((name) => [name, process.env[name]]));
   const original = globalThis.fetch;

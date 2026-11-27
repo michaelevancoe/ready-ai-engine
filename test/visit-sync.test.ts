@@ -37,6 +37,63 @@ test('the same plan writes the same row twice and maps the leader label', () => 
   assert.equal(write.row.organization_id, scope.organizationId);
 });
 
+test('an older plan that still carries a lesson saves the church and skips the lesson', () => {
+  const church = {
+    organizationId: scope.organizationId,
+    church: {
+      name: 'Fictional Harbor',
+      service: 'Sunday 9:30',
+      room: 'Harbor Room',
+      leader: 'Ms. Dana',
+      ages: 'Ages 5-12',
+      plan: 'A short welcome.',
+    },
+  };
+  const withLesson = {
+    scope,
+    plan: {
+      answers: null,
+      brief: null,
+      publication: null,
+      notes: null,
+      church,
+      lesson: {
+        action: 'upsert',
+        organizationId: scope.organizationId,
+        source: 'Old fictional lesson',
+        summary: 'Old summary',
+        steps: ['Sit down'],
+      },
+      update: null,
+    },
+  };
+  const parsed = parseSyncBody(withLesson);
+  assert.notEqual(parsed, null);
+  if (parsed === null) return;
+  const writes = visitWrites(userId, scope, parsed.plan);
+  assert.equal(
+    writes.some((write) => write.table === 'lessons'),
+    false,
+  );
+  assert.equal(
+    writes.some((write) => write.table === 'church_setup'),
+    true,
+  );
+
+  const withoutLesson = parseSyncBody({
+    scope,
+    plan: {
+      answers: null,
+      brief: null,
+      publication: null,
+      notes: null,
+      church,
+      update: null,
+    },
+  });
+  assert.notEqual(withoutLesson, null);
+});
+
 test('a sync body cannot publish a medical line', () => {
   const body = {
     scope,
