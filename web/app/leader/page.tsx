@@ -2,12 +2,11 @@
 
 import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { isChurchPhotoFile } from '../../lib/church-photo-file';
-import { leaderTagKind, seededChildren } from '../../lib/demo-roster';
-import { postSundayUpdate } from '../../lib/drafts';
+import { draftSundayNote, leaderStep, leaderTagKind } from '../../lib/demo-visits';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
 import { STORY_SAMPLES } from '../../lib/sunday-story';
-import { childPreferredName, type ChurchSetup, type Visit } from '../../lib/visit';
-import { useChurchPhotos, useDemoMode, useReadyStore, useScrollWhen } from '../visit-shell';
+import { childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
+import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
 import { readChurchPhoto } from './read-church-photo';
 
 const CHURCH_FIELDS = [
@@ -32,43 +31,69 @@ type Screen = 'home' | 'after' | 'settings';
 
 export default function LeaderPage() {
   const store = useReadyStore();
-  const demo = useDemoMode();
-  const visit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const records = useSyncExternalStore(store.subscribe, store.listVisits, store.listVisits);
+  const selectedVisit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const selected = records.find((record) => record.visit === selectedVisit) ?? records[0];
+  const live = records.find((record) => !record.sample) ?? records[0];
   const { dispatch } = store;
-  const name = childPreferredName(visit);
+  const visit = selected?.visit;
+  const liveVisit = live?.visit;
   const [screen, setScreen] = useState<Screen>('home');
   const [saved, setSaved] = useState(false);
-  const [church, setChurch] = useState(visit.church);
-  useScrollWhen(visit.update.phase === 'writing', 'update-status');
-  useScrollWhen(visit.update.phase === 'ready', 'update-draft');
+  const [church, setChurch] = useState<ChurchSetup>(liveVisit?.church ?? initialVisit().church);
+  useScrollWhen(visit?.update.phase === 'writing', 'update-status');
+  useScrollWhen(visit?.update.phase === 'ready', 'update-draft');
+  if (selected === undefined || live === undefined || visit === undefined || liveVisit === undefined) return null;
+  const active = selected;
+  const activeVisit = visit;
+  const home = live;
+  const homeVisit = liveVisit;
+  const name = childPreferredName(activeVisit);
+  const liveName = childPreferredName(homeVisit);
 
   function showHome(): void {
+    store.select(home.id);
+    store.dispatch({ type: 'role', role: 'leader' });
     setScreen('home');
   }
 
   function openSettings(): void {
-    setChurch(visit.church);
+    store.select(home.id);
+    store.dispatch({ type: 'role', role: 'leader' });
+    setChurch(homeVisit.church);
     setSaved(false);
     setScreen('settings');
   }
 
-  function openAfter(): void {
-    if (visit.notes.trim() === '') return;
+  function openChild(id: string): void {
+    store.select(id);
+    store.dispatch({ type: 'role', role: 'leader' });
     setSaved(false);
     setScreen('after');
   }
 
+  function openAfter(): void {
+    if (homeVisit.notes.trim() === '') return;
+    openChild(home.id);
+  }
+
   function onSaveChurch(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    store.select(home.id);
     dispatch({ type: 'saveChurch', church });
     setSaved(true);
     setScreen('home');
   }
 
   async function onWriteNote(): Promise<void> {
-    if (visit.role !== 'leader' || visit.notes.trim() === '' || visit.update.phase === 'writing') return;
+    if (activeVisit.role !== 'leader' || activeVisit.notes.trim() === '' || activeVisit.update.phase === 'writing') return;
     dispatch({ type: 'writeUpdate' });
-    const result = await postSundayUpdate(visit.notes, name, visit.church.leader, visit.church.name);
+    const result = await draftSundayNote(active, {
+      notes: activeVisit.notes,
+      childName: name,
+      leader: activeVisit.church.leader,
+      church: activeVisit.church.name,
+    });
     if (result.ok) dispatch({ type: 'updateReady', value: result.value });
     else dispatch({ type: 'updateFailed', message: result.message });
   }
@@ -89,11 +114,12 @@ export default function LeaderPage() {
       />
     );
   }
-  if (screen === 'after' && visit.notes.trim() !== '') {
+  if (screen === 'after') {
     return (
       <AfterScreen
-        visit={visit}
+        visit={activeVisit}
         name={name}
+        sample={active.sample}
         onWrite={() => void onWriteNote()}
         onApprove={onApproveNote}
         onHome={showHome}
@@ -106,34 +132,52 @@ export default function LeaderPage() {
       {saved ? <p role="status">Saved</p> : null}
       <div className="top-bar">
         <p className="eyebrow">
-          {visit.church.room} · {visit.church.service}
+          {homeVisit.church.room} · {homeVisit.church.service}
         </p>
         <button type="button" className="text" onClick={openSettings}>
           Church settings
         </button>
       </div>
-      <h1>Good morning, {visit.church.leader}</h1>
+      <h1>Good morning, {homeVisit.church.leader}</h1>
       <p>
-        {name} is at {visit.church.name}.
+        {liveName} is at {homeVisit.church.name}.
       </p>
       <AfterCard
-        name={name}
-        notes={visit.notes}
-        sent={visit.update.phase === 'approved'}
+        name={liveName}
+        notes={homeVisit.notes}
+        sent={homeVisit.update.phase === 'approved'}
         onOpen={openAfter}
       />
-      {demo ? (
+      {records.some((record) => record.sample) ? (
         <section aria-label="Other children today">
           <h2>Other children today</h2>
+          <p className="sample-caption">Sample children. Tap one to try any leader step.</p>
           <ul className="other-children">
-            {seededChildren(name).map((child) => (
-              <li key={child.name}>
-                <span>
-                  {child.name}, {child.ageYears}
-                </span>
-                <span className={tagClass(leaderTagKind(child.leader))}>{child.leader}</span>
-              </li>
-            ))}
+            {records.filter((record) => record.sample).map((record) => {
+              const step = leaderStep(record.visit);
+              const childName = childPreferredName(record.visit);
+              const age = childAgeYears(record.visit);
+              return (
+                <li key={record.id}>
+                  <button
+                    type="button"
+                    className="child-row"
+                    aria-label={`Open ${childName}, ${age}, ${step}`}
+                    onClick={() => openChild(record.id)}
+                  >
+                    <span className="who">
+                      {childName}, {age}
+                    </span>
+                    <span className="row-end">
+                      <span className={tagClass(leaderTagKind(step))}>{step}</span>
+                      <span className="chevron" aria-hidden="true">
+                        ›
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
@@ -175,12 +219,14 @@ function AfterCard({
 function AfterScreen({
   visit,
   name,
+  sample,
   onWrite,
   onApprove,
   onHome,
 }: {
   visit: Visit;
   name: string;
+  sample: boolean;
   onWrite: () => void;
   onApprove: (event: FormEvent<HTMLFormElement>) => void;
   onHome: () => void;
@@ -188,41 +234,87 @@ function AfterScreen({
   const writing = visit.update.phase === 'writing';
   return (
     <main>
-      <Back onHome={onHome} />
+      <Back label="← Today's list" onHome={onHome} />
       <span className={tagClass('plain')}>After Sunday</span>
       <h1>After Sunday for {name}</h1>
-      <section aria-label="Internal notes">
-        <h2>Internal notes</h2>
-        <p>{visit.notes}</p>
-        <p>Only Jordan Ellis and {visit.church.leader} see this.</p>
-      </section>
-      {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
-      {visit.update.phase === 'idle' || visit.update.phase === 'failed' || visit.update.phase === 'writing' ? (
-        <button type="button" className="primary" disabled={writing || visit.notes.trim() === ''} onClick={onWrite}>
-          Draft a note for {name}&apos;s parent
-        </button>
+      {sample ? <p className="sample-tag">Sample child · resets on reload</p> : null}
+      {visit.brief.phase === 'open' ? (
+        <section aria-label="Sunday brief">
+          <h2>Sunday brief</h2>
+          <p>
+            No Sunday brief yet. {name}&apos;s parent hasn&apos;t approved one, so there&apos;s nothing to prepare or
+            send.
+          </p>
+          <p>Once a parent approves a brief, it shows up here and for the volunteer.</p>
+          {sample ? <p>To see how a parent makes a brief, switch to Parent.</p> : null}
+        </section>
       ) : null}
-      {writing ? (
-        <p id="update-status" className="draft-status" role="status">
-          Writing the draft.
-        </p>
+      {visit.brief.phase === 'approved' && visit.notes.trim() === '' ? (
+        <section aria-label="Internal notes">
+          <h2>Internal notes</h2>
+          <p>No notes yet. Jordan adds them after class, then you can draft a note for {name}&apos;s parent.</p>
+          <p>{name}&apos;s Sunday brief is ready for the volunteer.</p>
+          {sample ? (
+            <p>Want to try the next steps? Open Ezra (notes in) or Hazel (draft to approve) from today&apos;s list.</p>
+          ) : null}
+        </section>
       ) : null}
-      {visit.update.phase === 'ready' ? (
-        <form id="update-draft" onSubmit={onApprove}>
-          <label htmlFor="parent-note">Parent note</label>
-          <textarea id="parent-note" name="parentNote" rows={5} defaultValue={visit.update.value.body} autoComplete="off" />
-          <button type="submit" className="approve">
-            Approve and send to parent
-          </button>
-        </form>
-      ) : null}
-      {visit.update.phase === 'approved' ? (
+      {visit.brief.phase === 'approved' && visit.notes.trim() !== '' ? (
         <>
-          <p className="draft-text">{visit.update.value.body}</p>
-          <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
-          <button type="button" className="primary" onClick={onWrite}>
-            Draft a note for {name}&apos;s parent
-          </button>
+          <section aria-label="Internal notes">
+            <h2>Internal notes</h2>
+            <p>{visit.notes}</p>
+            <p>Only Jordan Ellis and {visit.church.leader} see this.</p>
+          </section>
+          {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
+          {visit.update.phase === 'idle' || visit.update.phase === 'failed' || visit.update.phase === 'writing' ? (
+            <>
+              <button type="button" className="primary" disabled={writing} onClick={onWrite}>
+                Draft a note for {name}&apos;s parent
+              </button>
+              {sample && !writing ? (
+                <p>Tap Draft to see Ready write a note for {name}&apos;s parent. You can edit it before anything is sent.</p>
+              ) : null}
+            </>
+          ) : null}
+          {writing ? (
+            <p id="update-status" className="draft-status" role="status">
+              Writing the draft.
+            </p>
+          ) : null}
+          {visit.update.phase === 'ready' ? (
+            <form id="update-draft" onSubmit={onApprove}>
+              <label htmlFor="parent-note">Parent note</label>
+              <textarea id="parent-note" name="parentNote" rows={5} defaultValue={visit.update.value.body} autoComplete="off" />
+              <button type="submit" className="approve">
+                Approve and send to parent
+              </button>
+              {sample ? (
+                <p>
+                  {name}&apos;s parent sees this note only after you approve it. They never see Jordan&apos;s internal
+                  notes.
+                </p>
+              ) : null}
+            </form>
+          ) : null}
+          {visit.update.phase === 'approved' ? (
+            <>
+              <p className="draft-text">{visit.update.value.body}</p>
+              {sample ? (
+                <>
+                  <p className="tag approved">Sent to {name}&apos;s parent · Sunday 12:05 PM</p>
+                  <p>{name}&apos;s parent can read this note now. They never see Jordan&apos;s internal notes.</p>
+                </>
+              ) : (
+                <>
+                  <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
+                  <button type="button" className="primary" onClick={onWrite}>
+                    Draft a note for {name}&apos;s parent
+                  </button>
+                </>
+              )}
+            </>
+          ) : null}
         </>
       ) : null}
     </main>
@@ -242,7 +334,7 @@ function SettingsScreen({
 }) {
   return (
     <main>
-      <Back onHome={onHome} />
+      <Back label="← Leader home" onHome={onHome} />
       <h1>Church settings</h1>
       <form onSubmit={onSave}>
         {CHURCH_FIELDS.map(([key, label]) => (
@@ -374,11 +466,11 @@ function ChurchPhotoField({
   );
 }
 
-function Back({ onHome }: { onHome: () => void }) {
+function Back({ label, onHome }: { label: string; onHome: () => void }) {
   return (
     <div className="top-bar">
       <button type="button" className="back" onClick={onHome}>
-        ← Leader home
+        {label}
       </button>
     </div>
   );

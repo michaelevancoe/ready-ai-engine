@@ -100,6 +100,10 @@ export function VisitShell({
   useEffect(() => {
     scrolledId = null;
     clearScrollRoom();
+    if (role === 'parent') {
+      const live = store.listVisits().find((record) => !record.sample);
+      if (live !== undefined) store.select(live.id);
+    }
     store.dispatch({ type: 'role', role });
     window.scrollTo(0, 0);
   }, [role, store]);

@@ -754,15 +754,85 @@ button.home-card {
 }
 
 .other-children li {
+  display: block;
+  margin-top: 0.7rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+button.child-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
+  margin-top: 0;
+  border-radius: 1rem;
+  text-align: left;
+  font-weight: 400;
+}
+
+button.child-row .who {
+  font-weight: 700;
+}
+
+.row-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+}
+
+.chevron {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.row-end .chevron {
+  margin-left: 0;
+}
+
+.roster li:has(> button.child-row) {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+button.roster-row {
+  margin-top: 0.7rem;
+}
+
+.roster-card {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
   margin-top: 0.9rem;
   padding: 0.85rem 1rem;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 1rem;
+}
+
+.roster-card h2 {
+  margin: 0;
+}
+
+.sample-caption {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.sample-tag {
+  display: inline-block;
+  margin-top: 0.7rem;
+  border-radius: 999px;
+  background: var(--portrait);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
 }
 
 .other-children .tag {
