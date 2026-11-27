@@ -381,6 +381,7 @@ function applyConversation(visit: Visit, event: ConversationEvent): Visit {
       ...withdrawnBrief(),
     };
   }
+  if (event.type === 'beginIntake') return { ...visit, conversation, ...withdrawnBrief() };
   return { ...visit, conversation };
 }
 

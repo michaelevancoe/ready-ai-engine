@@ -91,7 +91,7 @@ function pageSentences(text: string): number {
 const labelStory =
   'Loves. Overwhelms. What helps. Communication. Sensory needs. Medical / health notes.';
 
-const NEXT_QUESTION = 'How does {child} usually let you know what {child} needs?';
+const NEXT_QUESTION = 'How does {child} usually let you know what they need?';
 const CHILD_PRONOUN = /\b(?:he|she|him|his|her|hers|they|them|their|theirs)\b/iu;
 const ACK_USER = `Answer: Picture cards.\nSection: communication\nQuestion: ${NEXT_QUESTION}`;
 

@@ -113,6 +113,10 @@ test('the about section starts with the child name and age', () => {
     assert.equal(node.prompt.includes('Rowan'), false, node.id);
     assert.equal(/\b(?:he|his)\b/iu.test(node.prompt), false, node.id);
     assert.equal(GENDERED.test(node.prompt), false, node.id);
+    if (node.id === 'communication') {
+      assert.equal(node.prompt.includes('what they need'), true);
+      continue;
+    }
     assert.equal(/\bthey need\b/iu.test(node.prompt), false, node.id);
   }
 });

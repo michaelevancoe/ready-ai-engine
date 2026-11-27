@@ -1,12 +1,13 @@
 import type { DraftResult } from './drafts.ts';
 import { postSundayUpdate } from './drafts.ts';
 import type { ProfileId, ShownProfile } from './desk.ts';
-import { childAgeYears, childPreferredName, initialVisit, reduceVisit, type SundayUpdate, type Visit, type VisitEvent } from './visit.ts';
+import { exampleProfile } from './example-briefs.ts';
+import { briefLines, childAgeYears, childPreferredName, initialVisit, reduceVisit, type SundayUpdate, type Visit, type VisitEvent } from './visit.ts';
 
 export const LEADER_STEPS = [
   'No brief yet',
   'No notes yet',
-  'Notes from Jordan',
+  'Ready to draft',
   'Draft to approve',
   'Sent to parent',
 ] as const;
@@ -186,7 +187,7 @@ export function seedEvents(id: SampleId): readonly VisitEvent[] {
 }
 
 export function seedDemoVisits(): VisitRecord[] {
-  const rowan: VisitRecord = { id: 'rowan', visit: initialVisit(), sample: false, cannedDraft: null };
+  const rowan: VisitRecord = { id: 'rowan', visit: seededLiveVisit(), sample: false, cannedDraft: null };
   return [rowan, ...SAMPLES.map((spec) => ({ id: spec.id, visit: play(EVENT_LISTS[spec.id]), sample: true, cannedDraft: spec.draft }))];
 }
 
@@ -195,7 +196,7 @@ export function leaderStep(visit: Visit): LeaderStep {
   if (visit.update.phase === 'approved') return 'Sent to parent';
   if (visit.notes.trim() === '') return 'No notes yet';
   if (visit.update.phase === 'ready' || visit.update.phase === 'writing') return 'Draft to approve';
-  return 'Notes from Jordan';
+  return 'Ready to draft';
 }
 
 export function volunteerStep(visit: Visit): VolunteerStep {
@@ -209,7 +210,7 @@ export function leaderTagKind(step: LeaderStep): 'plain' | 'ready' | 'approved' 
     case 'No brief yet':
     case 'No notes yet':
       return 'plain';
-    case 'Notes from Jordan':
+    case 'Ready to draft':
     case 'Draft to approve':
       return 'ready';
     case 'Sent to parent':
@@ -230,6 +231,16 @@ export function draftSundayNote(
     return Promise.resolve({ ok: true, value: { body: record.cannedDraft } });
   }
   return postSundayUpdate(input.notes, input.childName, input.leader, input.church);
+}
+
+function seededLiveVisit(): Visit {
+  const visit = initialVisit();
+  const card = exampleProfile('rowan');
+  return {
+    ...visit,
+    card,
+    brief: { phase: 'approved', lines: briefLines(card, visit.visibility) },
+  };
 }
 
 function play(events: readonly VisitEvent[]): Visit {

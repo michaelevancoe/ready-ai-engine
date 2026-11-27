@@ -14,7 +14,7 @@ import {
 } from '../lib/conversation';
 import { postAcknowledgement, postSocialStory, type AckPost } from '../lib/drafts';
 import { approveProfile, submitIntake, type ShownProfile } from '../lib/desk';
-import { intakeTree, type SectionId } from '../lib/intake-tree';
+import { behaviorAsked, intakeTree, type SectionId } from '../lib/intake-tree';
 import { listen, speechSupport } from '../lib/speech';
 import { parentReviewPrivacy, parentStartPrivacy, storyPrivacy } from '../lib/privacy-note';
 import { initialReader, reduceReader, type Reader } from '../lib/story-reader';
@@ -27,6 +27,7 @@ import {
   type Visit,
   type VisitEvent,
 } from '../lib/visit';
+import { DraftStatus } from './draft-status';
 import { PrivacyNote } from './privacy-note';
 import { WhatHelpsCard } from './what-helps';
 import { SundayPrint } from './sunday-print';
@@ -251,9 +252,7 @@ function StartScreen({
     <section aria-label="Start">
       <h1>Who are we getting ready for?</h1>
       <p>
-        {church === null
-          ? "Start a new child with Ready's guided questions, or open a finished example to see the whole flow."
-          : `Signed in to ${church}. Only your family's children show here.`}
+        You're a parent, getting your child ready for Sunday.
       </p>
       <PrivacyNote variant="full" note={parentStartPrivacy(churchName)} />
       <button type="button" className="primary" onClick={onBegin}>
@@ -565,7 +564,7 @@ function BriefScreen({
           <p className="guided">Approved</p>
         ) : (
           <p className="drafted">
-            <Spark /> Ready drafted this
+            <Spark /> Built from your answers
           </p>
         )}
       </div>
@@ -610,6 +609,7 @@ function BriefScreen({
             {card.label}
             {card.updated ? <span className="badge">Updated</span> : null}
           </h2>
+          {card.sectionId === 'behavior' ? <p>{behaviorAsked(brief.name)}</p> : null}
           <ul>
             {spokenLines(card.text).map((line, index) => (
               <li key={`${index}-${line}`}>{line}</li>
@@ -766,7 +766,7 @@ function ApprovedScreen({
         {reader.phase === 'writing' ? (
           <>
             <h1>A Sunday story for {view.name}</h1>
-            <p role="status">Writing {view.name}&apos;s story.</p>
+            <DraftStatus copy={`Ready is writing ${view.name}'s story from your answers…`} />
           </>
         ) : null}
         {reader.phase === 'failed' ? (

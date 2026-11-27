@@ -23,7 +23,7 @@ test('leader rows open each sample child and a reload restores the seeds', async
   const region = page.getByRole('region', { name: 'Other children today' });
   await expect(region.getByRole('button')).toHaveCount(5);
 
-  await openChild(page, 'Ezra, 7, Notes from Jordan');
+  await openChild(page, 'Ezra, 7, Ready to draft');
   await expect(page.getByText('Sample child · resets on reload')).toBeVisible();
   await expect(page.getByText(/block tower/)).toBeVisible();
   await page.getByRole('button', { name: "Draft a note for Ezra's parent" }).click();
