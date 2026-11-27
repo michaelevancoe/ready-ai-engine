@@ -114,6 +114,38 @@ test('opening Maya keeps six children and a reload returns to Rowan', async ({ p
   await expect(page.getByRole('heading', { name: 'Maya, 5', exact: true })).toHaveCount(0);
 });
 
+test('saving notes on Nora does not offer a draft that cannot be written', async ({ page }) => {
+  test.skip(accountMode, 'account boot');
+  const drafts: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/v1/drafts/sunday-update')) drafts.push(request.url());
+  });
+  await page.goto('/volunteer');
+  await openChild(page, 'Nora, 6, Brief ready');
+  await page.getByLabel('Notes after Sunday').fill('Nora sang the whole song.');
+  await page.getByRole('button', { name: 'Save notes' }).click();
+  await expect(page.getByRole('status')).toHaveText(/Notes saved/);
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await openChild(page, 'Nora, 6, Notes from Jordan');
+  await expect(page.getByText('Nora sang the whole song.')).toBeVisible();
+  await expect(page.getByRole('button', { name: "Draft a note for Nora's parent" })).toHaveCount(0);
+  await expect(page.getByText('This sample has no parent-note draft.')).toBeVisible();
+  expect(drafts).toEqual([]);
+});
+
+test("clearing Lucy's volunteer notes keeps the sent parent note", async ({ page }) => {
+  test.skip(accountMode, 'account boot');
+  await page.goto('/volunteer');
+  await openChild(page, 'Lucy, 10, Brief ready · Notes saved');
+  await page.getByLabel('Notes after Sunday').fill('');
+  await page.getByRole('button', { name: 'Update notes' }).click();
+  await page.getByRole('link', { name: 'Leader' }).click();
+  await expect(page.getByRole('button', { name: 'Open Lucy, 10, Sent to parent' })).toBeVisible();
+  await openChild(page, 'Lucy, 10, Sent to parent');
+  await expect(page.getByText(/Lucy had a great morning/)).toBeVisible();
+  await expect(page.getByText("Sent to Lucy's parent · Sunday 12:05 PM")).toBeVisible();
+});
+
 test('account mode shows one child and no sample visits', async ({ page }) => {
   test.skip(!accountMode, 'demo boot');
   await page.goto('/volunteer');

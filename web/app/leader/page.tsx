@@ -120,6 +120,7 @@ export default function LeaderPage() {
         visit={activeVisit}
         name={name}
         sample={active.sample}
+        cannedDraft={active.cannedDraft !== null}
         onWrite={() => void onWriteNote()}
         onApprove={onApproveNote}
         onHome={showHome}
@@ -220,6 +221,7 @@ function AfterScreen({
   visit,
   name,
   sample,
+  cannedDraft,
   onWrite,
   onApprove,
   onHome,
@@ -227,11 +229,16 @@ function AfterScreen({
   visit: Visit;
   name: string;
   sample: boolean;
+  cannedDraft: boolean;
   onWrite: () => void;
   onApprove: (event: FormEvent<HTMLFormElement>) => void;
   onHome: () => void;
 }) {
   const writing = visit.update.phase === 'writing';
+  const notesEmpty = visit.notes.trim() === '';
+  const sent = visit.update.phase === 'approved';
+  const briefApproved = visit.brief.phase === 'approved';
+  const canDraft = !sample || cannedDraft;
   return (
     <main>
       <Back label="← Today's list" onHome={onHome} />
@@ -249,7 +256,32 @@ function AfterScreen({
           {sample ? <p>To see how a parent makes a brief, switch to Parent.</p> : null}
         </section>
       ) : null}
-      {visit.brief.phase === 'approved' && visit.notes.trim() === '' ? (
+      {briefApproved && visit.update.phase === 'approved' ? (
+        <>
+          {notesEmpty ? null : (
+            <section aria-label="Internal notes">
+              <h2>Internal notes</h2>
+              <p>{visit.notes}</p>
+              <p>Only Jordan Ellis and {visit.church.leader} see this.</p>
+            </section>
+          )}
+          <p className="draft-text">{visit.update.value.body}</p>
+          {sample ? (
+            <>
+              <p className="tag approved">Sent to {name}&apos;s parent · Sunday 12:05 PM</p>
+              <p>{name}&apos;s parent can read this note now. They never see Jordan&apos;s internal notes.</p>
+            </>
+          ) : (
+            <>
+              <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
+              <button type="button" className="primary" onClick={onWrite}>
+                Draft a note for {name}&apos;s parent
+              </button>
+            </>
+          )}
+        </>
+      ) : null}
+      {briefApproved && !sent && notesEmpty ? (
         <section aria-label="Internal notes">
           <h2>Internal notes</h2>
           <p>No notes yet. Jordan adds them after class, then you can draft a note for {name}&apos;s parent.</p>
@@ -259,7 +291,7 @@ function AfterScreen({
           ) : null}
         </section>
       ) : null}
-      {visit.brief.phase === 'approved' && visit.notes.trim() !== '' ? (
+      {briefApproved && !sent && !notesEmpty ? (
         <>
           <section aria-label="Internal notes">
             <h2>Internal notes</h2>
@@ -267,7 +299,7 @@ function AfterScreen({
             <p>Only Jordan Ellis and {visit.church.leader} see this.</p>
           </section>
           {visit.update.phase === 'failed' ? <p role="alert">{visit.update.message}</p> : null}
-          {visit.update.phase === 'idle' || visit.update.phase === 'failed' || visit.update.phase === 'writing' ? (
+          {canDraft && (visit.update.phase === 'idle' || visit.update.phase === 'failed' || visit.update.phase === 'writing') ? (
             <>
               <button type="button" className="primary" disabled={writing} onClick={onWrite}>
                 Draft a note for {name}&apos;s parent
@@ -276,6 +308,9 @@ function AfterScreen({
                 <p>Tap Draft to see Ready write a note for {name}&apos;s parent. You can edit it before anything is sent.</p>
               ) : null}
             </>
+          ) : null}
+          {sample && !canDraft ? (
+            <p>This sample has no parent-note draft. Open Ezra (notes in) or Hazel (draft to approve) from today&apos;s list.</p>
           ) : null}
           {writing ? (
             <p id="update-status" className="draft-status" role="status">
@@ -296,24 +331,6 @@ function AfterScreen({
                 </p>
               ) : null}
             </form>
-          ) : null}
-          {visit.update.phase === 'approved' ? (
-            <>
-              <p className="draft-text">{visit.update.value.body}</p>
-              {sample ? (
-                <>
-                  <p className="tag approved">Sent to {name}&apos;s parent · Sunday 12:05 PM</p>
-                  <p>{name}&apos;s parent can read this note now. They never see Jordan&apos;s internal notes.</p>
-                </>
-              ) : (
-                <>
-                  <p>The parent sees only this note, never Jordan&apos;s internal notes.</p>
-                  <button type="button" className="primary" onClick={onWrite}>
-                    Draft a note for {name}&apos;s parent
-                  </button>
-                </>
-              )}
-            </>
           ) : null}
         </>
       ) : null}
