@@ -287,8 +287,7 @@ test('a long answer is acknowledged from its first 1500 characters', async () =>
   assert.equal(calls, replies.length);
   const first = sent[0] ?? '';
   const told = first.slice('Answer: '.length, first.indexOf('\nSection: '));
-  assert.equal(told, juniperAnswers.loves.slice(0, 1500));
-  assert.equal(told.length, 1500);
+  assert.equal(told, juniperAnswers.loves);
   assert.equal(juniperAnswers.loves.length > 1500 && juniperAnswers.loves.length <= 2000, true);
   assert.equal(sent[4]?.includes(replies[1]), true);
   assert.equal(sent[4]?.includes(replies[2]), true);
@@ -319,7 +318,12 @@ test('an acknowledgement longer than twenty words falls back without a second ca
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('the client sends the last three acknowledgement lines', async () => {
@@ -415,14 +419,24 @@ test('a cut-off acknowledgement falls back', async () => {
   const result = await acknowledgementFrom('Thank you for telling me tha');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('an acknowledgement with a non-Latin character falls back', async () => {
   const result = await acknowledgementFrom('Thank you, that helps噪.');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'safety',
+  });
 });
 
 test('an acknowledgement that names a diagnosis falls back', async () => {
@@ -430,7 +444,11 @@ test('an acknowledgement that names a diagnosis falls back', async () => {
     const result = await acknowledgementFrom(`Thank you for the note on ${word}.`);
     assert.equal(result.status, 200, word);
     assert.equal(result.calls, 1, word);
-    assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' }, word);
+    assert.deepEqual(
+      result.body,
+      { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '', fallbackReason: 'safety' },
+      word,
+    );
   }
 });
 
@@ -440,14 +458,24 @@ test('an acknowledgement longer than 120 characters falls back', async () => {
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('an acknowledgement with a question mark falls back', async () => {
   const result = await acknowledgementFrom('Really? That helps.');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('an acknowledgement that uses a child pronoun falls back', async () => {
@@ -455,7 +483,11 @@ test('an acknowledgement that uses a child pronoun falls back', async () => {
     const result = await acknowledgementFrom(line);
     assert.equal(result.status, 200, line);
     assert.equal(result.calls, 1, line);
-    assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' }, line);
+    assert.deepEqual(
+      result.body,
+      { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '', fallbackReason: 'safety' },
+      line,
+    );
   }
 });
 
@@ -464,7 +496,12 @@ test('an acknowledgement that repeats the answer falls back', async () => {
   const result = await acknowledgementFrom(line, line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('a live off-topic answer keeps the model not-relevant verdict', async () => {
@@ -712,6 +749,7 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
       relevant: true,
       line: 'Thanks for sharing that.',
       clarifyingPrompt: '',
+      fallbackReason: 'upstream_error',
     });
     assert.ok(calls.length >= 1);
     const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
@@ -874,15 +912,30 @@ test('parseSocialStory replaces a bad page and rejects a payload that is not pag
         ...pages,
         helper: "{ 'loves': 'Soft music' }",
         desk: labelStory,
-        arrive: 'The room has "sensory": quiet corners.',
       },
     },
     rowanInput,
   );
   assert.equal(parsed.pages.helper, template.helper);
   assert.equal(parsed.pages.desk, template.desk);
-  assert.equal(parsed.pages.arrive, template.arrive);
+  assert.equal(parsed.pages.arrive, pages.arrive);
   assert.equal(parsed.pages.quiet, pages.quiet);
+  assert.throws(
+    () =>
+      parseSocialStory(
+        {
+          title: 'Sunday with Rowan',
+          pages: {
+            ...pages,
+            helper: "{ 'loves': 'Soft music' }",
+            desk: labelStory,
+            arrive: 'The room has "sensory": quiet corners.',
+          },
+        },
+        rowanInput,
+      ),
+    (error: unknown) => rejectedReason(error) === 'schema',
+  );
 });
 
 test('parseSocialStory accepts a personal seven-page story', () => {
@@ -900,7 +953,7 @@ test('parseSocialStory rejects a care-plan title', () => {
   );
 });
 
-test('parseSocialStory fills an empty page or a page with three sentences from the template', () => {
+test('parseSocialStory fills an empty page from the template and keeps the first two sentences', () => {
   const template = templateStoryPages(harbor);
   const pages = personalPages();
   const parsed = parseSocialStory(
@@ -914,7 +967,7 @@ test('parseSocialStory fills an empty page or a page with three sentences from t
     },
     rowanInput,
   );
-  assert.equal(parsed.pages.doors, template.doors);
+  assert.equal(parsed.pages.doors, 'Rowan waves. Rowan smiles.');
   assert.equal(parsed.pages.pickup, template.pickup);
   assert.equal(parsed.pages.helper, pages.helper);
 });
@@ -1155,7 +1208,11 @@ test('a story that is not seven pages retries once and then uses the template', 
   );
   assert.equal(dict.status, 200);
   assert.equal(dict.calls, 2);
-  assert.deepEqual(dict.payload, fallback);
+  assert.deepEqual(dict.payload, {
+    ...fallback,
+    fallbackReason: 'schema',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
   const missingName = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Al', church: harbor },
@@ -1163,7 +1220,11 @@ test('a story that is not seven pages retries once and then uses the template', 
   );
   assert.equal(missingName.status, 200);
   assert.equal(missingName.calls, 2);
-  assert.deepEqual(missingName.payload, fallbackSocialStory({ childName: 'Al', church: harbor, lines: [] }));
+  assert.deepEqual(missingName.payload, {
+    ...fallbackSocialStory({ childName: 'Al', church: harbor, lines: [] }),
+    fallbackReason: 'safety',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
   const pages = templateStoryPages(harbor);
   const clean = await generated(
     '/v1/drafts/social-story',
@@ -1172,7 +1233,12 @@ test('a story that is not seven pages retries once and then uses the template', 
   );
   assert.equal(clean.status, 200);
   assert.equal(clean.calls, 1);
-  assert.deepEqual(clean.payload, { title: 'Sunday with Rowan', pages, source: 'model' });
+  assert.deepEqual(clean.payload, {
+    title: 'Sunday with Rowan',
+    pages,
+    source: 'model',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
 });
 
 test('a banned story page is replaced and a care-plan title still falls back', async () => {
@@ -1184,7 +1250,12 @@ test('a banned story page is replaced and a care-plan title still falls back', a
   );
   assert.equal(repaired.status, 200);
   assert.equal(repaired.calls, 1);
-  assert.deepEqual(repaired.payload, { title: 'Sunday with Rowan', pages: template, source: 'model' });
+  assert.deepEqual(repaired.payload, {
+    title: 'Sunday with Rowan',
+    pages: template,
+    source: 'model',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
   const planned = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
@@ -1192,7 +1263,11 @@ test('a banned story page is replaced and a care-plan title still falls back', a
   );
   assert.equal(planned.status, 200);
   assert.equal(planned.calls, 2);
-  assert.deepEqual(planned.payload, fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }));
+  assert.deepEqual(planned.payload, {
+    ...fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }),
+    fallbackReason: 'safety',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
 });
 
 test('a copied Sunday update fails the existing generation retry', async () => {
@@ -1606,7 +1681,7 @@ test('socialStoryMessages asks for a short story read aloud to the child', () =>
     'The title is a varied story title for this child and this morning, never a Plan or Supporting title.',
     'Use ordinary spoken English, and put the before a room name.',
     'Describe only what the church plan says will happen. Do not add a seat, a kind of seat, a sound level, a song, or an activity the plan does not name. Do not promise that anything will be ready.',
-    'End with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything.',
+    'The pickup page ends with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything. Do not add a line or a field after the JSON.',
     'Do not use the words support, accommodation, ensure, engage, or upset.',
   ];
   for (const phrase of phrases) {
@@ -1789,7 +1864,11 @@ test('a social story gateway failure returns the Sunday fallback', async () => {
   assert.equal(calls, 2);
   const text = await response.text();
   assert.equal(text.includes('GATEWAY-BODY-SHOULD-NOT-LEAK'), false);
-  assert.deepEqual(JSON.parse(text), fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }));
+  assert.deepEqual(JSON.parse(text), {
+    ...fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }),
+    fallbackReason: 'upstream_error',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
 });
 
 test('the Sunday fallback is the seven template pages', () => {
@@ -2059,3 +2138,226 @@ async function generated(
   const response = await demo.handle(post(pathname, body));
   return { status: response.status, calls, payload: await response.json() };
 }
+
+const LIVE_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+const rowanRequestLines = [
+  { field: 'loves', label: 'Loves', text: 'Rowan loves Disney stories and quiet songs.' },
+  { field: 'overwhelms', label: 'Overwhelms', text: 'A crowded doorway overwhelms Rowan.' },
+  { field: 'whatHelps', label: 'What helps', text: 'A quiet break helps Rowan settle.' },
+  { field: 'communication', label: 'Communication', text: 'Rowan points and uses a few words.' },
+  { field: 'sensory', label: 'Sensory', text: 'Rowan needs a softer seat away from bright lights.' },
+] as const;
+
+function rawChat(content: string): Response {
+  return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+async function storyFromModel(content: string): Promise<{ status: number; body: Record<string, unknown>; logs: string[] }> {
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async () => rawChat(content));
+    const response = await demo.handle(socialStory({ lines: [...rowanRequestLines], childName: 'Rowan' }));
+    return { status: response.status, body: (await response.json()) as Record<string, unknown>, logs };
+  } finally {
+    console.error = original;
+  }
+}
+
+test('a social story asks for enough tokens and names the model that wrote it', async () => {
+  const calls: GatewayCall[] = [];
+  const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
+  const response = await demo.handle(socialStory({ lines: [...rowanRequestLines], childName: 'Rowan' }));
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { source: string; model?: string };
+  assert.equal(body.source, 'model');
+  assert.equal(body.model, LIVE_MODEL);
+  assert.equal(calls[0]?.body.max_tokens !== undefined && calls[0].body.max_tokens >= 1024, true);
+  const system = systemText(calls[0]);
+  assert.equal(system.includes('The pickup page ends with one warm, calm, reassuring line for the child.'), true);
+  assert.equal(system.includes('End with one warm, calm, reassuring line'), false);
+});
+
+test('fenced, trailed, and truncated story JSON still becomes the personal story', async () => {
+  const pages = personalPages();
+  const story = { title: 'Sunday with Rowan', pages };
+  const raw = JSON.stringify(story);
+  const fenced = await storyFromModel(`Here is the story:\n\`\`\`json\n${raw}\n\`\`\`\nYou are welcome here, Rowan.`);
+  assert.equal(fenced.status, 200);
+  assert.equal(fenced.body.source, 'model');
+  assert.equal(fenced.body.model, LIVE_MODEL);
+  assert.deepEqual(fenced.body.pages, pages);
+  const trailed = await storyFromModel(`${raw}\nYou are welcome here, Rowan.`);
+  assert.equal(trailed.body.source, 'model');
+  assert.deepEqual(trailed.body.pages, pages);
+  const pickupValue = JSON.stringify(pages.pickup);
+  const pickupAt = raw.lastIndexOf(pickupValue);
+  assert.equal(pickupAt > 0, true);
+  const cut = raw.slice(0, pickupAt + pickupValue.length);
+  const truncated = await storyFromModel(cut);
+  assert.equal(truncated.body.source, 'model');
+  const kept = truncated.body.pages as StoryPages;
+  assert.equal(kept.helper, pages.helper);
+  assert.equal(kept.quiet, pages.quiet);
+  assert.equal(kept.pickup, pages.pickup);
+  assert.equal(/[.!?]["'”’]*$/u.test(kept.pickup.trim()), true);
+});
+
+test('a story cut off before all seven pages falls back', async () => {
+  const pages = personalPages();
+  const raw = JSON.stringify({ title: 'Sunday with Rowan', pages });
+  const template = templateStoryPages(harbor);
+  const cuts = [
+    raw.slice(0, raw.indexOf('"desk":')),
+    raw.slice(0, raw.indexOf('"quiet":')),
+    raw.slice(0, raw.indexOf('"pickup":')),
+  ];
+  for (const cut of cuts) {
+    assert.equal(cut.length > 0 && cut.length < raw.length, true);
+    const result = await storyFromModel(cut);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.source, 'fallback');
+    assert.equal(result.body.fallbackReason, 'truncated');
+    assert.deepEqual(result.body.pages, template);
+    assert.equal(result.logs.some((line) => line.includes('"fallbackReason":"truncated"')), true);
+    assert.equal(result.logs.some((line) => line.includes(pages.helper)), false);
+  }
+  for (const beat of STORY_BEATS) {
+    const key = `"${beat}":"`;
+    const at = raw.indexOf(key);
+    const mid = raw.slice(0, at + key.length + 8);
+    const result = await storyFromModel(mid);
+    assert.equal(result.body.source, 'fallback', beat);
+    assert.equal(result.body.fallbackReason, 'truncated', beat);
+    assert.deepEqual(result.body.pages, template, beat);
+  }
+});
+
+test('an extra closing field is ignored and a third sentence stays off the page', () => {
+  const pages = personalPages();
+  const withClosing = parseSocialStory(
+    { title: 'Sunday with Rowan', pages, closing: 'You are welcome here.' },
+    rowanInput,
+  );
+  assert.equal(withClosing.pages.helper, pages.helper);
+  const warm = 'Rowan can hold a Disney story. Rowan smiles at the doorway. You are welcome here.';
+  const trimmed = parseSocialStory(
+    { title: 'Sunday with Rowan', pages: { ...pages, doors: warm } },
+    rowanInput,
+  );
+  assert.equal(trimmed.pages.doors, 'Rowan can hold a Disney story. Rowan smiles at the doorway.');
+  const quoted = { ...pages, pickup: 'You are welcome here, Rowan."' };
+  assert.equal(
+    parseSocialStory({ title: 'Sunday with Rowan', pages: quoted }, rowanInput).pages.pickup,
+    quoted.pickup,
+  );
+});
+
+test('a short name and a hedged seat survive, and safety reasons stay distinct', () => {
+  const lines = [
+    { field: 'loves', text: 'Pip the fox' },
+    { field: 'whatHelps', text: 'a lap pad' },
+  ];
+  const pages = {
+    ...templateStoryPages(harbor),
+    helper: 'Juniper can hold Pip the fox.',
+    quiet: 'Juniper can use a lap pad.',
+  };
+  const named = parseSocialStory(
+    { title: 'Sunday with Juniper', pages },
+    { childName: 'Juniper', church: harbor, lines },
+  );
+  assert.equal(named.pages.helper, pages.helper);
+  assert.equal(named.pages.quiet, pages.quiet);
+  const hedged = personalPages();
+  hedged.quiet = 'Rowan could sit in a softer seat.';
+  assert.equal(parseSocialStory({ title: 'Sunday with Rowan', pages: hedged }, rowanInput).pages.quiet, hedged.quiet);
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: { ...hedged, quiet: 'They sit in a soft seat.' } }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'church_detail',
+  );
+  assert.throws(
+    () => parseSocialStory({ title: 'Allergy Sunday with Rowan', pages: personalPages() }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'safety',
+  );
+  const thin = personalPages();
+  for (const beat of STORY_BEATS) thin[beat] = 'Rowan waves.';
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: thin }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'too_short',
+  );
+  const generic = personalPages();
+  for (const beat of STORY_BEATS) generic[beat] = 'Rowan walks along with a grown-up and smiles at the morning.';
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: generic }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'child_detail_min',
+  );
+});
+
+function rejectedReason(error: unknown): string | undefined {
+  if (!(error instanceof SchemaRejected)) return undefined;
+  const record = error as SchemaRejected & { fallbackReason?: string };
+  return record.fallbackReason;
+}
+
+test('a rejected story reports a fallback reason and does not log the model text', async () => {
+  const token = 'TOKEN-MODEL-OUTPUT';
+  const result = await storyFromModel(`not json ${token}`);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.source, 'fallback');
+  assert.equal(result.body.fallbackReason, 'invalid_json');
+  assert.equal(result.body.model, LIVE_MODEL);
+  assert.equal(JSON.stringify(result.body).includes(token), false);
+  assert.equal(result.logs.some((line) => line.includes('"fallbackReason":"invalid_json"')), true);
+  assert.equal(result.logs.some((line) => line.includes(token)), false);
+});
+
+test('a long answer acknowledgement keeps a quoted detail and sends the whole answer', async () => {
+  const answer = juniperAnswers.loves;
+  assert.equal(answer.length > 1500, true);
+  const line = 'The fox is named Pip.';
+  let told = '';
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as { messages?: { role?: string; content?: string }[] };
+    const user = body.messages?.find((message) => message.role === 'user')?.content ?? '';
+    told = user.slice('Answer: '.length, user.indexOf('\nSection: '));
+    return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
+  });
+  const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId: 'loves' }));
+  assert.equal(response.status, 200);
+  assert.equal(told, answer);
+  assert.deepEqual(await response.json(), { relevant: true, line, clarifyingPrompt: '' });
+});
+
+test('a pronoun in a long-answer acknowledgement falls back with a safety reason', async () => {
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async () =>
+      chatEnvelope({ relevant: true, line: 'She holds Pip in both hands.', clarifyingPrompt: '' }),
+    );
+    const response = await demo.handle(
+      post('/v1/drafts/acknowledgement', { answer: juniperAnswers.loves, nodeId: 'loves' }),
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { line: string; fallbackReason?: string };
+    assert.equal(body.line, 'Thanks for sharing that.');
+    assert.equal(body.fallbackReason, 'safety');
+    assert.equal(logs.some((line) => line.includes('"fallbackReason":"safety"')), true);
+    assert.equal(logs.some((line) => line.includes('Pip')), false);
+    assert.equal(logs.some((line) => line.includes(juniperAnswers.loves.slice(0, 40))), false);
+  } finally {
+    console.error = original;
+  }
+});

@@ -3,6 +3,7 @@ import {
   GatewayRejected,
   GenerateError,
   SchemaRejected,
+  type FallbackReason,
   type GenerateFailure,
 } from './errors.ts';
 import { assertTargets, gatewayChatCompletionsUrl, modelTargets, type EndpointId, type ModelTarget } from './gateway.ts';
@@ -140,12 +141,6 @@ async function callGateway(
   }
 }
 
-function failureReason(error: unknown): GenerateFailure | null {
-  if (error instanceof SchemaRejected) return 'schema';
-  if (error instanceof GatewayRejected) return 'gateway';
-  return null;
-}
-
 export async function generate<T>(input: GenerateInput<T>): Promise<T> {
   const targets = modelTargets(input.env, input.endpoint);
   assertTargets(targets);
@@ -162,6 +157,7 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
   const sleep = input.sleep ?? defaultSleep;
 
   let lastReason: GenerateFailure = 'gateway';
+  let lastFallback: FallbackReason = 'upstream_error';
   let waited = 0;
   for (const [index, step] of plan.entries()) {
     const base = {
@@ -182,25 +178,22 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
         input.maxTokens,
       );
       const content = extractContent(envelope);
-      let decoded: unknown;
-      try {
-        decoded = JSON.parse(content) as unknown;
-      } catch {
-        throw new SchemaRejected();
-      }
+      const decoded = decodeModelJson(content);
       const value = input.parse(decoded);
       report(input.log, { ...base, outcome: 'success' });
       return value;
     } catch (error) {
       const reason = failureReason(error);
       if (reason === null) throw error;
-      lastReason = reason;
+      lastReason = reason.gate;
+      lastFallback = reason.fallbackReason;
       report(input.log, {
         ...base,
-        outcome: reason === 'schema' ? 'schema_rejected' : 'error',
+        outcome: reason.gate === 'schema' ? 'schema_rejected' : 'error',
+        fallbackReason: reason.fallbackReason,
         ...(error instanceof GatewayRejected ? { statusClass: statusClass(error.status) } : {}),
       });
-      if (index === plan.length - 1) throw new GenerateError(lastReason);
+      if (index === plan.length - 1) throw new GenerateError(lastReason, lastFallback);
       const pause = waitMs(error, waited);
       if (pause > 0) {
         await sleep(pause);
@@ -210,9 +203,108 @@ export async function generate<T>(input: GenerateInput<T>): Promise<T> {
         (error.status === 429 || (error.status >= 500 && error.status <= 599)) &&
         waited >= WAIT_CAP_MS
       ) {
-        throw new GenerateError(lastReason);
+        throw new GenerateError(lastReason, lastFallback);
       }
     }
   }
-  throw new GenerateError(lastReason);
+  throw new GenerateError(lastReason, lastFallback);
+}
+
+function failureReason(error: unknown): { gate: GenerateFailure; fallbackReason: FallbackReason } | null {
+  if (error instanceof SchemaRejected) return { gate: 'schema', fallbackReason: error.fallbackReason };
+  if (error instanceof GatewayRejected) return { gate: 'gateway', fallbackReason: 'upstream_error' };
+  return null;
+}
+
+function decodeModelJson(content: string): unknown {
+  const stripped = stripFence(content).trim();
+  const direct = tryParse(stripped);
+  if (direct !== undefined) return direct;
+  const start = stripped.indexOf('{');
+  if (start < 0) throw new SchemaRejected('invalid_json');
+  const balanced = balancedObject(stripped, start);
+  if (balanced !== null) {
+    const parsed = tryParse(balanced);
+    if (parsed !== undefined) return parsed;
+  }
+  const repaired = tryParse(repairJson(stripped.slice(start)));
+  if (repaired !== undefined) return repaired;
+  throw new SchemaRejected('invalid_json');
+}
+
+function stripFence(content: string): string {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/iu.exec(content);
+  if (fenced?.[1] !== undefined) return fenced[1];
+  return content;
+}
+
+function tryParse(text: string): unknown | undefined {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function balancedObject(text: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index] ?? '';
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+      if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
+function repairJson(text: string): string {
+  let out = '';
+  const stack: string[] = [];
+  let inString = false;
+  let escape = false;
+  for (const char of text) {
+    out += char;
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+      if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{' || char === '[') stack.push(char === '{' ? '}' : ']');
+    else if ((char === '}' || char === ']') && stack[stack.length - 1] === char) stack.pop();
+  }
+  if (inString) out += '"';
+  out = out.replace(/,\s*$/u, '');
+  while (stack.length > 0) out += stack.pop() ?? '';
+  return out;
 }

@@ -100,7 +100,7 @@ const SOCIAL_STORY_RULES = [
   'The title is a varied story title for this child and this morning, never a Plan or Supporting title.',
   'Use ordinary spoken English, and put the before a room name.',
   'Describe only what the church plan says will happen. Do not add a seat, a kind of seat, a sound level, a song, or an activity the plan does not name. Do not promise that anything will be ready.',
-  'End with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything.',
+  'The pickup page ends with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything. Do not add a line or a field after the JSON.',
   'Do not use the words support, accommodation, ensure, engage, or upset.',
 ].join(' ');
 
@@ -727,6 +727,49 @@ const STORY_STOPWORDS = new Set([
 
 const INVENTED_CHURCH_WORDS = ['seat', 'song', 'activity'] as const;
 
+const CHURCH_HEDGES = ['can', 'may', 'could', 'might'] as const;
+
+const SHORT_FUNCTION = new Set([
+  'all',
+  'and',
+  'any',
+  'are',
+  'but',
+  'can',
+  'did',
+  'for',
+  'get',
+  'got',
+  'had',
+  'has',
+  'her',
+  'him',
+  'his',
+  'how',
+  'its',
+  'let',
+  'may',
+  'new',
+  'not',
+  'now',
+  'off',
+  'old',
+  'one',
+  'our',
+  'out',
+  'own',
+  'put',
+  'say',
+  'she',
+  'the',
+  'too',
+  'use',
+  'was',
+  'way',
+  'who',
+  'you',
+]);
+
 export function parseSocialStory(
   value: unknown,
   input: {
@@ -735,25 +778,48 @@ export function parseSocialStory(
     readonly lines: readonly { readonly text: string; readonly field?: string }[];
   },
 ): SocialStoryDraft {
-  if (!validateJson(socialStorySchema, value) || !isRecord(value) || !isRecord(value.pages)) {
-    throw new SchemaRejected();
+  if (!isRecord(value) || typeof value.title !== 'string' || !isRecord(value.pages)) {
+    throw new SchemaRejected('schema');
   }
-  if (typeof value.title !== 'string') throw new SchemaRejected();
+  if (value.title.length < 1 || value.title.length > 120) throw new SchemaRejected('schema');
   const templates = templateStoryPages(input.church);
   const pages = {} as { [beat in StoryBeat]: string };
+  let modelPages = 0;
   for (const beat of STORY_BEATS) {
     const raw = value.pages[beat];
-    if (typeof raw !== 'string') throw new SchemaRejected();
-    pages[beat] = beatKept(raw) ? raw : templates[beat];
+    if (typeof raw !== 'string') throw new SchemaRejected('truncated');
+    const kept = keptPage(raw, templates[beat]);
+    pages[beat] = kept.text;
+    if (kept.fromModel) modelPages += 1;
   }
+  if (modelPages < 5) throw new SchemaRejected('schema');
   const body = STORY_BEATS.map((beat) => pages[beat]).join('\n');
-  if (!storyBodyAccepted(body)) throw new SchemaRejected();
-  if (!storySafety({ title: value.title, body }, input)) throw new SchemaRejected();
-  if (sentenceCount(body) < 5 || wordCount(body) < 40 || childNouns(body, input).size < 2) {
-    throw new SchemaRejected();
-  }
-  if (inventedChurchDetail(body, input)) throw new SchemaRejected();
+  if (!storyBodyAccepted(body)) throw new SchemaRejected('schema');
+  if (!storySafety({ title: value.title, body }, input)) throw new SchemaRejected('safety');
+  if (sentenceCount(body) < 5 || wordCount(body) < 40) throw new SchemaRejected('too_short');
+  if (childNouns(body, input).size < 2) throw new SchemaRejected('child_detail_min');
+  if (inventedChurchDetail(body, input)) throw new SchemaRejected('church_detail');
   return { title: value.title, pages };
+}
+
+function keptPage(raw: string, template: string): { readonly text: string; readonly fromModel: boolean } {
+  if (unfinishedProse(raw)) throw new SchemaRejected('truncated');
+  if (raw.length > SUNDAY_STORY_PAGE_MAX) return { text: template, fromModel: false };
+  const sentences = sentencesIn(raw);
+  const candidate =
+    sentences.length > 2 ? sentences.slice(0, 2).map((sentence) => sentence.trim()).join(' ') : raw.trim();
+  if (!beatKept(candidate)) return { text: template, fromModel: false };
+  if (!pageEnds(candidate)) throw new SchemaRejected('truncated');
+  return { text: candidate, fromModel: true };
+}
+
+function unfinishedProse(text: string): boolean {
+  const trimmed = text.trim();
+  return hasLetterOrNumber(trimmed) && !pageEnds(trimmed) && storyBodyAccepted(trimmed);
+}
+
+function pageEnds(text: string): boolean {
+  return /[.!?]["'”’]*$/u.test(text.trim());
 }
 
 export function fallbackSocialStory(request: SocialStoryRequest): {
@@ -794,17 +860,29 @@ function childNouns(
   },
 ): Set<string> {
   const names = new Set(wordsIn(input.childName));
-  const storyWords = new Set(wordsIn(story));
-  const found = new Set<string>();
+  const answerWords = new Set<string>();
   for (const line of input.lines) {
     if (line.field !== undefined && !NOUN_FIELDS.has(line.field)) continue;
     for (const word of wordsIn(line.text)) {
-      if (word.length < 4 || STORY_STOPWORDS.has(word) || names.has(word)) continue;
-      if (!storyWords.has(word)) continue;
-      found.add(word);
+      if (!detailWord(word) || names.has(word)) continue;
+      answerWords.add(word);
     }
   }
+  const found = new Set<string>();
+  for (const word of wordsIn(story)) {
+    if (answerWords.has(word)) {
+      found.add(word);
+      continue;
+    }
+    if (word.length >= 4 && word.endsWith('s') && answerWords.has(word.slice(0, -1))) found.add(word.slice(0, -1));
+    else if (word.length >= 4 && answerWords.has(`${word}s`)) found.add(word);
+  }
   return found;
+}
+
+function detailWord(word: string): boolean {
+  if (STORY_STOPWORDS.has(word) || SHORT_FUNCTION.has(word)) return false;
+  return word.length >= 3;
 }
 
 function inventedChurchDetail(
@@ -820,7 +898,7 @@ function inventedChurchDetail(
     if (plan.has(word)) continue;
     for (const sentence of sentencesIn(text)) {
       if (!hasTerm(sentence, word)) continue;
-      const named = parent.has(word) && (hasTerm(sentence, 'can') || hasTerm(sentence, 'may'));
+      const named = parent.has(word) && CHURCH_HEDGES.some((hedge) => hasTerm(sentence, hedge));
       if (!named) return true;
     }
   }

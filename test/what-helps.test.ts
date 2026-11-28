@@ -128,7 +128,11 @@ test('a long Juniper intake keeps a short summary and the full answers', async (
   );
   assert.equal(response.status, 201);
   assert.equal(calls.length, 1);
-  const payload = JSON.parse(calls[0] ?? '{}') as { messages?: { role?: string; content?: string }[] };
+  const payload = JSON.parse(calls[0] ?? '{}') as {
+    max_tokens?: number;
+    messages?: { role?: string; content?: string }[];
+  };
+  assert.equal(payload.max_tokens, 256);
   const user = payload.messages?.find((message) => message.role === 'user')?.content ?? '';
   const sent = JSON.parse(user) as { sensoryNotes: string; whatHelps: string };
   assert.equal(sent.sensoryNotes, juniperAnswers.loves);

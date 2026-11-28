@@ -12,10 +12,27 @@ export class ConfigError extends Error {
   }
 }
 
+export const FALLBACK_REASONS = [
+  'invalid_json',
+  'truncated',
+  'schema',
+  'too_short',
+  'child_detail_min',
+  'church_detail',
+  'safety',
+  'upstream_error',
+  'line_rejected',
+] as const;
+
+export type FallbackReason = (typeof FALLBACK_REASONS)[number];
+
 export class SchemaRejected extends Error {
-  constructor() {
+  readonly fallbackReason: FallbackReason;
+
+  constructor(fallbackReason: FallbackReason = 'schema') {
     super('schema rejected');
     this.name = 'SchemaRejected';
+    this.fallbackReason = fallbackReason;
   }
 }
 
@@ -35,11 +52,13 @@ export type GenerateFailure = 'schema' | 'gateway';
 
 export class GenerateError extends Error {
   readonly reason: GenerateFailure;
+  readonly fallbackReason: FallbackReason;
 
-  constructor(reason: GenerateFailure) {
+  constructor(reason: GenerateFailure, fallbackReason?: FallbackReason) {
     super('generation failed');
     this.name = 'GenerateError';
     this.reason = reason;
+    this.fallbackReason = fallbackReason ?? (reason === 'gateway' ? 'upstream_error' : 'schema');
   }
 }
 
