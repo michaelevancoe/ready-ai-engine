@@ -192,6 +192,45 @@ test('fewer than three surviving bullets stores an empty summary', async () => {
   }
 });
 
+test('a leading here-is line is left off the profile summary', () => {
+  const drafted = parseChildProfile({
+    ...sampleProfile(),
+    summary: 'Here is a draft profile for Theo:\nTheo likes a quiet hello and trains.',
+  });
+  assert.equal(drafted.summary, 'Theo likes a quiet hello and trains.');
+
+  const inline = parseChildProfile({
+    ...sampleProfile(),
+    summary: "Here's a draft profile for Theo: Theo likes trains and a quiet hello.",
+  });
+  assert.equal(inline.summary, 'Theo likes trains and a quiet hello.');
+
+  const curly = "Here’s a draft profile for Theo:\nOffer a quiet corner.";
+  assert.equal(parseChildProfile({ ...sampleProfile(), summary: curly }).summary, 'Offer a quiet corner.');
+
+  const onlyPreamble = parseChildProfile({
+    ...sampleProfile(),
+    summary: 'Here is a draft profile for Theo:',
+  });
+  assert.equal(onlyPreamble.summary, 'Here is a draft profile for Theo:');
+
+  assert.deepEqual(
+    filterWhatHelps([
+      'Here is a draft profile for Theo:',
+      "Here's a draft profile for Theo:",
+      'Offer a quiet corner.',
+      'Give a warning before music.',
+      'Explain the next activity first.',
+    ]),
+    ['Offer a quiet corner.', 'Give a warning before music.', 'Explain the next activity first.'],
+  );
+  assert.deepEqual(filterWhatHelps(["Here's a quiet corner.", 'Stay nearby.', 'Show what is next.']), [
+    "Here's a quiet corner.",
+    'Stay nearby.',
+    'Show what is next.',
+  ]);
+});
+
 test('a profile 502 is tried once more, and a bad request is not', async () => {
   const original = globalThis.fetch;
   const calls: string[] = [];
