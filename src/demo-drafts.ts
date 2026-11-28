@@ -1,8 +1,9 @@
-import { SchemaRejected } from './errors.ts';
+import { SchemaRejected, type FallbackReason } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
 import {
   STORY_BEATS,
   SUNDAY_STORY_PAGE_MAX,
+  sundayStorySentences,
   templateStoryPages,
   type StoryBeat,
   type StoryPages,
@@ -98,8 +99,10 @@ const SOCIAL_STORY_RULES = [
   'Fill each page with the church name, service, room, leader, and plan, and with details from the given lines.',
   'Do not invent people or places.',
   'Write every page in the third person. Do not use you or your.',
+  'Stay in the third person on every page, including pickup.',
   'Do not copy a stock page.',
   'Do not promise or predict a feeling. Do not write that anyone will be happy, will be excited, will love, or will enjoy. Use can or may.',
+  'Do not hedge a church detail with likely.',
   'At least 3 pages use a detail from Loves, What helps, Communication, or Sensory.',
   'One page is a gentle hard moment and never uses the banned tone words.',
   'Parent-named objects are allowed with can or may, and nothing is promised about the church.',
@@ -261,7 +264,7 @@ export function parseSundayUpdateRequest(value: unknown): SundayUpdateRequest | 
   };
 }
 
-export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[] {
+export function socialStoryMessages(request: SocialStoryRequest, rejection?: FallbackReason): DraftMessage[] {
   const rows = [
     `Child: ${request.childName}`,
     `Church: ${request.church.name}`,
@@ -271,8 +274,10 @@ export function socialStoryMessages(request: SocialStoryRequest): DraftMessage[]
     `Plan: ${request.church.plan}`,
     ...linesForStoryModel(request.lines).map((line) => `${line.label}: ${line.text}`),
   ];
+  const hint = storyRetryHint(rejection);
+  const system = hint.length === 0 ? socialStorySystem() : `${socialStorySystem()} ${hint}`;
   return [
-    { role: 'system', content: socialStorySystem() },
+    { role: 'system', content: system },
     { role: 'user', content: rows.join('\n') },
   ];
 }
@@ -287,9 +292,9 @@ export function sundayUpdateMessages(request: SundayUpdateRequest): DraftMessage
   ];
 }
 
-export const STORY_LABEL_WORDS = [
-  'special needs',
-  'special',
+const ALLERGY_WORDS = ['allergy', 'allergies', 'allergic', 'peanut', 'asthma', 'inhaler', 'EpiPen'] as const;
+
+const MEDICAL_WORDS = [
   'autism',
   'autistic',
   'ADHD',
@@ -300,13 +305,6 @@ export const STORY_LABEL_WORDS = [
   'disability',
   'disabled',
   'syndrome',
-  'allergy',
-  'allergies',
-  'allergic',
-  'peanut',
-  'asthma',
-  'inhaler',
-  'EpiPen',
   'seizure',
   'medicine',
   'medication',
@@ -316,8 +314,14 @@ export const STORY_LABEL_WORDS = [
   'nonverbal',
   'meltdown',
   'tantrum',
+] as const;
+
+export const STORY_LABEL_WORDS = [
+  'special needs',
   'behavior',
   'behaviour',
+  ...ALLERGY_WORDS,
+  ...MEDICAL_WORDS,
 ] as const;
 
 export const STORY_TONE_WORDS = [
@@ -426,15 +430,67 @@ export function storySafety(
     readonly lines: readonly { readonly text: string }[];
   },
 ): boolean {
+  return storyRejectReason(story, input) === null;
+}
+
+function storyRejectReason(
+  story: { readonly title: string; readonly body: string },
+  input: {
+    readonly childName: string;
+    readonly church: StoryChurch;
+    readonly lines: readonly { readonly text: string }[];
+  },
+): FallbackReason | null {
   const text = `${story.title}\n${story.body}`;
+  if (listed(text, ALLERGY_WORDS)) return 'safety_allergy';
+  if (listed(text, MEDICAL_WORDS)) return 'safety_medical';
   if (listed(text, STORY_LABEL_WORDS) || listed(text, STORY_TONE_WORDS) || listed(text, STORY_LEAVING_PHRASES)) {
-    return false;
+    return 'safety_banned_word';
   }
-  if (usesAny(story.title, STORY_VOICE_TITLE_WORDS) || usesAny(text, STORY_VOICE_WORDS)) return false;
-  if (!properNounsAllowed(story.title, story.body, input)) return false;
-  if (!preferredNameAppears(text, input.childName)) return false;
-  if (otherChildNamed(text, input.childName)) return false;
-  return pronounsAllowed(text, input.lines);
+  if (usesAny(story.title, STORY_VOICE_TITLE_WORDS) || usesAny(text, STORY_VOICE_WORDS)) return 'safety_banned_word';
+  if (!properNounsAllowed(story.title, story.body, input)) return 'safety_unknown_name';
+  if (!preferredNameAppears(text, input.childName)) return 'safety_unknown_name';
+  if (otherChildNamed(text, input.childName)) return 'safety_unknown_name';
+  if (!pronounsAllowed(text, input.lines)) return 'safety_pronoun';
+  return null;
+}
+
+function storyRetryHint(rejection: FallbackReason | undefined): string {
+  switch (rejection) {
+    case undefined:
+      return '';
+    case 'safety_unknown_name':
+      return 'Rejected: safety_unknown_name. Use only names from the input, and do not capitalize an ordinary word as a new name.';
+    case 'safety_allergy':
+      return 'Rejected: safety_allergy. Do not mention an allergy, a peanut, asthma, or an inhaler.';
+    case 'safety_medical':
+      return 'Rejected: safety_medical. Do not mention a condition, diagnosis, medicine, or therapy.';
+    case 'safety_banned_word':
+      return 'Rejected: safety_banned_word. Remove labels, tone words, and words about leaving.';
+    case 'safety_pronoun':
+      return 'Rejected: safety_pronoun. Do not use he, she, or they unless the input uses them. Use the child name.';
+    case 'child_detail_min':
+      return 'Rejected: child_detail_min. Use at least two concrete words from the loves, helps, communication, or sensory lines.';
+    case 'invalid_json':
+    case 'truncated':
+    case 'schema':
+    case 'too_short':
+    case 'church_detail':
+    case 'safety':
+    case 'safety_script':
+    case 'upstream_error':
+    case 'line_rejected':
+    case 'line_rejected_words':
+    case 'line_rejected_length':
+    case 'line_rejected_shape':
+    case 'line_rejected_restatement':
+    case 'line_rejected_repeat':
+      return '';
+    default: {
+      const leftover: never = rejection;
+      return leftover;
+    }
+  }
 }
 
 function listed(text: string, words: readonly string[]): boolean {
@@ -459,7 +515,8 @@ function hasInflected(text: string, term: string): boolean {
 
 function inflectedWord(word: string): string {
   const stem = escapeRegExp(word);
-  const forms = [`${stem}(?:s|es|ed|ing)?`];
+  const suffix = word === 'condition' ? '(?:s|es)?' : '(?:s|es|ed|ing)?';
+  const forms = [`${stem}${suffix}`];
   if (word.endsWith('e') && word.length > 1) forms.push(`${escapeRegExp(word.slice(0, -1))}ing`);
   if (word.endsWith('y') && word.length > 2 && !'aeiou'.includes(word.charAt(word.length - 2).toLowerCase())) {
     forms.push(`${escapeRegExp(word.slice(0, -1))}ies`);
@@ -501,17 +558,30 @@ function properNounsAllowed(
     input.church.plan,
   ];
   for (const line of input.lines) sources.push(line.text);
-  for (const source of sources) {
-    for (const word of source.match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) allowed.add(word.toLowerCase());
-  }
+  for (const source of sources) addNameWords(allowed, source);
+  for (const sentence of sundayStorySentences(input.church)) addNameWords(allowed, sentence);
   const text = `${title}\n${body}`;
   for (const match of text.matchAll(/\p{Lu}[\p{L}\p{N}]*/gu)) {
     const index = match.index ?? 0;
     if (index < title.length || isSentenceStart(text, index)) continue;
     const token = match[0];
-    if (token === undefined || !allowed.has(token.toLowerCase())) return false;
+    if (token === undefined || !nameAllowed(token, allowed)) return false;
   }
   return true;
+}
+
+function addNameWords(allowed: Set<string>, source: string): void {
+  for (const word of source.match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) allowed.add(word.toLowerCase());
+}
+
+function nameAllowed(token: string, allowed: Set<string>): boolean {
+  const word = token.toLowerCase();
+  if (allowed.has(word)) return true;
+  if (word.length >= 4 && word.endsWith('s') && allowed.has(word.slice(0, -1))) return true;
+  if (word.length >= 4 && allowed.has(`${word}s`)) return true;
+  if (word.length >= 4 && word.endsWith('ies') && allowed.has(`${word.slice(0, -3)}y`)) return true;
+  if (word.length >= 4 && word.endsWith('y') && allowed.has(`${word.slice(0, -1)}ies`)) return true;
+  return false;
 }
 
 const SENTENCE_SKIP = new Set([' ', '\t', '\r', '"', "'", '\u201C', '\u201D', '\u2018', '\u2019', '(', ')']);
@@ -797,7 +867,8 @@ export function parseSocialStory(
   }
   const body = STORY_BEATS.map((beat) => pages[beat]).join('\n');
   if (!storyBodyAccepted(body)) throw new SchemaRejected('schema');
-  if (!storySafety({ title: value.title, body }, input)) throw new SchemaRejected('safety');
+  const safety = storyRejectReason({ title: value.title, body }, input);
+  if (safety !== null) throw new SchemaRejected(safety);
   if (sentenceCount(body) < 5 || wordCount(body) < 40) throw new SchemaRejected('too_short');
   if (childNouns(body, input).size < 2) throw new SchemaRejected('child_detail_min');
   if (inventedChurchDetail(body, input)) throw new SchemaRejected('church_detail');

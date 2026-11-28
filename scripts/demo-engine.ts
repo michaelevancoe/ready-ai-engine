@@ -170,16 +170,16 @@ export class DemoContext {
   private async handleSocialStory(request: Request): Promise<Response> {
     const parsed = await parsedBody(request, parseSocialStoryRequest);
     if (parsed instanceof Response) return parsed;
+    let rejection: FallbackReason | undefined;
     try {
       return json(await this.writeSocialStory(parsed), 200);
     } catch (error) {
-      if (!(error instanceof GenerateError)) {
-        if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
-        throw error;
-      }
+      if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+      if (!(error instanceof GenerateError)) throw error;
+      rejection = error.fallbackReason;
     }
     try {
-      return json(await this.writeSocialStory(parsed), 200);
+      return json(await this.writeSocialStory(parsed, rejection), 200);
     } catch (error) {
       if (error instanceof GenerateError) {
         return json(
@@ -196,7 +196,10 @@ export class DemoContext {
     }
   }
 
-  private writeSocialStory(parsed: SocialStoryRequest): Promise<{
+  private writeSocialStory(
+    parsed: SocialStoryRequest,
+    rejection?: FallbackReason,
+  ): Promise<{
     title: string;
     pages: StoryPages;
     source: 'model';
@@ -204,7 +207,7 @@ export class DemoContext {
   }> {
     return generate({
       endpoint: 'intake.profile',
-      messages: socialStoryMessages(parsed),
+      messages: socialStoryMessages(parsed, rejection),
       schemaName: socialStorySchemaName,
       schema: socialStorySchema,
       parse: (value) => parseSocialStory(value, parsed),
@@ -221,7 +224,9 @@ export class DemoContext {
     if (parsed instanceof Response) return parsed;
     if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
     if (this.gatewayBusy()) return json(fallbackAck(parsed, 'upstream_error'), 200);
-    const write = (): Promise<{
+    const write = (
+      rejection?: FallbackReason,
+    ): Promise<{
       relevant: boolean;
       line: string;
       clarifyingPrompt: string;
@@ -230,7 +235,7 @@ export class DemoContext {
       let repeated = false;
       return generate({
         endpoint: 'intake.profile',
-        messages: acknowledgementMessages(parsed),
+        messages: acknowledgementMessages(parsed, rejection),
         schemaName: intakeAcknowledgementSchemaName,
         schema: acknowledgementSchema,
         parse: (value) => {
@@ -264,22 +269,32 @@ export class DemoContext {
         try {
           return json(await write(), 200);
         } catch (again) {
-          if (again instanceof GenerateError) return json(fallbackAck(parsed, again.fallbackReason), 200);
-          if (again instanceof RecentRepeat) return json(fallbackAck(parsed, 'line_rejected'), 200);
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(again.fallbackReason)), 200);
+          if (again instanceof RecentRepeat) return json(fallbackAck(parsed, 'line_rejected_repeat'), 200);
           if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
           throw again;
         }
       }
-      if (error instanceof GenerateError && error.reason === 'gateway') {
+      if (error instanceof GenerateError && ackCanRetry(error.fallbackReason) && !this.gatewayBusy()) {
+        try {
+          return json(await write(error.fallbackReason), 200);
+        } catch (again) {
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(again.fallbackReason)), 200);
+          if (again instanceof RecentRepeat) return json(fallbackAck(parsed, 'line_rejected_repeat'), 200);
+          if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+          throw again;
+        }
+      }
+      if (error instanceof GenerateError && error.reason === 'gateway' && !this.gatewayBusy()) {
         try {
           return json(await write(), 200);
         } catch (again) {
-          if (again instanceof GenerateError) return json(fallbackAck(parsed, again.fallbackReason), 200);
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(again.fallbackReason)), 200);
           if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
           throw again;
         }
       }
-      if (error instanceof GenerateError) return json(fallbackAck(parsed, error.fallbackReason), 200);
+      if (error instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(error.fallbackReason)), 200);
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
@@ -881,10 +896,15 @@ function mockAcknowledgement(answer: string, sectionId: SectionId): {
   };
 }
 
-function acknowledgementMessages(request: AckRequest): { role: 'system' | 'user'; content: string }[] {
+function acknowledgementMessages(
+  request: AckRequest,
+  rejection?: FallbackReason,
+): { role: 'system' | 'user'; content: string }[] {
   const recent = request.recent.length === 0 ? '' : `\nRecent lines to avoid: ${request.recent.join(' | ')}`;
+  const hint = ackRetryHint(rejection);
+  const system = hint.length === 0 ? ACKNOWLEDGEMENT_PROMPT : `${ACKNOWLEDGEMENT_PROMPT}\n${hint}`;
   return [
-    { role: 'system', content: ACKNOWLEDGEMENT_PROMPT },
+    { role: 'system', content: system },
     {
       role: 'user',
       content: `Answer: ${request.answer}\nSection: ${request.sectionId}\nQuestion: ${request.question}${recent}`,
@@ -924,15 +944,45 @@ function parseAcknowledgement(
   if (line.length < 1) throw new SchemaRejected('schema');
   const relevant = value.relevant || careSignal(request.answer) || uncertainOrNo(request.answer);
   const prompt = oneLine(value.clarifyingPrompt);
-  const accepted = lineAccepted(line, request.answer);
-  if (accepted && repeatsRecent(line, request.recent)) throw new RecentRepeat();
-  const fallbackReason = accepted ? undefined : lineFallbackReason(line);
+  const chosen = chooseLine(line, request.answer);
+  if (chosen === null) throw new SchemaRejected(lineFallbackReason(line, request.answer));
+  if (repeatsRecent(chosen, request.recent)) throw new RecentRepeat();
   return {
     relevant,
-    line: accepted ? line : fallbackLine(request.recent),
+    line: chosen,
     clarifyingPrompt: relevant ? '' : promptAccepted(prompt, request.answer) ? prompt : cannedPrompt(request.sectionId),
-    ...(fallbackReason === undefined ? {} : { fallbackReason }),
   };
+}
+
+function chooseLine(line: string, answer: string): string | null {
+  if (lineAccepted(line, answer)) return line;
+  for (const sentence of detailSentences(line)) {
+    if (!detailAccepted(sentence, answer) || !namesDetail(sentence, answer)) continue;
+    return sentence;
+  }
+  return null;
+}
+
+function detailAccepted(sentence: string, answer: string): boolean {
+  if (!surfaceAccepted(sentence, answer)) return false;
+  if (!/[.!]$/u.test(sentence)) return false;
+  if (sentence.includes('?') || PROMISED_ACK.test(sentence)) return false;
+  const words = sentence.trim().split(/\s+/u).length;
+  return words >= 1 && words <= 25 && ackSentences(sentence) === 1;
+}
+
+function detailSentences(line: string): string[] {
+  return (line.match(/[^.!?]+[.!?]+/gu) ?? []).map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0);
+}
+
+function namesDetail(line: string, answer: string): boolean {
+  const known = new Set(
+    (answer.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? []).filter((word) => word.length >= 3 && !STOPWORDS.has(word)),
+  );
+  for (const word of line.toLowerCase().match(/\p{L}[\p{L}\p{N}]*/gu) ?? []) {
+    if (known.has(word)) return true;
+  }
+  return false;
 }
 
 function fallbackAck(
@@ -1025,15 +1075,65 @@ function restatesAnswer(line: string, answer: string): boolean {
   return answerText.length >= 12 && lineText.includes(answerText);
 }
 
-function lineFallbackReason(line: string): FallbackReason {
-  return unsafeSurface(line) ? 'safety' : 'line_rejected';
+function lineFallbackReason(line: string, answer: string): FallbackReason {
+  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(line)) return 'safety_script';
+  const lower = line.toLowerCase();
+  if (ACK_BLOCKED.some((word) => lower.includes(word))) return 'safety_banned_word';
+  if (CHILD_PRONOUN.test(line)) return 'safety_pronoun';
+  if (line.length > 200) return 'line_rejected_length';
+  const words = line.trim().split(/\s+/u).length;
+  if (words > 25) return 'line_rejected_words';
+  if (PROMISED_ACK.test(line)) return 'line_rejected_shape';
+  if (line.includes('?') || (!line.endsWith('.') && !line.endsWith('!'))) return 'line_rejected_shape';
+  if (restatesAnswer(line, answer)) return 'line_rejected_restatement';
+  if (words < 12 || ackSentences(line) > 2) return 'line_rejected';
+  return 'line_rejected_shape';
 }
 
-function unsafeSurface(text: string): boolean {
-  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text)) return true;
-  const lower = text.toLowerCase();
-  if (ACK_BLOCKED.some((word) => lower.includes(word))) return true;
-  return CHILD_PRONOUN.test(text);
+function reportedAckReason(reason: FallbackReason): FallbackReason {
+  return reason === 'line_rejected' ? 'line_rejected_shape' : reason;
+}
+
+function ackCanRetry(reason: FallbackReason): boolean {
+  return ackRetryHint(reason).length > 0;
+}
+
+function ackRetryHint(rejection: FallbackReason | undefined): string {
+  switch (rejection) {
+    case undefined:
+      return '';
+    case 'line_rejected_words':
+    case 'line_rejected_length':
+      return `Rejected: ${rejection}. Name one concrete thing in at most 12 words.`;
+    case 'line_rejected_shape':
+      return 'Rejected: line_rejected_shape. Use one sentence that ends with a period.';
+    case 'line_rejected_restatement':
+      return 'Rejected: line_rejected_restatement. Name one detail without repeating the whole answer.';
+    case 'safety_pronoun':
+      return 'Rejected: safety_pronoun. Do not use he, she, her, him, his, or they. Name one detail.';
+    case 'safety_banned_word':
+      return 'Rejected: safety_banned_word. Do not mention a condition, diagnosis, or disability.';
+    case 'safety_script':
+      return 'Rejected: safety_script. Use plain English letters.';
+    case 'invalid_json':
+    case 'truncated':
+    case 'schema':
+    case 'too_short':
+    case 'child_detail_min':
+    case 'church_detail':
+    case 'safety':
+    case 'safety_unknown_name':
+    case 'safety_medical':
+    case 'safety_allergy':
+    case 'upstream_error':
+    case 'line_rejected':
+    case 'line_rejected_repeat':
+      return '';
+    default: {
+      const leftover: never = rejection;
+      return leftover;
+    }
+  }
 }
 
 function plain(value: string): string {

@@ -299,7 +299,7 @@ test('leader settings save, and back without saving keeps the church', async ({ 
   await expect(page.getByText('North room · Sunday 9:30')).toBeVisible();
 });
 
-test('a parent prints one page per step and a classroom photo replaces the sample', async ({ page }) => {
+test('a parent prints one page per step without a photo placeholder', async ({ page }) => {
   await page.addInitScript(() => {
     const host = window as Window & { __printCount?: number };
     host.__printCount = 0;
@@ -338,14 +338,9 @@ test('a parent prints one page per step and a classroom photo replaces the sampl
     const article = pages.nth(index);
     await expect(article).toBeVisible();
     await expect(article.locator('.sunday-print-mark')).toHaveText(marks[index] ?? '');
-    const images = article.locator('img');
-    const drawings = article.locator('svg');
-    const imageCount = await images.count();
-    const drawingCount = await drawings.count();
-    expect(imageCount + drawingCount).toBeGreaterThan(0);
-    if (imageCount > 0) await expect(images.first()).toHaveAttribute('alt', /.+/);
-    else await expect(drawings.first()).toHaveAttribute('aria-label', /.+/);
+    await expect(article.locator('img, svg')).toHaveCount(0);
   }
+  await expect(pages.nth(4).getByRole('region', { name: 'My Sunday schedule' })).toBeVisible();
 
   await page.emulateMedia({ media: 'screen' });
   await page.getByRole('link', { name: 'Leader' }).click();
@@ -360,7 +355,8 @@ test('a parent prints one page per step and a classroom photo replaces the sampl
   await expect(classroom.locator('img')).toHaveAttribute('src', /^blob:/);
   await page.getByRole('link', { name: 'Parent' }).click();
   await page.emulateMedia({ media: 'print' });
-  await expect(pages.nth(4).locator('img')).toHaveAttribute('src', /^blob:/);
+  await expect(pages.nth(4).locator('img')).toHaveCount(0);
+  await expect(pages.nth(4).getByRole('region', { name: 'My Sunday schedule' })).toBeVisible();
 
   await page.emulateMedia({ media: 'screen' });
   await page.getByRole('link', { name: 'Leader' }).click();
@@ -368,7 +364,7 @@ test('a parent prints one page per step and a classroom photo replaces the sampl
   await page.getByRole('region', { name: 'Classroom' }).getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('link', { name: 'Parent' }).click();
   await page.emulateMedia({ media: 'print' });
-  await expect(pages.nth(4).locator('img')).toHaveAttribute('src', '/sunday-story/classroom.jpg');
+  await expect(pages.nth(4).locator('img')).toHaveCount(0);
 });
 
 test('a nonsense helps answer stays on the question until a real one', async ({ page }) => {

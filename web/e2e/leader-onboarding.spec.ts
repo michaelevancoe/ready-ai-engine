@@ -65,6 +65,30 @@ test('the sample tour introduces children, Ezra, and Hazel without sending', asy
   await expect(page.getByRole('button', { name: 'Open Hazel, 11, Draft to approve' })).toBeVisible();
 });
 
+const tourViewports = [
+  { width: 390, height: 844 },
+  { width: 1280, height: 800 },
+  { width: 1440, height: 900 },
+] as const;
+
+for (const size of tourViewports) {
+  test(`the tour card stays clear of each target at ${size.width}x${size.height}`, async ({ page }) => {
+    test.skip(accountMode, 'account boot');
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await page.goto('/leader');
+    await page.getByRole('button', { name: 'Explore with sample families' }).click();
+    await expect(page.getByRole('heading', { name: "Today's children" })).toBeVisible();
+    await expectUncovered(page, 'children');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'What helps, by Ready' })).toBeVisible();
+    await expectUncovered(page, 'summary');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'You approve every note' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Approve and send to parent' })).toBeVisible();
+    await expectUncovered(page, 'approve');
+  });
+}
+
 test('escape closes the sample tour on the first step', async ({ page }) => {
   test.skip(accountMode, 'account boot');
   await page.goto('/leader');
@@ -127,18 +151,44 @@ test('account explore uses sample families and exit returns to the church', asyn
 
 async function expectUncovered(page: Page, target: string): Promise<void> {
   await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate((name) => {
-        const dialog = document.querySelector('[role="dialog"]');
-        const node = document.querySelector(`[data-tour="${name}"]`);
-        if (!(dialog instanceof HTMLElement) || !(node instanceof HTMLElement)) return 1;
-        const card = dialog.getBoundingClientRect();
-        const spot = node.getBoundingClientRect();
-        const width = Math.max(0, Math.min(card.right, spot.right) - Math.max(card.left, spot.left));
-        const height = Math.max(0, Math.min(card.bottom, spot.bottom) - Math.max(card.top, spot.top));
-        return width * height;
-      }, target),
-    )
-    .toBe(0);
+  await page.evaluate(
+    (name) =>
+      new Promise<void>((resolve) => {
+        let key = '';
+        let since = performance.now();
+        function tick(): void {
+          const node = document.querySelector(`[data-tour="${name}"]`);
+          const box = node instanceof HTMLElement ? node.getBoundingClientRect() : null;
+          const next = box === null ? 'missing' : `${Math.round(box.top)}:${Math.round(box.height)}:${Math.round(window.scrollY)}`;
+          const now = performance.now();
+          if (next !== key) {
+            key = next;
+            since = now;
+          }
+          if (now - since >= 300) resolve();
+          else requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }),
+    target,
+  );
+  const settled = await page.evaluate((name) => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const node = document.querySelector(`[data-tour="${name}"]`);
+    if (!(dialog instanceof HTMLElement) || !(node instanceof HTMLElement)) return { overlap: 1, inside: false };
+    const card = dialog.getBoundingClientRect();
+    const spot = node.getBoundingClientRect();
+    const width = Math.max(0, Math.min(card.right, spot.right) - Math.max(card.left, spot.left));
+    const height = Math.max(0, Math.min(card.bottom, spot.bottom) - Math.max(card.top, spot.top));
+    const slack = 1;
+    const inside =
+      card.width > 0 &&
+      card.height > 0 &&
+      card.left >= -slack &&
+      card.top >= -slack &&
+      card.right <= window.innerWidth + slack &&
+      card.bottom <= window.innerHeight + slack;
+    return { overlap: Math.round(width * height), inside };
+  }, target);
+  expect(settled).toEqual({ overlap: 0, inside: true });
 }
