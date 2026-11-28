@@ -13,9 +13,10 @@ test('a first visit sets the classroom and stays finished after reload', async (
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByText('Example Lakeside Chapel')).toBeVisible();
+  await expect(page.getByText('Your classroom at Example Lakeside Chapel is ready.')).toBeVisible();
   await page.getByRole('button', { name: 'Go to leader home' }).click();
-  await expect(page.getByText('Rowan is at Example Lakeside Chapel.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Good morning, Ms. Dana' })).toBeVisible();
+  await expect(page.getByText("You're Ms. Dana, the room leader.")).toBeVisible();
   await page.getByRole('button', { name: 'Church settings' }).click();
   await expect(page.getByLabel('Church name')).toHaveValue('Example Lakeside Chapel');
   await page.reload();
@@ -50,6 +51,8 @@ test('the sample tour introduces children, Ezra, and Hazel without sending', asy
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'What helps, by Ready' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'After Sunday for Ezra' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What helps Ezra' })).toBeVisible();
+  await expect(page.getByText('✦ Summary by Ready')).toBeVisible();
   await expect(page.getByText('2 of 3 · Sample families')).toBeVisible();
   await expectUncovered(page, 'summary');
   await page.getByRole('button', { name: 'Next', exact: true }).click();
