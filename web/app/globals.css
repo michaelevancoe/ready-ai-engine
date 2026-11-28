@@ -1425,3 +1425,189 @@ button.outline {
     color: black;
   }
 }
+
+.setup-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.setup-top .eyebrow {
+  margin: 0;
+}
+
+.setup-top.with-back {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.setup-top.with-back .eyebrow {
+  text-align: center;
+}
+
+.setup-top .text {
+  white-space: nowrap;
+}
+
+.welcome-points {
+  list-style: none;
+  margin: 0.85rem 0 0.15rem;
+  padding: 0;
+}
+
+.welcome-points li {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.welcome-points h2 {
+  margin: 0.1rem 0 0.2rem;
+  font-size: 1.15rem;
+}
+
+.setup-note {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.link-field input {
+  font-variant-numeric: tabular-nums;
+}
+
+.resume-card,
+.settings-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem 1rem;
+  margin-top: 0.9rem;
+}
+
+.resume-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.resume-row .eyebrow {
+  margin: 0;
+}
+
+.resume-title {
+  margin: 0.35rem 0 0.1rem;
+  font-weight: 700;
+}
+
+button.text.dismiss {
+  width: 2.2rem;
+  height: 2.2rem;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.settings-card button.secondary:first-child {
+  margin-top: 0.2rem;
+}
+
+.sample-banner {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.15rem 0 0.85rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.sample-banner p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.sample-banner button {
+  width: auto;
+  margin: 0;
+  padding: 0.45rem 0.9rem;
+}
+
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.tour-catch {
+  position: absolute;
+  inset: 0;
+}
+
+.tour-hole {
+  position: fixed;
+  visibility: hidden;
+  border-radius: 1rem;
+  box-shadow: 0 0 0 9999px rgba(28, 25, 23, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 32;
+  visibility: hidden;
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  box-shadow: 0 0.6rem 1.4rem rgba(28, 25, 23, 0.16);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.tour-card h2 {
+  margin-top: 0.2rem;
+  font-size: 1.25rem;
+}
+
+.tour-chrome {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tour-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+}
+
+.tour-actions button {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-hole,
+  .tour-card {
+    transition: none;
+  }
+}

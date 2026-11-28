@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { isChurchPhotoFile } from '../../lib/church-photo-file';
 import { draftSundayNote, leaderStep, leaderTagKind } from '../../lib/demo-visits';
 import type { ChurchPhotoSlot } from '../../lib/ready-store';
@@ -9,11 +9,14 @@ import { behaviorAsked } from '../../lib/intake-tree';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { checkInBrief, childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
 import { visitWhatHelps } from '../../lib/what-helps';
-import { PrivacyNote } from '../privacy-note';
-import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
 import { DraftStatus } from '../draft-status';
+import { PrivacyNote } from '../privacy-note';
+import { useChurchPhotos, useScrollWhen } from '../visit-shell';
 import { WhatHelpsCard } from '../what-helps';
+import { LeaderExplore, useLeaderStore, useLeaderTour } from './sample-tour';
 import { readChurchPhoto } from './read-church-photo';
+import { ResumeCard, SettingsCard, SetupScreens, setupReplacesHome } from './setup';
+import { useOnboarding } from './use-onboarding';
 
 const CHURCH_FIELDS = [
   ['name', 'Church name'],
@@ -36,7 +39,16 @@ const PHOTO_SLOTS = [
 type Screen = 'home' | 'after' | 'brief' | 'settings';
 
 export default function LeaderPage() {
-  const store = useReadyStore();
+  return (
+    <LeaderExplore>
+      <LeaderScreen />
+    </LeaderExplore>
+  );
+}
+
+function LeaderScreen() {
+  const store = useLeaderStore();
+  const tour = useLeaderTour();
   const records = useSyncExternalStore(store.subscribe, store.listVisits, store.listVisits);
   const selectedVisit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const selected = records.find((record) => record.visit === selectedVisit) ?? records[0];
@@ -46,7 +58,46 @@ export default function LeaderPage() {
   const liveVisit = live?.visit;
   const [screen, setScreen] = useState<Screen>('home');
   const [saved, setSaved] = useState(false);
+  const [seenStep, setSeenStep] = useState(tour.step);
+  const onboarding = useOnboarding();
+  const closedSeen = useRef(0);
   const [church, setChurch] = useState<ChurchSetup>(liveVisit?.church ?? initialVisit().church);
+  if (tour.step !== seenStep) {
+    setSeenStep(tour.step);
+    if (tour.step === 1) setScreen('home');
+    else if (tour.step === 2 || tour.step === 3) setScreen('after');
+  }
+  const setup = !tour.exploring && setupReplacesHome(onboarding.state);
+  useLayoutEffect(() => {
+    if (setup) setScreen('home');
+  }, [setup]);
+  useLayoutEffect(() => {
+    switch (tour.step) {
+      case 1: {
+        const liveRecord = store.listVisits().find((record) => !record.sample);
+        if (liveRecord !== undefined) store.select(liveRecord.id);
+        return;
+      }
+      case 2:
+        store.select('ezra');
+        return;
+      case 3:
+        store.select('hazel');
+        return;
+      case null:
+        return;
+      default: {
+        const leftover: never = tour.step;
+        return leftover;
+      }
+    }
+  }, [store, tour.step]);
+  useLayoutEffect(() => {
+    if (tour.closed === closedSeen.current) return;
+    closedSeen.current = tour.closed;
+    setScreen('home');
+    onboarding.dispatch({ type: 'skip' });
+  }, [onboarding.dispatch, tour.closed]);
   useScrollWhen(visit?.update.phase === 'writing', 'update-status');
   useScrollWhen(visit?.update.phase === 'ready', 'update-draft');
   if (selected === undefined || live === undefined || visit === undefined || liveVisit === undefined) return null;
@@ -90,6 +141,19 @@ export default function LeaderPage() {
     setScreen('home');
   }
 
+  function onSaveClassroom(next: ChurchSetup): void {
+    store.select(home.id);
+    dispatch({ type: 'saveChurch', church: next });
+  }
+
+  function explore(): void {
+    tour.start();
+  }
+
+  function replayWelcome(): void {
+    onboarding.dispatch({ type: 'replay' });
+  }
+
   async function onWriteNote(): Promise<void> {
     if (activeVisit.role !== 'leader' || activeVisit.notes.trim() === '' || activeVisit.update.phase === 'writing') return;
     dispatch({ type: 'writeUpdate' });
@@ -109,6 +173,17 @@ export default function LeaderPage() {
     dispatch({ type: 'approveUpdate', body: typeof value === 'string' ? value : '' });
   }
 
+  if (setup) {
+    return (
+      <SetupScreens
+        state={onboarding.state}
+        dispatch={onboarding.dispatch}
+        church={homeVisit.church}
+        onSaveChurch={onSaveClassroom}
+        onExplore={explore}
+      />
+    );
+  }
   if (screen === 'settings') {
     return (
       <SettingsScreen
@@ -116,6 +191,8 @@ export default function LeaderPage() {
         onChange={setChurch}
         onSave={onSaveChurch}
         onHome={showHome}
+        onReplay={replayWelcome}
+        onExplore={explore}
       />
     );
   }
@@ -159,6 +236,13 @@ export default function LeaderPage() {
       <p>
         {records.length === 1 ? '1 child is' : `${records.length} children are`} in the room today.
       </p>
+      {onboarding.state.status === 'skipped' ? (
+        <ResumeCard
+          step={onboarding.state.step}
+          onResume={() => onboarding.dispatch({ type: 'resume' })}
+          onDismiss={() => onboarding.dispatch({ type: 'finish' })}
+        />
+      ) : null}
       <AfterCard
         name={liveName}
         age={childAgeYears(homeVisit)}
@@ -166,7 +250,7 @@ export default function LeaderPage() {
         onOpen={openAfter}
       />
       {records.some((record) => record.sample) ? (
-        <section aria-label="Other children today">
+        <section aria-label="Other children today" data-tour="children">
           <h2>Other children today</h2>
           <p className="sample-caption">Sample children. Tap one to try any leader step.</p>
           <ul className="other-children">
@@ -259,7 +343,9 @@ function AfterScreen({
       {sample ? <p className="sample-tag">Sample child · resets on reload</p> : null}
       {visit.brief.phase === 'approved' ? (
         <>
-          <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+          <div data-tour="summary">
+            <WhatHelpsCard name={name} bullets={visitWhatHelps(visit)} audience={sample ? 'sample' : 'team'} />
+          </div>
           <button type="button" className="text" onClick={onOpenBrief}>
             View {name}&apos;s full brief (parent&apos;s own words) ›
           </button>
@@ -306,7 +392,7 @@ function AfterScreen({
           ) : null}
           {writing ? <DraftStatus id="update-status" copy="Writing the draft." /> : null}
           {visit.update.phase === 'ready' ? (
-            <form id="update-draft" onSubmit={onApprove}>
+            <form id="update-draft" data-tour="approve" onSubmit={onApprove}>
               <p className="drafted">
                 <Spark /> Drafted by Ready from Jordan&apos;s notes · edit before sending
               </p>
@@ -396,11 +482,15 @@ function SettingsScreen({
   onChange,
   onSave,
   onHome,
+  onReplay,
+  onExplore,
 }: {
   church: ChurchSetup;
   onChange: Dispatch<SetStateAction<ChurchSetup>>;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onHome: () => void;
+  onReplay: () => void;
+  onExplore: () => void;
 }) {
   return (
     <main>
@@ -435,12 +525,13 @@ function SettingsScreen({
           Save
         </button>
       </form>
+      <SettingsCard onReplay={onReplay} onExplore={onExplore} />
     </main>
   );
 }
 
 function ChurchPhotos() {
-  const store = useReadyStore();
+  const store = useLeaderStore();
   const photos = useChurchPhotos();
   return (
     <div className="photo-settings">
