@@ -192,6 +192,67 @@ test('fewer than three surviving bullets stores an empty summary', async () => {
   }
 });
 
+test('a profile 502 is tried once more, and a bad request is not', async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (_url, init) => {
+    calls.push(String(init?.body));
+    if (calls.length === 1) {
+      return new Response(JSON.stringify({ error: 'generation_failed' }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        id: '10000000-0000-4000-8000-000000000031',
+        status: 'draft',
+        profile: juniperModelProfile(),
+      }),
+      { status: 201, headers: { 'content-type': 'application/json' } },
+    );
+  };
+  try {
+    const recovered = await submitIntake(postedJuniper());
+    assert.equal(recovered.type, 'draft');
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  const stuck: string[] = [];
+  globalThis.fetch = async () => {
+    stuck.push('502');
+    return new Response(JSON.stringify({ error: 'generation_failed' }), {
+      status: 502,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const failed = await submitIntake(postedJuniper());
+    assert.equal(failed.type, 'fail');
+    assert.equal(stuck.length, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  const rejected: string[] = [];
+  globalThis.fetch = async () => {
+    rejected.push('400');
+    return new Response(JSON.stringify({ error: 'invalid_input' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const once = await submitIntake(postedJuniper());
+    assert.equal(once.type, 'fail');
+    assert.equal(rejected.length, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test('sample children carry a canned summary and Owen has none', () => {
   const records = seedDemoVisits();
   const ezra = records.find((record) => record.id === 'ezra');

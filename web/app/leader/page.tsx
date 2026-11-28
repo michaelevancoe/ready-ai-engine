@@ -10,6 +10,7 @@ import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { checkInBrief, childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
 import { visitWhatHelps } from '../../lib/what-helps';
 import { DraftStatus } from '../draft-status';
+import { SundayScheduleCard } from '../sunday-schedule';
 import { PrivacyNote } from '../privacy-note';
 import { useChurchPhotos, useScrollWhen } from '../visit-shell';
 import { WhatHelpsCard } from '../what-helps';
@@ -390,14 +391,20 @@ function AfterScreen({
               ) : null}
             </>
           ) : null}
-          {writing ? <DraftStatus id="update-status" copy="Writing the draft." /> : null}
+          {writing ? (
+            <article className="story-card" aria-busy="true">
+              <DraftStatus id="update-status" copy="Writing the draft." />
+            </article>
+          ) : null}
           {visit.update.phase === 'ready' ? (
             <form id="update-draft" data-tour="approve" onSubmit={onApprove}>
-              <p className="drafted">
-                <Spark /> Drafted by Ready from Jordan&apos;s notes · edit before sending
-              </p>
-              <label htmlFor="parent-note">Parent note</label>
-              <textarea id="parent-note" name="parentNote" rows={8} defaultValue={visit.update.value.body} autoComplete="off" />
+              <article className="story-card">
+                <p className="drafted">
+                  <Spark /> Drafted by Ready from Jordan&apos;s notes · edit before sending
+                </p>
+                <label htmlFor="parent-note">Parent note</label>
+                <textarea id="parent-note" name="parentNote" rows={8} defaultValue={visit.update.value.body} autoComplete="off" />
+              </article>
               <button type="submit" className="approve">
                 Approve and send to parent
               </button>
@@ -411,7 +418,7 @@ function AfterScreen({
           ) : null}
           {visit.update.phase === 'approved' ? (
             <>
-              <article className="brief-card">
+              <article className="story-card">
                 <h2>Note sent to {name}&apos;s parent</h2>
                 <p>{visit.update.value.body}</p>
               </article>
@@ -520,6 +527,11 @@ function SettingsScreen({
             )}
           </div>
         ))}
+        <SundayScheduleCard />
+        <p className="photo-guidance">
+          Families see this schedule in the Sunday story. This demo uses Example Harbor Fellowship&apos;s schedule, and
+          it is not saved as a separate setting.
+        </p>
         <ChurchPhotos />
         <button type="submit" className="primary">
           Save

@@ -93,7 +93,13 @@ const SOCIAL_STORY_RULES = [
   'Use only names that appear in the input.',
   'Return JSON with title and pages, and write each page as prose rather than a dict.',
   'pages has arrive, doors, desk, room, helper, quiet, and pickup.',
-  'Each page is one or two short sentences.',
+  'Each page is one or two sentences and about 15 to 30 words, even when the answers are short.',
+  'The room page can mention the Sunday schedule. Do not list times or invent schedule items.',
+  'Fill each page with the church name, service, room, leader, and plan, and with details from the given lines.',
+  'Do not invent people or places.',
+  'Write every page in the third person. Do not use you or your.',
+  'Do not copy a stock page.',
+  'Do not promise or predict a feeling. Do not write that anyone will be happy, will be excited, will love, or will enjoy. Use can or may.',
   'At least 3 pages use a detail from Loves, What helps, Communication, or Sensory.',
   'One page is a gentle hard moment and never uses the banned tone words.',
   'Parent-named objects are allowed with can or may, and nothing is promised about the church.',
@@ -784,15 +790,11 @@ export function parseSocialStory(
   if (value.title.length < 1 || value.title.length > 120) throw new SchemaRejected('schema');
   const templates = templateStoryPages(input.church);
   const pages = {} as { [beat in StoryBeat]: string };
-  let modelPages = 0;
   for (const beat of STORY_BEATS) {
     const raw = value.pages[beat];
     if (typeof raw !== 'string') throw new SchemaRejected('truncated');
-    const kept = keptPage(raw, templates[beat]);
-    pages[beat] = kept.text;
-    if (kept.fromModel) modelPages += 1;
+    pages[beat] = keptPage(raw, templates[beat]);
   }
-  if (modelPages < 5) throw new SchemaRejected('schema');
   const body = STORY_BEATS.map((beat) => pages[beat]).join('\n');
   if (!storyBodyAccepted(body)) throw new SchemaRejected('schema');
   if (!storySafety({ title: value.title, body }, input)) throw new SchemaRejected('safety');
@@ -802,15 +804,22 @@ export function parseSocialStory(
   return { title: value.title, pages };
 }
 
-function keptPage(raw: string, template: string): { readonly text: string; readonly fromModel: boolean } {
+const SECOND_PERSON = /\byou(?:r(?:self|s)?)?\b/iu;
+const PROMISED_FEELING =
+  /\bwill\s+be\s+(?:happy|excited|glad|pleased|thrilled)\b|\bwill\s+(?:love|enjoy)\b/iu;
+
+function keptPage(raw: string, template: string): string {
   if (unfinishedProse(raw)) throw new SchemaRejected('truncated');
-  if (raw.length > SUNDAY_STORY_PAGE_MAX) return { text: template, fromModel: false };
+  if (raw.length > SUNDAY_STORY_PAGE_MAX) throw new SchemaRejected('schema');
   const sentences = sentencesIn(raw);
   const candidate =
     sentences.length > 2 ? sentences.slice(0, 2).map((sentence) => sentence.trim()).join(' ') : raw.trim();
-  if (!beatKept(candidate)) return { text: template, fromModel: false };
+  if (!beatKept(candidate)) throw new SchemaRejected('schema');
   if (!pageEnds(candidate)) throw new SchemaRejected('truncated');
-  return { text: candidate, fromModel: true };
+  if (collapseSpace(candidate) === collapseSpace(template)) throw new SchemaRejected('schema');
+  if (SECOND_PERSON.test(candidate) || PROMISED_FEELING.test(candidate)) throw new SchemaRejected('safety');
+  if (wordCount(candidate) < 15) throw new SchemaRejected('too_short');
+  return candidate;
 }
 
 function unfinishedProse(text: string): boolean {

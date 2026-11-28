@@ -133,6 +133,12 @@ export type IntakeResult =
   | { readonly type: 'fail'; readonly message: string };
 
 export async function submitIntake(answers: IntakeAnswers): Promise<IntakeResult> {
+  const first = await requestIntake(answers);
+  if (first.type === 'draft' || first.message !== SENTENCES.generation_failed) return first;
+  return requestIntake(answers);
+}
+
+async function requestIntake(answers: IntakeAnswers): Promise<IntakeResult> {
   try {
     const response = await fetch('/v1/intake/profile', {
       method: 'POST',

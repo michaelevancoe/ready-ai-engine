@@ -45,7 +45,7 @@ test('a food allergy follow-up is on the volunteer brief', async ({ page }) => {
   await send(page, 'Picture cards.', 'What sensory things');
   await send(page, 'TICK-QUIET-ROOM', 'time for the bathroom');
   await send(page, 'Tells an adult', 'any allergies');
-  await send(page, 'Food allergy', 'what should a volunteer do');
+  await send(page, 'Food allergy', 'allergic reaction');
   await send(page, 'TICK-ALLERGY-PLAN', 'hurting themselves or others');
   await send(page, 'No, not usually', "Rowan's brief");
   await expect(page.getByRole('heading', { name: 'What helps Rowan' })).toBeVisible();
@@ -250,7 +250,7 @@ test('reading a Sunday story stays on the page and try again recovers', async ({
   expect(new URL(page.url()).hash).toBe('');
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('heading', { name: 'Sunday with Maya' })).toBeVisible();
-  await expect(page.getByText('You walk in the front doors.')).toBeVisible();
+  await expect(page.getByText('walks in the front doors')).toBeVisible();
   await expect(page.getByText('Written by Ready · only from your approved answers')).toBeVisible();
   await expect(
     page.getByText(
@@ -268,7 +268,7 @@ test('reading a Sunday story stays on the page and try again recovers', async ({
     await page.getByRole('button', { name: button }).click();
     await page.getByRole('button', { name: `Read ${name}'s story` }).click();
     await expect(page.getByRole('heading', { name: `Sunday with ${name}` })).toBeVisible();
-    await expect(page.getByText('You walk in the front doors.')).toBeVisible();
+    await expect(page.getByText('walks in the front doors')).toBeVisible();
     expect(new URL(page.url()).hash).toBe('');
     await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
   }
@@ -278,7 +278,7 @@ test('reading a Sunday story stays on the page and try again recovers', async ({
   await page.getByRole('button', { name: 'Looks right, approve' }).click();
   await page.getByRole('button', { name: "Read Rowan's story" }).click();
   await expect(page.getByRole('heading', { name: 'Sunday with Rowan' })).toBeVisible();
-  await expect(page.getByText('You walk in the front doors.')).toBeVisible();
+  await expect(page.getByText('walks in the front doors')).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
   await expect(page.getByRole('button', { name: 'Write the Sunday story' })).toHaveCount(0);
 });

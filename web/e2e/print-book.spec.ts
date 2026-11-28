@@ -25,7 +25,7 @@ test('Rowan, Maya, and Jonah print one sheet per book page', async ({ page }) =>
   test.setTimeout(300_000);
   for (const [button, name] of examples) {
     await openStory(page, button, name);
-    await expectFittedBook(page, { pictures: true });
+    await expectFittedBook(page);
     await expectSheets(page, button, name, { format: 'Letter' });
     await expectSheets(page, button, name, { format: 'A4' }, '@page { size: A4; margin: 0.6in; }');
     await expectSheets(page, button, name, { format: 'Letter' }, '@page { size: letter; margin: 0.85in; }');
@@ -54,7 +54,7 @@ test('a max-length fictional church still prints one sheet per book page', async
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('link', { name: 'Parent' }).click();
   await page.emulateMedia({ media: 'print' });
-  await expectFittedBook(page, { pictures: false });
+  await expectFittedBook(page);
   const church = page.locator('.sunday-print-church');
   expect(await fontPt(church)).toBeCloseTo(22, 0);
   const classroom = page.locator('article.sunday-print-page').nth(4).locator('.sunday-print-sentence');
@@ -113,14 +113,18 @@ async function expectSheets(
   expect(pdf.pages).toBe(bookPages);
   const packed = compact(pdf.text);
   const visible = await page
-    .locator('.sunday-print-title, .sunday-print-church, .sunday-print-subtitle, .sunday-print-sentence, .sunday-print-footer')
+    .locator(
+      '.sunday-print-title, .sunday-print-church, .sunday-print-subtitle, .sunday-print-sentence, .sunday-schedule, .sunday-print-footer',
+    )
     .allTextContents();
   for (const text of visible) expect(packed).toContain(compact(text));
 }
 
-async function expectFittedBook(page: Page, options: { pictures: boolean }): Promise<void> {
+async function expectFittedBook(page: Page): Promise<void> {
   const articles = page.locator('article.sunday-print-page');
   await expect(articles).toHaveCount(bookPages);
+  await expect(page.locator('.sunday-print-picture')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'My Sunday schedule' })).toHaveCount(1);
   const total = await articles.count();
   for (let index = 0; index < total; index += 1) {
     const article = articles.nth(index);
@@ -132,7 +136,7 @@ async function expectFittedBook(page: Page, options: { pictures: boolean }): Pro
     expect(footer).not.toBeNull();
     if (footer === null) return;
     expect(footer.y + footer.height).toBeLessThanOrEqual(box.y + box.height + 1);
-    for (const selector of ['.sunday-print-sentence', '.sunday-print-title', '.sunday-print-church']) {
+    for (const selector of ['.sunday-print-sentence', '.sunday-print-title', '.sunday-print-church', '.sunday-schedule']) {
       const node = article.locator(selector);
       if ((await node.count()) === 0) continue;
       const metrics = await node.evaluate((element) => ({
@@ -142,11 +146,6 @@ async function expectFittedBook(page: Page, options: { pictures: boolean }): Pro
       }));
       expect(metrics.scroll, metrics.text).toBeLessThanOrEqual(metrics.client + 1);
     }
-    if (!options.pictures) continue;
-    const picture = await article.locator('.sunday-print-picture').boundingBox();
-    expect(picture).not.toBeNull();
-    if (picture === null) return;
-    expect(picture.height).toBeGreaterThanOrEqual(2 * 96);
   }
 }
 

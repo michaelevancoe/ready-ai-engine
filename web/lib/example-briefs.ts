@@ -14,7 +14,6 @@ export interface ExampleBrief {
   readonly ageYears: number;
   readonly blurb: string;
   readonly summary: string;
-  readonly photos: readonly [string, string, string];
   readonly cards: readonly ExampleCard[];
 }
 
@@ -40,7 +39,7 @@ const CARD_LABELS = {
   behavior: 'Safety & calming',
 } as const satisfies Record<(typeof CARD_IDS)[number], string>;
 
-const ROWAN = brief('rowan', 'Rowan', 7, 'Loves Disney · needs quiet breaks', 'Rowan loves Disney and needs quiet breaks.', ['Rowan', 'His headphones', 'Quiet corner'], {
+const ROWAN = brief('rowan', 'Rowan', 7, 'Loves Disney · needs quiet breaks', 'Rowan loves Disney and needs quiet breaks.', {
   loves: 'Rowan loves Disney stories and quiet songs.',
   overwhelms: 'A crowded doorway overwhelms Rowan.',
   helps: 'A quiet break helps Rowan settle.',
@@ -57,7 +56,6 @@ const MAYA = brief(
   5,
   'Loves dinosaurs · peanut allergy',
   'Maya loves dinosaurs and has a peanut allergy.',
-  ['Maya', 'Her dinosaurs', 'A dim corner'],
   {
     loves: 'Maya loves dinosaurs and digging in the sand table.',
     overwhelms: 'Sudden loud songs overwhelm Maya.',
@@ -76,7 +74,6 @@ const JONAH = brief(
   9,
   'Loves Lego · uses picture cards',
   'Jonah loves Lego and uses picture cards.',
-  ['Jonah', 'His Lego', 'Picture cards'],
   {
     loves: 'Jonah loves Lego and building on the floor.',
     overwhelms: 'A rushed transition overwhelms Jonah.',
@@ -164,7 +161,6 @@ function brief(
   ageYears: number,
   blurb: string,
   summary: string,
-  photos: readonly [string, string, string],
   lines: Record<(typeof CARD_IDS)[number], string>,
 ): ExampleBrief {
   return {
@@ -173,7 +169,6 @@ function brief(
     ageYears,
     blurb,
     summary,
-    photos,
     cards: CARD_IDS.map((sectionId) => ({
       sectionId,
       label: CARD_LABELS[sectionId],

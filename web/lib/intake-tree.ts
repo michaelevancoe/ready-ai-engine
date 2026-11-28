@@ -38,6 +38,7 @@ export interface IntakeNode {
   readonly sectionId: string;
   readonly prompt: string;
   readonly placeholder: string;
+  readonly help?: string;
   readonly check?: 'name' | 'age';
   readonly follow?: Follow;
   readonly chips?: readonly string[];
@@ -198,7 +199,8 @@ const RAW = {
     {
       id: 'allergies-more',
       sectionId: 'allergies',
-      prompt: 'One more about allergies and health: what happens for {child}, and what should a volunteer do?',
+      prompt: 'If {child} has an allergic reaction, what should we do?',
+      help: "Tell us the steps you'd want the team to take, and who to call.",
       placeholder: TYPE_ANSWER,
       writes: [{ target: 'card', key: 'allergies' }],
     },
@@ -337,6 +339,7 @@ function nodeOf(value: unknown): IntakeNode | null {
   const chips = value.chips === undefined ? undefined : stringList(value.chips);
   if (value.chips !== undefined && chips === null) return null;
   if (value.closeChip !== undefined && !isText(value.closeChip)) return null;
+  if (value.help !== undefined && !isText(value.help)) return null;
   if (follow === null || chips === null) return null;
   return {
     id: value.id,
@@ -347,6 +350,7 @@ function nodeOf(value: unknown): IntakeNode | null {
     ...(check === undefined || check === null ? {} : { check }),
     ...(chips === undefined ? {} : { chips }),
     ...(value.closeChip === undefined ? {} : { closeChip: value.closeChip }),
+    ...(value.help === undefined ? {} : { help: value.help }),
     writes,
   };
 }

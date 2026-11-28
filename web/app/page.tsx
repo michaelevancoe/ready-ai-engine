@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type Dispatch } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch } from 'react';
 import { decideAck, type AckResult } from '../lib/acknowledgement';
 import { pendingApprovalCopy } from '../lib/approve-copy';
 import {
@@ -31,7 +31,8 @@ import { DraftStatus } from './draft-status';
 import { PrivacyNote } from './privacy-note';
 import { WhatHelpsCard } from './what-helps';
 import { SundayPrint } from './sunday-print';
-import { useAccountChurch, useChurchPhotos, useVisit } from './visit-shell';
+import { SundayScheduleCard } from './sunday-schedule';
+import { useAccountChurch, useVisit } from './visit-shell';
 
 const BEAT_MS = 1200;
 const ACK_LIMIT_MS = 4000;
@@ -56,6 +57,7 @@ export default function Page() {
   const summaryRequest = useRef(0);
   const shownAcks = useRef<string[]>([]);
   const [summary, setSummary] = useState<ShownProfile | null>(null);
+  const [summaryWait, setSummaryWait] = useState(false);
   const busy = useRef(false);
   const settling = useRef(false);
   const attempts = useRef<Record<string, number>>({});
@@ -130,18 +132,20 @@ export default function Page() {
     }
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (view.kind !== 'brief' || view.actions !== 'draft' || briefAlreadyApproved(visit)) return;
     const answers = project(intakeTree, visit.conversation).post;
     const key = JSON.stringify(answers);
     if (summaryKey.current === key) return;
     summaryKey.current = key;
     setSummary(null);
+    setSummaryWait(true);
     const requestId = summaryRequest.current + 1;
     summaryRequest.current = requestId;
     void submitIntake(answers).then((result) => {
-      if (summaryRequest.current !== requestId || result.type !== 'draft') return;
-      setSummary(result.profile);
+      if (summaryRequest.current !== requestId) return;
+      if (result.type === 'draft') setSummary(result.profile);
+      setSummaryWait(false);
     });
   }, [view, visit]);
 
@@ -227,6 +231,7 @@ export default function Page() {
           error={visit.intake.status === 'error' ? visit.intake.message : null}
           fixed={visit.conversation.updated.length > 0}
           helps={summary?.whatHelps ?? []}
+          summaryWait={summaryWait}
           onApprove={() => void onApprove()}
           dispatch={dispatch}
         />
@@ -395,28 +400,24 @@ function QuestionScreen({
         </>
       )}
       {spoken === null || ask.fixing ? null : <p className="bubble parent">{spoken}</p>}
-      {locked ? (
-        <p className="bubble ready reading" role="status">
-          <span className="avatar" aria-hidden="true">
-            R
-          </span>
-          <span>
-            <span className="dots" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-            Ready is reading your answer...
-          </span>
-        </p>
+      {locked || readyLine !== null || reaskPrompt !== null ? (
+        <article className="story-card" aria-busy={locked}>
+          {locked ? (
+            <DraftStatus copy="Ready is reading your answer..." />
+          ) : (
+            <p>{readyLine ?? reaskPrompt}</p>
+          )}
+        </article>
       ) : null}
       <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
-        {readyLine === null && reaskPrompt === null ? null : (
-          <p className="bubble ready">{readyLine ?? reaskPrompt}</p>
-        )}
         <article className="question-card">
           <p className="eyebrow">{ask.mark}</p>
           <h2 id="current-question">{ask.prompt}</h2>
+          {ask.help === null ? null : (
+            <p className="hint" id="question-help">
+              {ask.help}
+            </p>
+          )}
           {ask.notice === null ? null : (
             <p className="notice" role="status">
               {ask.notice}
@@ -453,7 +454,7 @@ function QuestionScreen({
           rows={3}
           value={draft}
           placeholder={locked ? 'Ready is reading your answer...' : ask.placeholder}
-          aria-describedby={locked ? undefined : 'current-question'}
+          aria-describedby={locked ? undefined : ask.help === null ? 'current-question' : 'current-question question-help'}
           autoComplete="off"
           disabled={locked}
           onChange={(event) => setDraft(event.target.value)}
@@ -516,6 +517,7 @@ function BriefScreen({
   error,
   fixed,
   helps,
+  summaryWait,
   onApprove,
   dispatch,
 }: {
@@ -527,6 +529,7 @@ function BriefScreen({
   error: string | null;
   fixed: boolean;
   helps: readonly string[];
+  summaryWait: boolean;
   onApprove: () => void;
   dispatch: Dispatch<VisitEvent>;
 }) {
@@ -582,18 +585,9 @@ function BriefScreen({
           <p>{brief.summary}</p>
         </div>
       </article>
-      <p className="section-label">Photos</p>
-      <div className="photos">
-        {brief.photos.map((label) => (
-          <figure key={label}>
-            <span className="photo-tile" aria-hidden="true">
-              <PhotoMark />
-            </span>
-            <figcaption>{label}</figcaption>
-          </figure>
-        ))}
-      </div>
-      {view.actions === 'draft' ? <WhatHelpsCard name={brief.name} bullets={helps} audience="review" /> : null}
+      {view.actions === 'draft' ? (
+        <WhatHelpsCard name={brief.name} bullets={helps} audience="review" waiting={summaryWait} />
+      ) : null}
       <p className="section-label">{brief.name}&apos;s brief</p>
       {savedTitle === null ? null : (
         <p className="banner" role="status">
@@ -689,17 +683,6 @@ function Spark() {
   );
 }
 
-function PhotoMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm1 2v8l3.2-3.2a1 1 0 0 1 1.4 0L14 15.2l1.3-1.3a1 1 0 0 1 1.4 0L19 16V7H6Zm3 1.5A1.5 1.5 0 1 1 7.5 10 1.5 1.5 0 0 1 9 8.5Z"
-      />
-    </svg>
-  );
-}
-
 function ApprovedScreen({
   view,
   visit,
@@ -709,7 +692,6 @@ function ApprovedScreen({
   visit: Visit;
   dispatch: Dispatch<VisitEvent>;
 }) {
-  const photos = useChurchPhotos();
   const update = approvedValue(visit.update);
   const [reader, setReader] = useState<Reader>(initialReader());
   const request = useRef(0);
@@ -763,7 +745,9 @@ function ApprovedScreen({
         {reader.phase === 'writing' ? (
           <>
             <h1>A Sunday story for {view.name}</h1>
-            <DraftStatus copy={`Ready is writing ${view.name}'s story from your answers…`} />
+            <article className="story-card" aria-busy="true">
+              <DraftStatus copy={`Writing ${view.name}'s story…`} />
+            </article>
           </>
         ) : null}
         {reader.phase === 'failed' ? (
@@ -785,9 +769,14 @@ function ApprovedScreen({
             <p className="drafted">
               <Spark /> {storyPrivacy({ name: view.name, room: visit.church.room, source: reader.source }).pill}
             </p>
-            {reader.paragraphs.map((paragraph, index) => (
-              <p key={`${index}-${paragraph}`}>{paragraph}</p>
-            ))}
+            <article className="story-card">
+              {reader.paragraphs.map((paragraph, index) => (
+                <Fragment key={`${index}-${paragraph}`}>
+                  <p>{paragraph}</p>
+                  {index === 3 ? <SundayScheduleCard /> : null}
+                </Fragment>
+              ))}
+            </article>
             <PrivacyNote
               variant="line"
               text={storyPrivacy({ name: view.name, room: visit.church.room, source: reader.source }).line}
@@ -831,7 +820,13 @@ function ApprovedScreen({
       </article>
       <section aria-label="Sunday update" id="sunday-update">
         <h2>Sunday update</h2>
-        {update === null ? <p>Waiting for an approved Sunday update.</p> : <p className="draft-text">{update.body}</p>}
+        {update === null ? (
+          <p>Waiting for an approved Sunday update.</p>
+        ) : (
+          <article className="story-card">
+            <p className="draft-text">{update.body}</p>
+          </article>
+        )}
       </section>
       <button type="button" className="primary" onClick={() => dispatch({ type: 'conversation', event: { type: 'viewBrief' } })}>
         View {view.name}&apos;s brief
@@ -855,7 +850,7 @@ function ApprovedScreen({
         </button>
       ) : null}
       </div>
-      <SundayPrint visit={visit} photos={photos} />
+      <SundayPrint visit={visit} />
     </section>
   );
 }
