@@ -68,7 +68,7 @@ export function parseChildProfile(value: unknown): ChildProfile {
     throw new SchemaRejected('preamble_only');
   }
   return {
-    summary: summary.length > 0 ? summary : value.summary.trim(),
+    summary,
     sensoryConsiderations,
     supportStrategies,
     avoid,
