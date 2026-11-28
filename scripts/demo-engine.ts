@@ -1118,6 +1118,7 @@ function ackRetryHint(rejection: FallbackReason | undefined): string {
     case 'invalid_json':
     case 'truncated':
     case 'schema':
+    case 'preamble_only':
     case 'too_short':
     case 'child_detail_min':
     case 'church_detail':
