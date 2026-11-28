@@ -47,12 +47,12 @@ test('the sample tour introduces children, Ezra, and Hazel without sending', asy
   await expect(dialog.getByRole('heading', { name: "Today's children" })).toBeVisible();
   await expect(page.getByText('1 of 3 · Sample families')).toBeVisible();
   await expectUncovered(page, 'children');
-  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'What helps, by Ready' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'After Sunday for Ezra' })).toBeVisible();
   await expect(page.getByText('2 of 3 · Sample families')).toBeVisible();
   await expectUncovered(page, 'summary');
-  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'You approve every note' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve and send to parent' })).toBeVisible();
   await expect(page.getByText('3 of 3 · Sample families')).toBeVisible();
@@ -94,8 +94,8 @@ test('onboarding and the sample tour do not call the engine', async ({ page }) =
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Explore with sample families' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.getByRole('button', { name: 'Finish tour' }).click();
   await expect(page.getByRole('button', { name: 'Open Hazel, 11, Draft to approve' })).toBeVisible();
   expect(hits).toEqual([]);

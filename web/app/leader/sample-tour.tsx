@@ -229,6 +229,7 @@ function revealCard(card: HTMLElement): void {
   card.style.top = 'auto';
   card.style.bottom = `${margin}px`;
   card.style.visibility = 'visible';
+  card.style.opacity = '1';
   if (!card.contains(document.activeElement)) card.focus();
 }
 
@@ -283,6 +284,7 @@ function placeTour(target: HTMLElement, card: HTMLElement, hole: HTMLElement | n
   }
   card.style.top = `${Math.max(limitTop, top)}px`;
   card.style.visibility = 'visible';
+  card.style.opacity = '1';
   if (!card.contains(document.activeElement)) card.focus();
   if (hole === null) return;
   hole.style.top = `${rect.top - pad}px`;
@@ -290,4 +292,5 @@ function placeTour(target: HTMLElement, card: HTMLElement, hole: HTMLElement | n
   hole.style.width = `${Math.max(0, rect.width + pad * 2)}px`;
   hole.style.height = `${Math.max(0, rect.height + pad * 2)}px`;
   hole.style.visibility = 'visible';
+  hole.style.opacity = '1';
 }

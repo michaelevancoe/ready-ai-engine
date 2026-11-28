@@ -1561,11 +1561,8 @@ button.text.dismiss {
   border-radius: 1rem;
   box-shadow: 0 0 0 9999px rgba(28, 25, 23, 0.55);
   pointer-events: none;
-  transition:
-    top 180ms ease,
-    left 180ms ease,
-    width 180ms ease,
-    height 180ms ease;
+  opacity: 0;
+  transition: opacity 180ms ease;
 }
 
 .tour-card {
@@ -1580,7 +1577,8 @@ button.text.dismiss {
   border: 1px solid var(--line);
   border-radius: 1rem;
   box-shadow: 0 0.6rem 1.4rem rgba(28, 25, 23, 0.16);
-  transition: top 180ms ease;
+  opacity: 0;
+  transition: opacity 180ms ease;
 }
 
 .tour-card h2 {
