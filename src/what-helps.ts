@@ -15,13 +15,24 @@ const BANNED = [
 
 const LEADING_PREAMBLE = /^here(?:'s|’s| is)\b/iu;
 
-const DRAFT_PROFILE_ONLY =
-  /^here(?:'s|’s| is)\s+(?:an?\s+)?draft(?:\s+child)?\s+profile(?:\s+for\s+[\p{L}\p{N}'’.-]+)?\s*[.!]?\s*$/iu;
+const DRAFT_PROFILE_BODY =
+  /^(?:(?:a|an|the)\s+)?draft(?:\s+child)?\s+profile(?:\s+for\s+[\p{L}\p{N}'’.-]+(?:\s+[\p{L}\p{N}'’.-]+)*)?$/iu;
+
+const POSSESSIVE_DRAFT = /^[\p{L}\p{N}'’.-]+(?:'s|’s)\s+draft(?:\s+child)?\s+profile$/iu;
+
+function draftAnnouncement(line: string): boolean {
+  const text = line.trim().replace(/[.!?:]+\s*$/u, '').trim();
+  if (!LEADING_PREAMBLE.test(text)) return false;
+  const rest = text.replace(/^here(?:'s|’s| is)\s+/iu, '');
+  return DRAFT_PROFILE_BODY.test(rest) || POSSESSIVE_DRAFT.test(rest);
+}
 
 function preambleOnlyLine(line: string): boolean {
-  if (line.length === 0) return false;
-  if (/:\s*$/u.test(line)) return true;
-  return DRAFT_PROFILE_ONLY.test(line);
+  const text = line.trim();
+  if (text.length === 0) return false;
+  const sentences = text.split(/(?<=[.!])\s+/u).filter((part) => part.trim().length > 0);
+  if (sentences.length > 1) return sentences.every((sentence) => draftAnnouncement(sentence));
+  return draftAnnouncement(text);
 }
 
 function stripPreambleLine(line: string): string {
@@ -29,7 +40,9 @@ function stripPreambleLine(line: string): string {
   if (!LEADING_PREAMBLE.test(line)) return line;
   const colon = line.indexOf(':');
   if (colon === -1) return line;
-  return line.slice(colon + 1).trim();
+  const tail = line.slice(colon + 1).trim();
+  if (tail.length === 0 || preambleOnlyLine(tail)) return '';
+  return tail;
 }
 
 export function stripLeadingPreamble(value: string): string {
