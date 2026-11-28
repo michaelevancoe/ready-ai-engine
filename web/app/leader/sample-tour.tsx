@@ -1,6 +1,16 @@
 'use client';
 
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { DemoStore, type ReadyStore } from '../../lib/ready-store';
 import { useDemoMode, useReadyStore } from '../visit-shell';
 
@@ -122,6 +132,8 @@ function SampleBanner({ onExit }: { onExit: () => void }): ReactNode {
 
 function TourCoach({ step, onNext, onEnd }: { step: TourStep; onNext: () => void; onEnd: () => void }): ReactNode {
   const copy = COPY[step];
+  const store = useLeaderStore();
+  const selectedId = useSyncExternalStore(store.subscribe, store.selectedId, store.selectedId);
   const dialogRef = useRef<HTMLDivElement>(null);
   const holeRef = useRef<HTMLDivElement>(null);
 
@@ -160,30 +172,21 @@ function TourCoach({ step, onNext, onEnd }: { step: TourStep; onNext: () => void
   }, [onEnd, step]);
 
   useLayoutEffect(() => {
-    let frame = 0;
-    let tries = 0;
-    const run = (): void => {
-      const card = dialogRef.current;
+    const card = dialogRef.current;
+    if (card === null) return;
+    const place = (): void => {
       const node = document.querySelector(`[data-tour="${copy.target}"]`);
-      if (card === null) return;
-      if (!(node instanceof HTMLElement)) {
-        if (tries < 40) {
-          tries += 1;
-          frame = requestAnimationFrame(run);
-          return;
-        }
-        revealCard(card);
-        return;
-      }
-      placeTour(node, card, holeRef.current);
+      if (node instanceof HTMLElement) placeTour(node, card, holeRef.current);
+      else revealCard(card);
     };
-    run();
-    window.addEventListener('resize', run);
+    place();
+    window.addEventListener('resize', place);
     return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('resize', run);
+      window.removeEventListener('resize', place);
+      const spacer = document.getElementById('scroll-room');
+      if (spacer instanceof HTMLElement) spacer.style.height = '0px';
     };
-  }, [copy.target, step]);
+  }, [copy.target, selectedId, step]);
 
   const primary = step === 3 ? 'Finish tour' : 'Next';
   return (
@@ -246,43 +249,33 @@ function placeTour(target: HTMLElement, card: HTMLElement, hole: HTMLElement | n
   card.style.bottom = 'auto';
   const banner = document.querySelector('.sample-banner');
   const limitTop = (banner instanceof HTMLElement ? banner.getBoundingClientRect().bottom : 0) + margin;
+  const viewBottom = window.innerHeight - margin;
   const cardHeight = card.offsetHeight;
+  const spacer = document.getElementById('scroll-room');
+  if (spacer instanceof HTMLElement) spacer.style.height = '0px';
   target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   let rect = target.getBoundingClientRect();
   const needed = cardHeight + gap;
   const roomAbove = (): number => rect.top - limitTop;
-  const roomBelow = (): number => window.innerHeight - rect.bottom - margin;
-  if (roomBelow() >= roomAbove()) {
-    if (roomBelow() < needed) {
-      window.scrollBy(0, needed - roomBelow());
-      rect = target.getBoundingClientRect();
-    }
-  } else if (roomAbove() < needed) {
-    window.scrollBy(0, roomAbove() - needed);
-    rect = target.getBoundingClientRect();
-  }
-  const below = roomBelow() >= needed || roomBelow() >= roomAbove();
-  let top = below ? rect.bottom + gap : rect.top - gap - cardHeight;
-  if (!below && top < limitTop) {
-    window.scrollBy(0, top - limitTop);
-    rect = target.getBoundingClientRect();
+  const roomBelow = (): number => viewBottom - rect.bottom;
+  let top: number;
+  if (roomBelow() >= needed) {
+    top = rect.bottom + gap;
+  } else if (roomAbove() >= needed) {
+    top = rect.top - gap - cardHeight;
+  } else if (roomBelow() >= roomAbove()) {
+    rect = moveTarget(target, rect.bottom - (viewBottom - needed));
+    top = rect.bottom + gap;
+  } else {
+    rect = moveTarget(target, rect.top - (limitTop + needed));
     top = rect.top - gap - cardHeight;
   }
-  if (below && top + cardHeight > window.innerHeight - margin) {
-    const shift = top + cardHeight - (window.innerHeight - margin);
-    window.scrollBy(0, shift);
-    rect = target.getBoundingClientRect();
-    top = rect.bottom + gap;
-  }
+  if (top < limitTop) top = limitTop;
+  if (top + cardHeight > viewBottom) top = viewBottom - cardHeight;
   if (top < rect.bottom && top + cardHeight > rect.top) {
-    top = limitTop;
-    const desired = top + cardHeight + gap;
-    window.scrollBy(0, rect.top - desired);
-    rect = target.getBoundingClientRect();
-    top = Math.max(limitTop, rect.top - gap - cardHeight);
-    if (top + cardHeight > rect.top) top = limitTop;
+    rect = moveTarget(target, rect.top - (top + cardHeight + gap));
   }
-  card.style.top = `${Math.max(limitTop, top)}px`;
+  card.style.top = `${top}px`;
   card.style.visibility = 'visible';
   card.style.opacity = '1';
   if (!card.contains(document.activeElement)) card.focus();
@@ -293,4 +286,20 @@ function placeTour(target: HTMLElement, card: HTMLElement, hole: HTMLElement | n
   hole.style.height = `${Math.max(0, rect.height + pad * 2)}px`;
   hole.style.visibility = 'visible';
   hole.style.opacity = '1';
+}
+
+function moveTarget(target: HTMLElement, delta: number): DOMRect {
+  if (delta !== 0) {
+    const root = document.scrollingElement ?? document.documentElement;
+    if (delta > 0) {
+      const spare = root.scrollHeight - root.clientHeight - root.scrollTop;
+      const spacer = document.getElementById('scroll-room');
+      if (spacer instanceof HTMLElement && spare < delta) {
+        const current = Number.parseFloat(spacer.style.height) || 0;
+        spacer.style.height = `${current + delta - spare}px`;
+      }
+    }
+    root.scrollBy(0, delta);
+  }
+  return target.getBoundingClientRect();
 }

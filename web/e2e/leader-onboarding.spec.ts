@@ -124,15 +124,18 @@ test('account explore uses sample families and exit returns to the church', asyn
 
 async function expectUncovered(page: Page, target: string): Promise<void> {
   await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
-  const overlap = await page.evaluate((name) => {
-    const dialog = document.querySelector('[role="dialog"]');
-    const node = document.querySelector(`[data-tour="${name}"]`);
-    if (!(dialog instanceof HTMLElement) || !(node instanceof HTMLElement)) return 1;
-    const card = dialog.getBoundingClientRect();
-    const spot = node.getBoundingClientRect();
-    const width = Math.max(0, Math.min(card.right, spot.right) - Math.max(card.left, spot.left));
-    const height = Math.max(0, Math.min(card.bottom, spot.bottom) - Math.max(card.top, spot.top));
-    return width * height;
-  }, target);
-  expect(overlap).toBe(0);
+  await expect
+    .poll(() =>
+      page.evaluate((name) => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const node = document.querySelector(`[data-tour="${name}"]`);
+        if (!(dialog instanceof HTMLElement) || !(node instanceof HTMLElement)) return 1;
+        const card = dialog.getBoundingClientRect();
+        const spot = node.getBoundingClientRect();
+        const width = Math.max(0, Math.min(card.right, spot.right) - Math.max(card.left, spot.left));
+        const height = Math.max(0, Math.min(card.bottom, spot.bottom) - Math.max(card.top, spot.top));
+        return width * height;
+      }, target),
+    )
+    .toBe(0);
 }
