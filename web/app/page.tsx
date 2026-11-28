@@ -30,12 +30,13 @@ import {
 import { DraftStatus } from './draft-status';
 import { PrivacyNote } from './privacy-note';
 import { WhatHelpsCard } from './what-helps';
-import { SundayPrint } from './sunday-print';
+import { StoryPagePicture, SundayPrint } from './sunday-print';
 import { SundayScheduleCard } from './sunday-schedule';
-import { useAccountChurch, useVisit } from './visit-shell';
+import { useAccountChurch, useChurchPhotos, useVisit } from './visit-shell';
 
 const BEAT_MS = 1200;
 const ACK_LIMIT_MS = 4000;
+const readerSlots = ['outside', 'doors', 'desk', 'classroom', 'helper', 'quiet', 'pickup'] as const;
 
 type Reading =
   | { readonly phase: 'idle' }
@@ -692,6 +693,7 @@ function ApprovedScreen({
   visit: Visit;
   dispatch: Dispatch<VisitEvent>;
 }) {
+  const photos = useChurchPhotos();
   const update = approvedValue(visit.update);
   const [reader, setReader] = useState<Reader>(initialReader());
   const request = useRef(0);
@@ -770,12 +772,16 @@ function ApprovedScreen({
               <Spark /> {storyPrivacy({ name: view.name, room: visit.church.room, source: reader.source }).pill}
             </p>
             <article className="story-card">
-              {reader.paragraphs.map((paragraph, index) => (
-                <Fragment key={`${index}-${paragraph}`}>
-                  <p>{paragraph}</p>
-                  {index === 3 ? <SundayScheduleCard /> : null}
-                </Fragment>
-              ))}
+              {reader.paragraphs.map((paragraph, index) => {
+                const slot = readerSlots[index];
+                return (
+                  <Fragment key={`${index}-${paragraph}`}>
+                    {slot === undefined ? null : <StoryPagePicture slot={slot} photos={photos} />}
+                    <p>{paragraph}</p>
+                    {index === 3 ? <SundayScheduleCard /> : null}
+                  </Fragment>
+                );
+              })}
             </article>
             <PrivacyNote
               variant="line"
@@ -850,7 +856,7 @@ function ApprovedScreen({
         </button>
       ) : null}
       </div>
-      <SundayPrint visit={visit} />
+      <SundayPrint visit={visit} photos={photos} />
     </section>
   );
 }

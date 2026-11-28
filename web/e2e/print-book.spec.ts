@@ -25,7 +25,7 @@ test('Rowan, Maya, and Jonah print one sheet per book page', async ({ page }) =>
   test.setTimeout(300_000);
   for (const [button, name] of examples) {
     await openStory(page, button, name);
-    await expectFittedBook(page);
+    await expectFittedBook(page, { pictures: true });
     await expectSheets(page, button, name, { format: 'Letter' });
     await expectSheets(page, button, name, { format: 'A4' }, '@page { size: A4; margin: 0.6in; }');
     await expectSheets(page, button, name, { format: 'Letter' }, '@page { size: letter; margin: 0.85in; }');
@@ -54,7 +54,7 @@ test('a max-length fictional church still prints one sheet per book page', async
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('link', { name: 'Parent' }).click();
   await page.emulateMedia({ media: 'print' });
-  await expectFittedBook(page);
+  await expectFittedBook(page, { pictures: false });
   const church = page.locator('.sunday-print-church');
   expect(await fontPt(church)).toBeCloseTo(22, 0);
   const classroom = page.locator('article.sunday-print-page').nth(4).locator('.sunday-print-sentence');
@@ -120,10 +120,10 @@ async function expectSheets(
   for (const text of visible) expect(packed).toContain(compact(text));
 }
 
-async function expectFittedBook(page: Page): Promise<void> {
+async function expectFittedBook(page: Page, options: { pictures: boolean }): Promise<void> {
   const articles = page.locator('article.sunday-print-page');
   await expect(articles).toHaveCount(bookPages);
-  await expect(page.locator('.sunday-print-picture')).toHaveCount(0);
+  await expect(page.locator('.sunday-print-picture')).toHaveCount(bookPages);
   await expect(page.getByRole('region', { name: 'My Sunday schedule' })).toHaveCount(1);
   const total = await articles.count();
   for (let index = 0; index < total; index += 1) {
@@ -132,6 +132,12 @@ async function expectFittedBook(page: Page): Promise<void> {
     expect(box).not.toBeNull();
     if (box === null) return;
     expect(box.height).toBeLessThanOrEqual(9 * 96 + 1);
+    if (options.pictures) {
+      const picture = await article.locator('.sunday-print-picture').boundingBox();
+      expect(picture).not.toBeNull();
+      if (picture === null) return;
+      expect(picture.height).toBeGreaterThanOrEqual(2 * 96);
+    }
     const footer = await article.locator('.sunday-print-footer').boundingBox();
     expect(footer).not.toBeNull();
     if (footer === null) return;

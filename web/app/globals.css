@@ -227,6 +227,20 @@ button:disabled {
   padding: 0.85rem 1rem;
 }
 
+.story-card .sunday-print-picture {
+  display: flex;
+  justify-content: center;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.story-card .sunday-print-photo,
+.story-card .sunday-print-drawing {
+  width: min(100%, 16rem);
+  height: auto;
+  max-height: 9rem;
+  object-fit: contain;
+}
+
 .church-card,
 .roster li {
   display: flex;
