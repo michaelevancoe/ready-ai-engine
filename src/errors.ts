@@ -20,8 +20,19 @@ export const FALLBACK_REASONS = [
   'child_detail_min',
   'church_detail',
   'safety',
+  'safety_unknown_name',
+  'safety_banned_word',
+  'safety_medical',
+  'safety_allergy',
+  'safety_pronoun',
+  'safety_script',
   'upstream_error',
   'line_rejected',
+  'line_rejected_words',
+  'line_rejected_length',
+  'line_rejected_shape',
+  'line_rejected_restatement',
+  'line_rejected_repeat',
 ] as const;
 
 export type FallbackReason = (typeof FALLBACK_REASONS)[number];
