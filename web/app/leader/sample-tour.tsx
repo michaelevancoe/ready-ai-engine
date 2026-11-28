@@ -174,15 +174,45 @@ function TourCoach({ step, onNext, onEnd }: { step: TourStep; onNext: () => void
   useLayoutEffect(() => {
     const card = dialogRef.current;
     if (card === null) return;
-    const place = (): void => {
+    const hole = holeRef.current;
+    let frame = 0;
+    let settle = 0;
+    const targetOf = (): HTMLElement | null => {
       const node = document.querySelector(`[data-tour="${copy.target}"]`);
-      if (node instanceof HTMLElement) placeTour(node, card, holeRef.current);
-      else revealCard(card);
+      return node instanceof HTMLElement ? node : null;
+    };
+    const place = (): void => {
+      const spacer = document.getElementById('scroll-room');
+      if (spacer instanceof HTMLElement) spacer.style.height = '0px';
+      const node = targetOf();
+      if (node === null) {
+        revealCard(card);
+        return;
+      }
+      node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (!pinTour(node, card, hole)) openRoom(node, card, hole);
+    };
+    const onScroll = (): void => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const node = targetOf();
+        if (node === null) revealCard(card);
+        else pinTour(node, card, hole);
+      });
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => {
+        const node = targetOf();
+        if (node !== null && !pinTour(node, card, hole)) openRoom(node, card, hole);
+      }, 80);
     };
     place();
     window.addEventListener('resize', place);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
       window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', onScroll, true);
       const spacer = document.getElementById('scroll-room');
       if (spacer instanceof HTMLElement) spacer.style.height = '0px';
     };
@@ -224,66 +254,138 @@ function focusable(dialog: HTMLElement): HTMLElement[] {
 }
 
 function revealCard(card: HTMLElement): void {
-  const margin = 8;
-  const frame = document.querySelector('.frame');
-  const frameRect = frame instanceof HTMLElement ? frame.getBoundingClientRect() : null;
-  card.style.left = `${frameRect?.left ?? margin}px`;
-  card.style.width = `${frameRect?.width ?? Math.max(0, window.innerWidth - margin * 2)}px`;
+  const frame = frameBox();
+  card.style.left = `${frame.left}px`;
+  card.style.width = `${frame.width}px`;
   card.style.top = 'auto';
-  card.style.bottom = `${margin}px`;
+  card.style.bottom = `${tourMargin}px`;
   card.style.visibility = 'visible';
   card.style.opacity = '1';
   if (!card.contains(document.activeElement)) card.focus();
 }
 
-function placeTour(target: HTMLElement, card: HTMLElement, hole: HTMLElement | null): void {
-  const gap = 12;
-  const margin = 8;
-  const pad = 6;
-  const frame = document.querySelector('.frame');
-  const frameRect = frame instanceof HTMLElement ? frame.getBoundingClientRect() : null;
-  const left = frameRect?.left ?? margin;
-  const width = frameRect?.width ?? Math.max(0, window.innerWidth - margin * 2);
-  card.style.left = `${left}px`;
-  card.style.width = `${width}px`;
+interface Box {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const tourGap = 12;
+const tourMargin = 8;
+const tourPad = 6;
+const sideMin = 220;
+
+function pinTour(target: HTMLElement, card: HTMLElement, hole: HTMLElement | null): boolean {
+  const frame = frameBox();
+  const topLimit = tourLimitTop();
+  const rect = target.getBoundingClientRect();
+  const targetBox: Box = { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+  const stacked = cardHeightFor(card, frame.width);
+  const candidates: Box[] = [
+    { left: frame.left, width: frame.width, top: rect.bottom + tourGap, height: stacked },
+    { left: frame.left, width: frame.width, top: rect.top - tourGap - stacked, height: stacked },
+  ];
+  const viewRight = window.innerWidth - tourMargin;
+  const rightRoom = viewRight - (rect.right + tourGap);
+  const leftRoom = rect.left - tourGap - tourMargin;
+  if (rightRoom >= sideMin) {
+    const width = Math.min(frame.width, rightRoom);
+    const height = cardHeightFor(card, width);
+    candidates.push({
+      left: rect.right + tourGap,
+      width,
+      top: sideTop(rect.top, height, topLimit),
+      height,
+    });
+  }
+  if (leftRoom >= sideMin) {
+    const width = Math.min(frame.width, leftRoom);
+    const height = cardHeightFor(card, width);
+    candidates.push({
+      left: rect.left - tourGap - width,
+      width,
+      top: sideTop(rect.top, height, topLimit),
+      height,
+    });
+  }
+  const spot = candidates.find((box) => spotFits(box, targetBox, topLimit));
+  if (spot === undefined) return false;
   card.style.bottom = 'auto';
-  const banner = document.querySelector('.sample-banner');
-  const limitTop = (banner instanceof HTMLElement ? banner.getBoundingClientRect().bottom : 0) + margin;
-  const viewBottom = window.innerHeight - margin;
-  const cardHeight = card.offsetHeight;
-  const spacer = document.getElementById('scroll-room');
-  if (spacer instanceof HTMLElement) spacer.style.height = '0px';
-  target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  let rect = target.getBoundingClientRect();
-  const needed = cardHeight + gap;
-  const roomAbove = (): number => rect.top - limitTop;
-  const roomBelow = (): number => viewBottom - rect.bottom;
-  let top: number;
-  if (roomBelow() >= needed) {
-    top = rect.bottom + gap;
-  } else if (roomAbove() >= needed) {
-    top = rect.top - gap - cardHeight;
-  } else if (roomBelow() >= roomAbove()) {
-    rect = moveTarget(target, rect.bottom - (viewBottom - needed));
-    top = rect.bottom + gap;
-  } else {
-    rect = moveTarget(target, rect.top - (limitTop + needed));
-    top = rect.top - gap - cardHeight;
-  }
-  if (top < limitTop) top = limitTop;
-  if (top + cardHeight > viewBottom) top = viewBottom - cardHeight;
-  if (top < rect.bottom && top + cardHeight > rect.top) {
-    rect = moveTarget(target, rect.top - (top + cardHeight + gap));
-  }
-  card.style.top = `${top}px`;
+  card.style.left = `${spot.left}px`;
+  card.style.width = `${spot.width}px`;
+  card.style.top = `${spot.top}px`;
   card.style.visibility = 'visible';
   card.style.opacity = '1';
   if (!card.contains(document.activeElement)) card.focus();
+  paintHole(hole, rect);
+  return true;
+}
+
+function openRoom(target: HTMLElement, card: HTMLElement, hole: HTMLElement | null): void {
+  const frame = frameBox();
+  const needed = cardHeightFor(card, frame.width) + tourGap;
+  const topLimit = tourLimitTop();
+  const viewBottom = window.innerHeight - tourMargin;
+  const rect = target.getBoundingClientRect();
+  const roomAbove = rect.top - topLimit;
+  const roomBelow = viewBottom - rect.bottom;
+  if (roomBelow >= roomAbove) moveTarget(target, rect.bottom - (viewBottom - needed));
+  else moveTarget(target, rect.top - (topLimit + needed));
+  pinTour(target, card, hole);
+}
+
+function frameBox(): { left: number; width: number } {
+  const frame = document.querySelector('.frame');
+  if (frame instanceof HTMLElement) {
+    const rect = frame.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  }
+  return { left: tourMargin, width: Math.max(0, window.innerWidth - tourMargin * 2) };
+}
+
+function tourLimitTop(): number {
+  const banner = document.querySelector('.sample-banner');
+  const bannerBottom = banner instanceof HTMLElement ? banner.getBoundingClientRect().bottom : 0;
+  return Math.max(tourMargin, bannerBottom + tourMargin);
+}
+
+function cardHeightFor(card: HTMLElement, width: number): number {
+  card.style.width = `${width}px`;
+  return card.offsetHeight;
+}
+
+function sideTop(targetTop: number, height: number, topLimit: number): number {
+  const viewBottom = window.innerHeight - tourMargin;
+  let top = Math.max(topLimit, targetTop);
+  if (top + height > viewBottom) top = viewBottom - height;
+  return top;
+}
+
+function spotFits(box: Box, target: Box, topLimit: number): boolean {
+  const viewBottom = window.innerHeight - tourMargin;
+  const viewRight = window.innerWidth - tourMargin;
+  return (
+    box.top >= topLimit - 0.5 &&
+    box.left >= tourMargin - 0.5 &&
+    box.left + box.width <= viewRight + 0.5 &&
+    box.top + box.height <= viewBottom + 0.5 &&
+    !overlaps(box, target)
+  );
+}
+
+function overlaps(a: Box, b: Box): boolean {
+  const width = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
+  const height = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+  return width > 0.5 && height > 0.5;
+}
+
+function paintHole(hole: HTMLElement | null, rect: DOMRect): void {
   if (hole === null) return;
-  hole.style.top = `${rect.top - pad}px`;
-  hole.style.left = `${rect.left - pad}px`;
-  hole.style.width = `${Math.max(0, rect.width + pad * 2)}px`;
-  hole.style.height = `${Math.max(0, rect.height + pad * 2)}px`;
+  hole.style.top = `${rect.top - tourPad}px`;
+  hole.style.left = `${rect.left - tourPad}px`;
+  hole.style.width = `${Math.max(0, rect.width + tourPad * 2)}px`;
+  hole.style.height = `${Math.max(0, rect.height + tourPad * 2)}px`;
   hole.style.visibility = 'visible';
   hole.style.opacity = '1';
 }
