@@ -1,5 +1,6 @@
 import { SchemaRejected } from './errors.ts';
 import { isRecord, validateJson, type JsonSchema } from './schema.ts';
+import { stripLeadingPreamble } from './what-helps.ts';
 
 export interface ChildProfile {
   summary: string;
@@ -57,8 +58,9 @@ export function parseChildProfile(value: unknown): ChildProfile {
   ) {
     throw new SchemaRejected();
   }
+  const summary = stripLeadingPreamble(value.summary);
   return {
-    summary: value.summary,
+    summary: summary.length > 0 ? summary : value.summary.trim(),
     sensoryConsiderations,
     supportStrategies,
     avoid,

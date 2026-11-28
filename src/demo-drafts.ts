@@ -846,6 +846,9 @@ const SHORT_FUNCTION = new Set([
   'you',
 ]);
 
+const MIN_PAGE_WORDS = 6;
+const MIN_STORY_WORDS = 56;
+
 export function parseSocialStory(
   value: unknown,
   input: {
@@ -869,7 +872,7 @@ export function parseSocialStory(
   if (!storyBodyAccepted(body)) throw new SchemaRejected('schema');
   const safety = storyRejectReason({ title: value.title, body }, input);
   if (safety !== null) throw new SchemaRejected(safety);
-  if (sentenceCount(body) < 5 || wordCount(body) < 40) throw new SchemaRejected('too_short');
+  if (sentenceCount(body) < 5 || wordCount(body) < MIN_STORY_WORDS) throw new SchemaRejected('too_short');
   if (childNouns(body, input).size < 2) throw new SchemaRejected('child_detail_min');
   if (inventedChurchDetail(body, input)) throw new SchemaRejected('church_detail');
   return { title: value.title, pages };
@@ -889,7 +892,7 @@ function keptPage(raw: string, template: string): string {
   if (!pageEnds(candidate)) throw new SchemaRejected('truncated');
   if (collapseSpace(candidate) === collapseSpace(template)) throw new SchemaRejected('schema');
   if (SECOND_PERSON.test(candidate) || PROMISED_FEELING.test(candidate)) throw new SchemaRejected('safety');
-  if (wordCount(candidate) < 15) throw new SchemaRejected('too_short');
+  if (wordCount(candidate) < MIN_PAGE_WORDS) throw new SchemaRejected('too_short');
   return candidate;
 }
 
