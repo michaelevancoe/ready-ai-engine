@@ -2632,6 +2632,79 @@ test('the story prompt limits each page and a rejected draft is retried with the
   assert.equal(prompts[1]?.includes('Sam'), false);
 });
 
+function countedWords(text: string): number {
+  let count = 0;
+  for (const token of text.split(/\s+/u)) {
+    if (/[\p{L}\p{N}]/u.test(token)) count += 1;
+  }
+  return count;
+}
+
+function llamaLengthPages(): WritablePages {
+  return {
+    arrive: 'Rowan and a grown-up reach Example Harbor Fellowship.',
+    doors: 'Rowan walks through the front doors near a doorway.',
+    desk: 'Rowan checks in at the desk and can hold Disney.',
+    room: 'Rowan goes into the Harbor Room for a quiet short welcome.',
+    helper: 'Ms. Dana stays nearby while Rowan settles in the Harbor Room today.',
+    quiet: 'A quiet break can help Rowan settle by the doorway in the room.',
+    pickup: 'When the morning ends a grown-up comes back and Rowan can leave calmly today.',
+  };
+}
+
+test('short llama pages stay model-written and a page under six words falls back', async () => {
+  const pages = llamaLengthPages();
+  const lengths = STORY_BEATS.map((beat) => countedWords(pages[beat]));
+  assert.deepEqual(lengths, [8, 9, 10, 11, 12, 13, 14]);
+  const kept = await storyFromModel(JSON.stringify({ title: 'Sunday with Rowan', pages }));
+  assert.equal(kept.status, 200);
+  assert.equal(kept.body.source, 'model');
+  assert.equal(kept.body.model, LIVE_MODEL);
+  assert.deepEqual(kept.body.pages, pages);
+
+  const brief = llamaLengthPages();
+  for (const beat of STORY_BEATS) {
+    brief[beat] = 'Rowan can hold the Disney stories quietly today.';
+  }
+  assert.equal(STORY_BEATS.reduce((sum, beat) => sum + countedWords(brief[beat]), 0), 56);
+  const briefStory = await storyFromModel(JSON.stringify({ title: 'Sunday with Rowan', pages: brief }));
+  assert.equal(briefStory.body.source, 'model');
+  assert.deepEqual(briefStory.body.pages, brief);
+
+  const thinPages = { ...pages, quiet: 'Rowan waves at the doorway.' };
+  assert.equal(countedWords(thinPages.quiet), 5);
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  let calls = 0;
+  try {
+    const demo = DemoContext.fromBindings(liveShell(), async () => {
+      calls += 1;
+      return rawChat(JSON.stringify({ title: 'Sunday with Rowan', pages: thinPages }));
+    });
+    const response = await demo.handle(socialStory({ lines: [...rowanRequestLines], childName: 'Rowan' }));
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { source?: string; fallbackReason?: string; pages?: StoryPages };
+    assert.equal(calls, 2);
+    assert.equal(body.source, 'fallback');
+    assert.equal(body.fallbackReason, 'too_short');
+    assert.deepEqual(body.pages, templateStoryPages(harbor));
+    assert.equal(logs.some((line) => line.includes('"fallbackReason":"too_short"')), true);
+  } finally {
+    console.error = original;
+  }
+
+  const shortTotal = llamaLengthPages();
+  for (const beat of STORY_BEATS) shortTotal[beat] = 'Rowan can hold Disney stories quietly now.';
+  assert.equal(countedWords(shortTotal.arrive), 7);
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: shortTotal }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'too_short',
+  );
+});
+
 test('a long answer keeps one short detail and retries a summary that is too long', async () => {
   const kept = await acknowledgementFrom(
     'The fox is named Pip. She also loves the boat story and holds Pip with her brother before they leave for the bakery.',
