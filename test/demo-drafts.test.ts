@@ -609,6 +609,85 @@ test('an acknowledgement that repeats the answer falls back', async () => {
   });
 });
 
+const ALLERGY_ACK = 'Thank you. The team will see this in your own words before Sunday.';
+
+test('keyboard mash is asked again and a short real answer is kept', async () => {
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return chatEnvelope({ relevant: true, line: WARM_ACK, clarifyingPrompt: '' });
+  });
+  const mash = await demo.handle(
+    post('/v1/drafts/acknowledgement', {
+      answer: 'asdf qwerty zzz',
+      nodeId: 'loves',
+      recent: ['Thank you. That detail can help the volunteers prepare the room for Sunday.'],
+    }),
+  );
+  assert.equal(mash.status, 200);
+  assert.equal(calls, 1);
+  const mashBody = (await mash.json()) as { relevant: boolean; line: string; clarifyingPrompt: string };
+  assert.equal(mashBody.relevant, false);
+  assert.equal(mashBody.clarifyingPrompt.includes('?'), true);
+  assert.equal(mashBody.line.includes("That's really helpful."), false);
+  const kept = await demo.handle(post('/v1/drafts/acknowledgement', { answer: 'LEGO', nodeId: 'loves' }));
+  assert.equal(kept.status, 200);
+  assert.deepEqual(await kept.json(), { relevant: true, line: WARM_ACK, clarifyingPrompt: '' });
+  const allergies = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'No known allergies', nodeId: 'loves' }),
+  );
+  assert.equal(allergies.status, 200);
+  assert.deepEqual(await allergies.json(), { relevant: true, line: WARM_ACK, clarifyingPrompt: '' });
+});
+
+test('a rejected keyboard-mash line is not saved as a helpful acknowledgement', async () => {
+  const line = `${Array.from({ length: 26 }, () => 'word').join(' ')}.`;
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async () => {
+    calls += 1;
+    return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
+  });
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: 'asdf qwerty zzz', nodeId: 'loves' }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  const body = (await response.json()) as { relevant: boolean; clarifyingPrompt: string };
+  assert.equal(body.relevant, false);
+  assert.equal(body.clarifyingPrompt.includes('?'), true);
+});
+
+test('an allergy answer uses a fixed line and is not sent to the model', async () => {
+  const sent: string[] = [];
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    sent.push(await request.text());
+    return chatEnvelope({
+      relevant: true,
+      line: 'Keeping peanut snacks away can help the team ensure a safe environment.',
+      clarifyingPrompt: '',
+    });
+  });
+  const answers = [
+    ['allergies', 'Peanut allergy. Keep peanut snacks away.'],
+    ['allergies-more', 'Use the peanut plan and call a parent.'],
+    ['allergies', 'No known allergies'],
+    ['allergies', 'not sure'],
+  ] as const;
+  for (const [nodeId, answer] of answers) {
+    const response = await demo.handle(post('/v1/drafts/acknowledgement', { answer, nodeId }));
+    assert.equal(response.status, 200, answer);
+    assert.deepEqual(
+      await response.json(),
+      { relevant: true, line: ALLERGY_ACK, clarifyingPrompt: '' },
+      answer,
+    );
+  }
+  assert.equal(sent.length, 0);
+  assert.equal(sent.join('').includes('peanut'), false);
+  assert.equal(sent.join('').includes('Peanut'), false);
+});
+
 test('a live off-topic answer keeps the model not-relevant verdict', async () => {
   const prompt = 'I want to make sure I understand. What does that have to do with Sunday?';
   const demo = DemoContext.fromBindings(liveShell(), async () =>
@@ -1386,6 +1465,43 @@ test('a banned story page retries once and a care-plan title still falls back', 
     fallbackReason: 'safety_banned_word',
     model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   });
+});
+
+test('the Sunday note prompt asks for a parent greeting and short sentences', async () => {
+  const calls: GatewayCall[] = [];
+  const demo = DemoContext.fromBindings(liveShell(), recordingFetch(calls));
+  const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('She enjoyed the boat story.')));
+  assert.equal(update.status, 200);
+  const system = systemText(calls[0]);
+  assert.equal(system.includes('Open with "Hi,"'), true);
+  assert.equal(system.includes('short sentences'), true);
+  assert.equal(system.includes('signed by the leader'), true);
+  assert.equal(system.includes('Do not copy the notes.'), true);
+  assert.equal(system.includes('Sign the note as'), false);
+});
+
+test('a garbled Sunday note retries once and then uses a note from the volunteer', async () => {
+  const notes = 'She enjoyed the boat story.';
+  const runOn =
+    'Ms. Dana at Example Harbor Fellowship, Juniper had a great time on Sunday, she really enjoyed the boat story and the songs and the blocks and her friends and the snack.';
+  const garbled = await generated('/v1/drafts/sunday-update', sunday(notes, 'Juniper'), { body: runOn });
+  assert.equal(garbled.status, 200);
+  assert.equal(garbled.calls, 3);
+  const body = (garbled.payload as { body: string }).body;
+  assert.match(body, /^Hi,/);
+  assert.match(body, /Juniper had a Sunday with the team\./);
+  assert.match(body, /enjoyed the boat story/);
+  assert.match(body, /\n\nMs\. Dana\nExample Harbor Fellowship$/);
+  assert.equal(body.includes('Ms. Dana at Example Harbor Fellowship'), false);
+  assert.equal(body.includes('RUNON'), false);
+  const long = `Hi, ${Array.from({ length: 30 }, () => 'quietly').join(' ')} today.`;
+  const windy = await generated('/v1/drafts/sunday-update', sunday(notes, 'Juniper'), { body: long });
+  assert.equal(windy.status, 200);
+  assert.equal(windy.calls, 3);
+  const fallback = (windy.payload as { body: string }).body;
+  assert.match(fallback, /^Hi,/);
+  assert.equal(fallback.includes('quietly quietly'), false);
+  assert.match(fallback, /enjoyed the boat story/);
 });
 
 test('a copied Sunday update fails the existing generation retry', async () => {
