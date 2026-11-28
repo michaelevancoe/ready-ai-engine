@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DemoContext } from '../scripts/demo-engine.ts';
-import { SchemaRejected } from '../src/errors.ts';
+import { GenerateError, SchemaRejected } from '../src/errors.ts';
+import { generate } from '../src/generate.ts';
 import { intakeMessages, type IntakeAnswers } from '../src/intake.ts';
-import { parseChildProfile, type ChildProfile } from '../src/profile.ts';
+import { childProfileSchema, childProfileSchemaName, parseChildProfile, type ChildProfile } from '../src/profile.ts';
 import { filterWhatHelps } from '../src/what-helps.ts';
+import type { SafeLog } from '../src/log.ts';
 import { submitIntake, type IntakeAnswers as PostedAnswers } from '../web/lib/desk.ts';
 import { seedDemoVisits } from '../web/lib/demo-visits.ts';
 import { whatHelpsNote } from '../web/lib/what-helps.ts';
@@ -208,11 +210,14 @@ test('a leading here-is line is left off the profile summary', () => {
   const curly = "Here’s a draft profile for Theo:\nOffer a quiet corner.";
   assert.equal(parseChildProfile({ ...sampleProfile(), summary: curly }).summary, 'Offer a quiet corner.');
 
-  const onlyPreamble = parseChildProfile({
-    ...sampleProfile(),
-    summary: 'Here is a draft profile for Theo:',
-  });
-  assert.equal(onlyPreamble.summary, 'Here is a draft profile for Theo:');
+  assert.throws(
+    () =>
+      parseChildProfile({
+        ...sampleProfile(),
+        summary: 'Here is a draft profile for Theo:',
+      }),
+    (error: unknown) => error instanceof SchemaRejected && error.fallbackReason === 'preamble_only',
+  );
 
   assert.deepEqual(
     filterWhatHelps([
@@ -229,6 +234,96 @@ test('a leading here-is line is left off the profile summary', () => {
     'Stay nearby.',
     'Show what is next.',
   ]);
+});
+
+test('a preamble-only response fails generation and is retried once', async () => {
+  const preamble = 'Here is a draft child profile for Marlow:';
+  const only = {
+    ...sampleProfile(),
+    summary: preamble,
+    whatHelps: [preamble, "Here's a draft profile for Marlow:", 'Here is a draft child profile for Marlow.'],
+  };
+  assert.throws(
+    () => parseChildProfile(only),
+    (error: unknown) => error instanceof SchemaRejected && error.fallbackReason === 'preamble_only',
+  );
+
+  const calls: string[] = [];
+  const logs: SafeLog[] = [];
+  await assert.rejects(
+    generate({
+      endpoint: 'intake.profile',
+      messages: [
+        { role: 'system', content: 'Return JSON only.' },
+        { role: 'user', content: 'Marlow' },
+      ],
+      schemaName: childProfileSchemaName,
+      schema: childProfileSchema,
+      parse: parseChildProfile,
+      env: testEnv,
+      fetch: async () => {
+        calls.push('preamble');
+        return chatEnvelope(only);
+      },
+      log: (event) => logs.push(event),
+      sleep: async () => undefined,
+    }),
+    (error: unknown) => error instanceof GenerateError && error.fallbackReason === 'preamble_only',
+  );
+  assert.deepEqual(
+    logs.map((entry) => entry.phase),
+    ['primary', 'retry', 'fallback'],
+  );
+  assert.equal(logs.every((entry) => entry.fallbackReason === 'preamble_only'), true);
+  assert.equal(calls.length, 3);
+
+  const recovered: string[] = [];
+  const profile = await generate({
+    endpoint: 'intake.profile',
+    messages: [
+      { role: 'system', content: 'Return JSON only.' },
+      { role: 'user', content: 'Marlow' },
+    ],
+    schemaName: childProfileSchemaName,
+    schema: childProfileSchema,
+    parse: parseChildProfile,
+    env: testEnv,
+    fetch: async () => {
+      recovered.push('call');
+      return chatEnvelope(recovered.length === 1 ? only : sampleProfile());
+    },
+    sleep: async () => undefined,
+  });
+  assert.equal(recovered.length, 2);
+  assert.equal(profile.summary, sampleProfile().summary);
+  assert.equal(profile.summary.includes(preamble), false);
+});
+
+test('a preamble line followed by bullets is dropped and the bullets stay', () => {
+  const profile = parseChildProfile({
+    ...sampleProfile(),
+    summary: 'Here is a draft child profile for Marlow:\nOffer a quiet corner.\nGive a warning before music.',
+    whatHelps: [
+      'Here is a draft child profile for Marlow:',
+      'Offer a quiet corner.',
+      'Give a warning before music.',
+      'Explain the next activity first.',
+    ],
+  });
+  assert.equal(profile.summary.includes('Here is a draft'), false);
+  assert.equal(profile.summary, 'Offer a quiet corner.\nGive a warning before music.');
+  assert.deepEqual(profile.whatHelps, [
+    'Offer a quiet corner.',
+    'Give a warning before music.',
+    'Explain the next activity first.',
+  ]);
+});
+
+test("a bullet that starts with Here's stays when it is the help", () => {
+  const bullets = ["Here's a quiet corner.", 'Stay nearby.', 'Show what is next.'];
+  const profile = parseChildProfile({ ...sampleProfile(), whatHelps: bullets });
+  assert.deepEqual(profile.whatHelps, bullets);
+  assert.deepEqual(filterWhatHelps(profile.whatHelps), bullets);
 });
 
 test('a profile 502 is tried once more, and a bad request is not', async () => {
