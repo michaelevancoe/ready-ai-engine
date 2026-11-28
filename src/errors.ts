@@ -16,6 +16,7 @@ export const FALLBACK_REASONS = [
   'invalid_json',
   'truncated',
   'schema',
+  'preamble_only',
   'too_short',
   'child_detail_min',
   'church_detail',

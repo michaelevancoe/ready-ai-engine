@@ -59,12 +59,20 @@ export function parseChildProfile(value: unknown): ChildProfile {
     throw new SchemaRejected();
   }
   const summary = stripLeadingPreamble(value.summary);
+  const stripped = whatHelps.map((bullet) => stripLeadingPreamble(bullet));
+  const helps = stripped.filter((text) => text.length > 0);
+  const summaryWasPreamble = value.summary.trim().length > 0 && summary.length === 0;
+  const droppedPreambleBullet = stripped.some((text, index) => text.length === 0 && whatHelps[index]?.trim() !== '');
+  const minHelps = childProfileSchema.properties.whatHelps.minItems;
+  if (summaryWasPreamble || (droppedPreambleBullet && helps.length < minHelps)) {
+    throw new SchemaRejected('preamble_only');
+  }
   return {
-    summary: summary.length > 0 ? summary : value.summary.trim(),
+    summary,
     sensoryConsiderations,
     supportStrategies,
     avoid,
     volunteerGuidance: value.volunteerGuidance,
-    whatHelps,
+    whatHelps: helps,
   };
 }

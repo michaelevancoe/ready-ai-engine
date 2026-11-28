@@ -15,16 +15,34 @@ const BANNED = [
 
 const LEADING_PREAMBLE = /^here(?:'s|’s| is)\b/iu;
 
+const DRAFT_PROFILE_ONLY =
+  /^here(?:'s|’s| is)\s+(?:an?\s+)?draft(?:\s+child)?\s+profile(?:\s+for\s+[\p{L}\p{N}'’.-]+)?\s*[.!]?\s*$/iu;
+
+function preambleOnlyLine(line: string): boolean {
+  if (line.length === 0) return false;
+  if (/:\s*$/u.test(line)) return true;
+  return DRAFT_PROFILE_ONLY.test(line);
+}
+
+function stripPreambleLine(line: string): string {
+  if (line.length === 0 || preambleOnlyLine(line)) return '';
+  if (!LEADING_PREAMBLE.test(line)) return line;
+  const colon = line.indexOf(':');
+  if (colon === -1) return line;
+  return line.slice(colon + 1).trim();
+}
+
 export function stripLeadingPreamble(value: string): string {
   const trimmed = value.trim();
-  const lines = trimmed.split(/\r?\n/u);
-  const first = (lines[0] ?? '').trim();
-  if (!LEADING_PREAMBLE.test(first)) return trimmed;
-  const rest = lines.slice(1).join('\n').trim();
-  if (rest.length > 0) return rest;
-  const colon = first.indexOf(':');
-  if (colon === -1) return trimmed;
-  return first.slice(colon + 1).trim();
+  if (trimmed.length === 0) return '';
+  const lines = trimmed.split(/\r?\n/u).map((line) => line.trim());
+  const first = lines[0] ?? '';
+  const rest = lines.slice(1);
+  const laterPreamble = rest.some(preambleOnlyLine);
+  if (!LEADING_PREAMBLE.test(first) && !preambleOnlyLine(first) && !laterPreamble) return trimmed;
+  const head = stripPreambleLine(first);
+  const body = rest.filter((line) => line.length > 0 && !preambleOnlyLine(line));
+  return [head, ...body].filter((line) => line.length > 0).join('\n').trim();
 }
 
 export function filterWhatHelps(bullets: readonly string[]): readonly string[] {

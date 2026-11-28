@@ -474,6 +474,7 @@ function storyRetryHint(rejection: FallbackReason | undefined): string {
     case 'invalid_json':
     case 'truncated':
     case 'schema':
+    case 'preamble_only':
     case 'too_short':
     case 'church_detail':
     case 'safety':
