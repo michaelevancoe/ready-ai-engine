@@ -1104,7 +1104,7 @@ function ackRetryHint(rejection: FallbackReason | undefined): string {
       return '';
     case 'line_rejected_words':
     case 'line_rejected_length':
-      return `Rejected: ${rejection}. Name one concrete thing in at most 12 words.`;
+      return `Rejected: ${rejection}. Name one concrete thing in about 12 to 25 words.`;
     case 'line_rejected_shape':
       return 'Rejected: line_rejected_shape. Use one sentence that ends with a period.';
     case 'line_rejected_restatement':

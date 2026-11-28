@@ -1,11 +1,14 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { answerTree, approveBrief } from './walk-tree';
 
+const accountMode = process.env.READY_ACCOUNT_E2E === '1';
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 
 test('the story wait stays inside the card until the story arrives', async ({ page }) => {
+  test.skip(accountMode, 'account boot');
   const gate = hold(page, '/v1/drafts/social-story');
   await page.getByRole('button', { name: /Rowan, 7/ }).click();
   await page.getByRole('button', { name: "Read Rowan's story" }).click();
@@ -17,6 +20,7 @@ test('the story wait stays inside the card until the story arrives', async ({ pa
 });
 
 test('an acknowledgement wait stays inside the card until the reply arrives', async ({ page }) => {
+  test.skip(accountMode, 'account boot');
   const gate = hold(page, '/v1/drafts/acknowledgement');
   await page.getByRole('button', { name: 'Start with a new child' }).click();
   await send(page, 'Juniper', 'How old is Juniper');
@@ -30,6 +34,7 @@ test('an acknowledgement wait stays inside the card until the reply arrives', as
 });
 
 test('the summary and the leader draft each wait inside a card', async ({ page }) => {
+  test.skip(accountMode, 'account boot');
   test.setTimeout(120_000);
   const summary = hold(page, '/v1/intake/profile');
   await answerTree(page, 'Bright lights.');
