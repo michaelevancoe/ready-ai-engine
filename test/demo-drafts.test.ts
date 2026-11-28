@@ -2361,3 +2361,155 @@ test('a pronoun in a long-answer acknowledgement falls back with a safety reason
     console.error = original;
   }
 });
+
+test('a welcome desk, a plural toy, and an ordinary special morning stay in the story', () => {
+  const desk = personalPages();
+  desk.desk = 'At the Welcome Desk, Rowan checks in.';
+  assert.equal(parseSocialStory({ title: 'Sunday with Rowan', pages: desk }, rowanInput).pages.desk, desk.desk);
+
+  const morning = personalPages();
+  morning.arrive = 'Sunday is a special morning for Rowan at Example Harbor Fellowship.';
+  assert.equal(
+    parseSocialStory({ title: 'Sunday with Rowan', pages: morning }, rowanInput).pages.arrive,
+    morning.arrive,
+  );
+
+  const air = personalPages();
+  air.room = 'The Harbor Room has air conditioning. Rowan can hear one song.';
+  assert.equal(parseSocialStory({ title: 'Sunday with Rowan', pages: air }, rowanInput).pages.room, air.room);
+
+  const maya = {
+    childName: 'Maya',
+    church: harbor,
+    lines: [{ text: 'Maya loves dinosaurs and digging in the sand table.' }],
+  };
+  const dino = {
+    ...templateStoryPages(harbor),
+    helper: 'Maya can hold a Dinosaur.',
+    quiet: 'Maya can dig in the sand.',
+  };
+  assert.equal(parseSocialStory({ title: 'Sunday with Maya', pages: dino }, maya).pages.helper, dino.helper);
+
+  const jonah = {
+    childName: 'Jonah',
+    church: harbor,
+    lines: [{ text: 'Jonah loves Lego and building on the floor.' }],
+  };
+  const bricks = {
+    ...templateStoryPages(harbor),
+    helper: 'Jonah can hold Legos.',
+    quiet: 'Jonah can build on the floor.',
+  };
+  assert.equal(parseSocialStory({ title: 'Sunday with Jonah', pages: bricks }, jonah).pages.helper, bricks.helper);
+});
+
+test('allergy, medical, and unknown-name stories report the check that failed', () => {
+  assert.throws(
+    () => parseSocialStory({ title: 'Allergy Sunday with Rowan', pages: personalPages() }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'safety_allergy',
+  );
+  assert.throws(
+    () => parseSocialStory({ title: 'Autism Sunday with Rowan', pages: personalPages() }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'safety_medical',
+  );
+  assert.throws(
+    () => parseSocialStory({ title: 'Special needs Sunday with Rowan', pages: personalPages() }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'safety_banned_word',
+  );
+  const named = personalPages();
+  named.helper = 'Rowan meets Sam by the door.';
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Rowan', pages: named }, rowanInput),
+    (error: unknown) => rejectedReason(error) === 'safety_unknown_name',
+  );
+  const theo = {
+    childName: 'Theo',
+    church: harbor,
+    lines: [{ text: 'Theo likes a quiet hello and trains.' }],
+  };
+  const pronoun = {
+    ...templateStoryPages(harbor),
+    helper: 'Theo can hold a train. His picture can come along.',
+    quiet: 'Theo can look at a train.',
+  };
+  assert.throws(
+    () => parseSocialStory({ title: 'Sunday with Theo', pages: pronoun }, theo),
+    (error: unknown) => rejectedReason(error) === 'safety_pronoun',
+  );
+});
+
+test('the story prompt limits each page and a rejected draft is retried with the check name', async () => {
+  const parsed = parseSocialStoryRequest({
+    childName: 'Rowan',
+    church: harbor,
+    lines: [{ field: 'loves', label: 'Loves', text: 'Quiet songs.' }],
+  });
+  assert.ok(parsed);
+  if (parsed === null) return;
+  const system = socialStoryMessages(parsed).find((message) => message.role === 'system')?.content ?? '';
+  for (const phrase of [
+    'about 15 to 30 words',
+    'Stay in the third person on every page, including pickup.',
+    'Do not invent a person, a friend, or a family member who is not in the input.',
+    'Do not promise a feeling.',
+    'Do not hedge a church detail with likely.',
+  ]) {
+    assert.equal(system.includes(phrase), true, phrase);
+  }
+
+  const bad = personalPages();
+  bad.helper = 'Rowan meets Sam by the door.';
+  const good = personalPages();
+  const prompts: string[] = [];
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as { messages?: { role?: string; content?: string }[] };
+    prompts.push(body.messages?.find((message) => message.role === 'system')?.content ?? '');
+    const pages = calls === 0 ? bad : good;
+    calls += 1;
+    return chatEnvelope({ title: 'Sunday with Rowan', pages });
+  });
+  const response = await demo.handle(socialStory({ lines: [...rowanRequestLines], childName: 'Rowan' }));
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  const payload = (await response.json()) as { source?: string; pages?: StoryPages };
+  assert.equal(payload.source, 'model');
+  assert.equal(payload.pages?.helper, good.helper);
+  assert.equal(prompts[0]?.includes('safety_unknown_name'), false);
+  assert.equal(prompts[1]?.includes('safety_unknown_name'), true);
+  assert.equal(prompts[1]?.includes('Sam'), false);
+});
+
+test('a long answer keeps one short detail and retries a summary that is too long', async () => {
+  const kept = await acknowledgementFrom(
+    'The fox is named Pip. She also loves the boat story and holds Pip with her brother before they leave for the bakery.',
+    juniperAnswers.loves,
+  );
+  assert.equal(kept.calls, 1);
+  assert.deepEqual(kept.body, { relevant: true, line: 'The fox is named Pip.', clarifyingPrompt: '' });
+
+  const summary =
+    'Thank you for sharing the stuffed fox named Pip and the boat story and the bottle caps and the bakery window today.';
+  assert.equal(summary.split(/\s+/u).length > 20, true);
+  const short = 'Pip the fox can come along.';
+  const prompts: string[] = [];
+  let calls = 0;
+  const demo = DemoContext.fromBindings(liveShell(), async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as { messages?: { role?: string; content?: string }[] };
+    prompts.push(body.messages?.find((message) => message.role === 'system')?.content ?? '');
+    const line = calls === 0 ? summary : short;
+    calls += 1;
+    return chatEnvelope({ relevant: true, line, clarifyingPrompt: '' });
+  });
+  const response = await demo.handle(
+    post('/v1/drafts/acknowledgement', { answer: juniperAnswers.loves, nodeId: 'loves' }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(await response.json(), { relevant: true, line: short, clarifyingPrompt: '' });
+  assert.equal(prompts[1]?.includes('line_rejected_words'), true);
+  assert.equal(prompts[1]?.includes(juniperAnswers.loves.slice(0, 40)), false);
+  assert.equal(prompts[0]?.includes('When the answer is long, name one concrete thing in at most 12 words.'), true);
+});
