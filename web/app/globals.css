@@ -1427,6 +1427,23 @@ button.outline {
     min-height: 0;
   }
 
+  .sunday-print-page[data-print-size='12']:has(.sunday-schedule) .sunday-print-picture {
+    flex: 0 0 0.45in;
+    height: 0.45in;
+    max-height: 0.45in;
+    margin: 0.04in 0;
+  }
+
+  .sunday-print-page[data-print-size='12']:has(.sunday-schedule) .sunday-print-photo,
+  .sunday-print-page[data-print-size='12']:has(.sunday-schedule) .sunday-print-drawing {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    max-height: 100%;
+    min-height: 0;
+    object-fit: contain;
+  }
+
   .sunday-print-drawing {
     width: min(100%, 5.4in);
     height: auto;
@@ -1470,6 +1487,9 @@ button.outline {
   }
 
   .sunday-print-page[data-print-size='12'] .sunday-schedule {
+    flex-shrink: 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
     margin-top: 0.05in;
     padding: 0.02in 0.06in;
   }
