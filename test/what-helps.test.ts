@@ -326,6 +326,61 @@ test("a bullet that starts with Here's stays when it is the help", () => {
   assert.deepEqual(filterWhatHelps(profile.whatHelps), bullets);
 });
 
+test('a colon tail that is only the preamble is rejected', () => {
+  const tail = "Here's a draft profile for Theo: Here is a draft profile for Theo.";
+  assert.throws(
+    () =>
+      parseChildProfile({
+        ...sampleProfile(),
+        summary: tail,
+        whatHelps: [tail, tail, tail],
+      }),
+    (error: unknown) => error instanceof SchemaRejected && error.fallbackReason === 'preamble_only',
+  );
+  assert.deepEqual(filterWhatHelps([tail, 'Stay nearby.', 'Show what is next.']), [
+    'Stay nearby.',
+    'Show what is next.',
+  ]);
+});
+
+test('a real line that ends in a colon stays, and an allergy label still hides the bullet', () => {
+  const kept = parseChildProfile({
+    ...sampleProfile(),
+    summary: 'Marlow likes trains.\nBefore music:',
+    whatHelps: ['Offer a quiet corner:', 'Stay nearby.', 'Show what is next.'],
+  });
+  assert.equal(kept.summary, 'Marlow likes trains.\nBefore music:');
+  assert.deepEqual(kept.whatHelps, ['Offer a quiet corner:', 'Stay nearby.', 'Show what is next.']);
+  assert.deepEqual(
+    filterWhatHelps(['Allergy:\nPeanuts are unsafe.', 'Stay nearby.', 'Give a warning.', 'Medical:\nBring the inhaler.']),
+    ['Stay nearby.', 'Give a warning.'],
+  );
+});
+
+test('a draft-profile announcement with no other help is dropped', () => {
+  const lines = [
+    'Here is the draft child profile for Marlow.',
+    "Here's Marlow's draft child profile.",
+    'Here is a draft profile for Mary Jane.',
+  ];
+  assert.throws(
+    () => parseChildProfile({ ...sampleProfile(), summary: lines[0], whatHelps: lines }),
+    (error: unknown) => error instanceof SchemaRejected && error.fallbackReason === 'preamble_only',
+  );
+  assert.deepEqual(filterWhatHelps([...lines, 'Stay nearby.', 'Show what is next.']), [
+    'Stay nearby.',
+    'Show what is next.',
+  ]);
+  assert.throws(
+    () =>
+      parseChildProfile({
+        ...sampleProfile(),
+        summary: 'Here is a draft profile for Theo. Here is a draft profile for Theo.',
+      }),
+    (error: unknown) => error instanceof SchemaRejected && error.fallbackReason === 'preamble_only',
+  );
+});
+
 test('a profile 502 is tried once more, and a bad request is not', async () => {
   const original = globalThis.fetch;
   const calls: string[] = [];
