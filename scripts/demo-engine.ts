@@ -27,7 +27,7 @@ import { emptyMemoryAccessWorld, memoryAccessSource } from '../src/memory-access
 import { churchStore, ids, type MemoryStore } from '../src/memory-store.ts';
 import { childProfileSchemaName, type ChildProfile } from '../src/profile.ts';
 import { isRecord, type JsonSchema } from '../src/schema.ts';
-import { templateStoryPages, type StoryPages } from '../src/sunday-story-text.ts';
+import type { StoryPages } from '../src/sunday-story-text.ts';
 import { filterWhatHelps } from '../src/what-helps.ts';
 import { fictionalDemoEnv } from '../src/demo-env.ts';
 import { sessionAuthVerifier, sessionToken } from '../src/session-auth.ts';
@@ -269,23 +269,32 @@ export class DemoContext {
         try {
           return json(await write(), 200);
         } catch (again) {
-          if (again instanceof GenerateError) return json(fallbackAck(parsed, again.fallbackReason), 200);
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(again.fallbackReason)), 200);
           if (again instanceof RecentRepeat) return json(fallbackAck(parsed, 'line_rejected_repeat'), 200);
           if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
           throw again;
         }
       }
-      if (error instanceof GenerateError && ackCanRetry(error.fallbackReason)) {
+      if (error instanceof GenerateError && ackCanRetry(error.fallbackReason) && !this.gatewayBusy()) {
         try {
           return json(await write(error.fallbackReason), 200);
         } catch (again) {
-          if (again instanceof GenerateError) return json(fallbackAck(parsed, again.fallbackReason), 200);
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(again.fallbackReason)), 200);
           if (again instanceof RecentRepeat) return json(fallbackAck(parsed, 'line_rejected_repeat'), 200);
           if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
           throw again;
         }
       }
-      if (error instanceof GenerateError) return json(fallbackAck(parsed, error.fallbackReason), 200);
+      if (error instanceof GenerateError && error.reason === 'gateway' && !this.gatewayBusy()) {
+        try {
+          return json(await write(), 200);
+        } catch (again) {
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(again.fallbackReason)), 200);
+          if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
+          throw again;
+        }
+      }
+      if (error instanceof GenerateError) return json(fallbackAck(parsed, reportedAckReason(error.fallbackReason)), 200);
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
@@ -587,7 +596,7 @@ const acknowledgementSchema = {
   required: ['relevant', 'line', 'clarifyingPrompt'],
   properties: {
     relevant: { type: 'boolean' },
-    line: { type: 'string', minLength: 1, maxLength: 120 },
+    line: { type: 'string', minLength: 1, maxLength: 200 },
     clarifyingPrompt: { type: 'string', minLength: 0, maxLength: 120 },
   },
 } satisfies JsonSchema;
@@ -622,7 +631,7 @@ function readRecent(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > 3) return null;
   const lines: string[] = [];
   for (const item of value) {
-    if (typeof item !== 'string' || item.length > 120) return null;
+    if (typeof item !== 'string' || item.length > 200) return null;
     lines.push(item);
   }
   return lines;
@@ -633,10 +642,10 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Each answer should tell those volunteers something about this child relevant to the asked question.',
   'The data is fictional. Do not invent medical facts.',
   'Return relevant, line, and clarifyingPrompt.',
-  'line names one specific detail from the answer, in one sentence of at most 20 words.',
-  'When the answer is long, name one concrete thing in at most 12 words.',
-  'line is one warm, plain thank-you to the parent.',
-  'Do not reuse an opening from the recent lines.',
+  'line is a warm reply to the parent, in one or two sentences and about 12 to 25 words.',
+  'line thanks the parent or affirms the answer, names one detail from the answer, and says why that detail can help the church team.',
+  'Use can or may. Do not promise an outcome or a feeling, and do not write will, we will, or we\'ll.',
+  'Vary the opening. Do not reuse an opening from the recent lines.',
   'Do not generalise about individuals.',
   'Never mention a condition, diagnosis, or disability.',
   'Do not label the child.',
@@ -652,15 +661,16 @@ const ACKNOWLEDGEMENT_PROMPT = [
   'Relevant: "not sure" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "pizza rocket sandwich" for "What helps Rowan feel calm again when things get to be too much?"',
   'Not relevant: "asdf qwerty" for "What helps Rowan feel calm again when things get to be too much?"',
-  'Example of a line: "Pip the fox can come along." for an answer about a stuffed fox, about Mina rather than the child in the question.',
+  'Example: "Thank you. Knowing about the LEGO collection can help the volunteers connect on Sunday." for an answer that names a LEGO collection.',
+  'Example: "That is really helpful. The team can keep the room quieter when loud sounds start." for an answer about loud sounds.',
 ].join('\n');
 
 const ACK_FALLBACKS = [
-  'Thanks for sharing that.',
-  'Got it, that detail helps.',
-  'Thanks, that is useful.',
-  'Noted, that helps the team.',
-  'Thank you for that detail.',
+  'Thank you. That detail can help the volunteers prepare the room for Sunday.',
+  "That's really helpful. The team can use this when Sunday gets busy.",
+  'Thanks for saying so. This gives the volunteers a concrete place to start.',
+  'Noted, and thank you. The room team can keep this in mind on Sunday.',
+  'Thank you for that detail. It can help the volunteers prepare the room.',
 ] as const;
 
 const ACK_BLOCKED = ['autism', 'aphasia', 'diagnos', 'disorder', 'disabilit', 'impair', 'individuals'];
@@ -881,7 +891,7 @@ function mockAcknowledgement(answer: string, sectionId: SectionId): {
   const relevant = helpsPhrase ? false : judgeRelevance(answer);
   return {
     relevant,
-    line: 'Thanks. That helps.',
+    line: mockAckLine(answer, relevant),
     clarifyingPrompt: relevant ? '' : cannedPrompt(sectionId),
   };
 }
@@ -947,10 +957,18 @@ function parseAcknowledgement(
 function chooseLine(line: string, answer: string): string | null {
   if (lineAccepted(line, answer)) return line;
   for (const sentence of detailSentences(line)) {
-    if (!lineAccepted(sentence, answer) || !namesDetail(sentence, answer)) continue;
+    if (!detailAccepted(sentence, answer) || !namesDetail(sentence, answer)) continue;
     return sentence;
   }
   return null;
+}
+
+function detailAccepted(sentence: string, answer: string): boolean {
+  if (!surfaceAccepted(sentence, answer)) return false;
+  if (!/[.!]$/u.test(sentence)) return false;
+  if (sentence.includes('?') || PROMISED_ACK.test(sentence)) return false;
+  const words = sentence.trim().split(/\s+/u).length;
+  return words >= 1 && words <= 25 && ackSentences(sentence) === 1;
 }
 
 function detailSentences(line: string): string[] {
@@ -998,11 +1016,41 @@ function oneLine(value: string): string {
   return value.replace(/[\r\n]+/gu, ' ').replace(/ {2,}/gu, ' ').trim();
 }
 
+const PROMISED_ACK = /\bwill\b|we['’]ll\b/iu;
+
 function lineAccepted(line: string, answer: string): boolean {
   if (!surfaceAccepted(line, answer)) return false;
-  if (!line.endsWith('.') && !line.endsWith('!')) return false;
+  if (!/[.!]$/u.test(line)) return false;
   if (line.includes('?')) return false;
-  return line.trim().split(/\s+/u).length <= 20;
+  if (PROMISED_ACK.test(line)) return false;
+  const words = line.trim().split(/\s+/u).length;
+  if (words < 12 || words > 25) return false;
+  const sentences = ackSentences(line);
+  return sentences >= 1 && sentences <= 2;
+}
+
+function ackSentences(line: string): number {
+  const stripped = line.replace(/\b(?:Mr|Mrs|Ms|Dr|St)\./gu, '');
+  return stripped.match(/[.!]/gu)?.length ?? 0;
+}
+
+function mockAckLine(answer: string, relevant: boolean): string {
+  if (!relevant || uncertainOrNo(answer)) return ACK_FALLBACKS[0];
+  const detail = ackDetail(answer);
+  if (detail === null) return ACK_FALLBACKS[0];
+  return `Thank you. Knowing about ${detail} can help the volunteers prepare for Sunday.`;
+}
+
+function ackDetail(answer: string): string | null {
+  const tokens = (answer.toLowerCase().match(/[a-z0-9]+/gu) ?? []).filter((token) => !STOPWORDS.has(token));
+  for (const token of tokens) {
+    if (token.length < 4) continue;
+    if (CHILD_PRONOUN.test(token)) continue;
+    if (ACK_BLOCKED.some((word) => token.includes(word))) continue;
+    if (token.includes('allerg') || token.includes('peanut')) continue;
+    return token;
+  }
+  return null;
 }
 
 function promptAccepted(prompt: string, answer: string): boolean {
@@ -1011,7 +1059,7 @@ function promptAccepted(prompt: string, answer: string): boolean {
 }
 
 function surfaceAccepted(text: string, answer: string): boolean {
-  if (text.length < 1 || text.length > 120) return false;
+  if (text.length < 1 || text.length > 200) return false;
   if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text)) return false;
   const lower = text.toLowerCase();
   if (ACK_BLOCKED.some((word) => lower.includes(word))) return false;
@@ -1032,11 +1080,18 @@ function lineFallbackReason(line: string, answer: string): FallbackReason {
   const lower = line.toLowerCase();
   if (ACK_BLOCKED.some((word) => lower.includes(word))) return 'safety_banned_word';
   if (CHILD_PRONOUN.test(line)) return 'safety_pronoun';
-  if (line.length > 120) return 'line_rejected_length';
-  if (line.trim().split(/\s+/u).length > 20) return 'line_rejected_words';
+  if (line.length > 200) return 'line_rejected_length';
+  const words = line.trim().split(/\s+/u).length;
+  if (words > 25) return 'line_rejected_words';
+  if (PROMISED_ACK.test(line)) return 'line_rejected_shape';
   if (line.includes('?') || (!line.endsWith('.') && !line.endsWith('!'))) return 'line_rejected_shape';
   if (restatesAnswer(line, answer)) return 'line_rejected_restatement';
+  if (words < 12 || ackSentences(line) > 2) return 'line_rejected';
   return 'line_rejected_shape';
+}
+
+function reportedAckReason(reason: FallbackReason): FallbackReason {
+  return reason === 'line_rejected' ? 'line_rejected_shape' : reason;
 }
 
 function ackCanRetry(reason: FallbackReason): boolean {
@@ -1049,7 +1104,7 @@ function ackRetryHint(rejection: FallbackReason | undefined): string {
       return '';
     case 'line_rejected_words':
     case 'line_rejected_length':
-      return `Rejected: ${rejection}. Name one concrete thing in at most 12 words.`;
+      return `Rejected: ${rejection}. Name one concrete thing in about 12 to 25 words.`;
     case 'line_rejected_shape':
       return 'Rejected: line_rejected_shape. Use one sentence that ends with a period.';
     case 'line_rejected_restatement':
@@ -1090,13 +1145,30 @@ function mockSocialStory(
   church: StoryChurch,
   lines: readonly { readonly text: string }[],
 ): { title: string; pages: StoryPages } {
-  const pages = templateStoryPages(church);
   const details = personalWords(lines, childName);
   const first = details[0];
   const second = details[1];
-  const title = `Sunday with ${childName}`.slice(0, 120);
-  if (first === undefined || second === undefined) return { title, pages };
-  return { title, pages: { ...pages, quiet: `${childName} can see ${first} and ${second}.` } };
+  const detail = first !== undefined && second !== undefined ? `${first} and ${second}` : `the ${church.room}`;
+  return {
+    title: `Sunday with ${childName}`.slice(0, 120),
+    pages: toldPages(childName, church, detail),
+  };
+}
+
+function toldPages(childName: string, church: StoryChurch, detail: string): StoryPages {
+  const place = church.name;
+  const room = church.room;
+  const plan = church.plan.trim().replace(/[.!?]+$/u, '');
+  const lowered = `${plan.charAt(0).toLowerCase()}${plan.slice(1)}`;
+  return {
+    arrive: `${childName} and a grown-up go to ${place} for ${church.service}. The morning begins with the plan ${childName} can follow.`,
+    doors: `${childName} walks in the front doors at ${place}. A greeter smiles and says hello to ${childName} by name.`,
+    desk: `At the welcome desk, ${childName} checks in and gets a name tag. ${childName} can wait there with a grown-up before class.`,
+    room: `${childName} goes to the ${room} for ${lowered}. ${childName} can look at the Sunday schedule there.`,
+    helper: `${church.leader} and the helpers are in the ${room} with ${childName}. They stay nearby while ${childName} settles in.`,
+    quiet: `If ${childName} needs a break, a quiet spot in the ${room} is open. ${childName} can look at ${detail} and rest there.`,
+    pickup: `When the time is over, a grown-up comes back to the ${room} for ${childName}. ${childName} can leave with that grown-up.`,
+  };
 }
 
 function personalWords(lines: readonly { readonly text: string }[], childName: string): string[] {

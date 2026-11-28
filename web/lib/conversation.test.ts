@@ -98,7 +98,7 @@ test('no known allergies closes the follow-up and any other allergy answer opens
   assert.equal(open.talk.nodeId, 'allergies-more');
   assert.equal(
     promptOf(open),
-    'One more about allergies and health: what happens for Rowan, and what should a volunteer do?',
+    'If Rowan has an allergic reaction, what should we do?',
   );
   const closed = say(atAllergies(), 'No known allergies');
   assert.equal(closed.answers['allergies-more'], undefined);
@@ -213,8 +213,7 @@ test('an example brief keeps the fixture name and does not store answers', () =>
   assert.equal(maya.name, 'Maya');
   assert.equal(maya.ageYears, 5);
   assert.equal(maya.cards.find((card) => card.sectionId === 'allergies')?.text.includes('peanut'), true);
-  assert.equal([...maya.photos, ...maya.cards.map((card) => card.text)].join(' ').includes('His'), false);
-  assert.deepEqual(maya.photos, ['Maya', 'Her dinosaurs', 'A dim corner']);
+  assert.equal(maya.cards.map((card) => card.text).join(' ').includes('His'), false);
   assert.equal(maya.cards.every((card) => card.updated === false), true);
   assert.equal(reduceConversation(intakeTree, opened, { type: 'chooseSection', sectionId: 'communication' }), opened);
   const approved = reduceConversation(intakeTree, opened, { type: 'approve' });
@@ -243,13 +242,11 @@ test('an example brief keeps the fixture name and does not store answers', () =>
   assert.equal(jonah.name, 'Jonah');
   assert.equal(jonah.ageYears, 9);
   assert.equal(jonah.cards.find((card) => card.sectionId === 'communication')?.text.includes('picture cards'), true);
-  assert.deepEqual(jonah.photos, ['Jonah', 'His Lego', 'Picture cards']);
   const rowan = parentBrief(
     intakeTree,
     reduceConversation(intakeTree, initialConversation(), { type: 'openExample', id: 'rowan' }),
   );
   assert.equal(rowan.ageYears, 7);
-  assert.deepEqual(rowan.photos, ['Rowan', 'His headphones', 'Quiet corner']);
   assert.equal(rowan.summary.includes('Disney'), true);
   assert.equal(rowan.summary.includes('quiet breaks'), true);
 });
@@ -303,7 +300,6 @@ test('Theo at age 8 is the brief, and name and age need no acknowledgement', () 
   assert.equal(drafted.kind, 'brief');
   if (drafted.kind !== 'brief') return;
   assert.equal(drafted.actions, 'draft');
-  assert.deepEqual(drafted.brief.photos, ['Theo', 'Headphones', 'Quiet corner']);
   const approved = reduceConversation(intakeTree, finished, { type: 'approve' });
   const ready = presentAsk(intakeTree, approved);
   assert.equal(ready.kind, 'approved');
@@ -445,7 +441,9 @@ test('a none phrase skips the allergy follow-up and a real allergy opens it', ()
     assert.equal(view.kind, 'question');
     if (view.kind !== 'question') return;
     assert.equal(view.mark.includes('ONE MORE'), true, view.mark);
-    assert.equal(view.prompt.startsWith('One more about allergies and health:'), true, view.prompt);
+    assert.equal(view.prompt, 'If Rowan has an allergic reaction, what should we do?', view.prompt);
+    assert.equal(view.help, "Tell us the steps you'd want the team to take, and who to call.", view.prompt);
+    assert.equal(view.progress, 'Section 8 of 9 · Allergies & health', view.prompt);
   }
   const helps = say(atHelps(), 'Headphones.');
   const more = presentAsk(intakeTree, helps);

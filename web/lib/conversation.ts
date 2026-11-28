@@ -52,7 +52,6 @@ export interface ParentBrief {
   readonly name: string;
   readonly ageYears: number;
   readonly summary: string;
-  readonly photos: readonly [string, string, string];
   readonly cards: readonly BriefCard[];
 }
 
@@ -75,6 +74,7 @@ export type AskView =
       readonly index: number;
       readonly total: number;
       readonly placeholder: string;
+      readonly help: string | null;
       readonly chips: readonly string[];
       readonly closeChip: string | null;
       readonly exactChip: string | null;
@@ -206,7 +206,6 @@ export function parentBrief(tree: IntakeTree, conversation: Conversation): Paren
     name: child.preferredName,
     ageYears: child.ageYears,
     summary: sectionProse(tree, conversation, 'about'),
-    photos: [child.preferredName, 'Headphones', 'Quiet corner'],
     cards: tree.sections.flatMap((section) => {
       if (section.id === 'about') return [];
       return [
@@ -424,6 +423,7 @@ function questionView(tree: IntakeTree, conversation: Conversation): AskView {
     index,
     total: tree.sections.length,
     placeholder: node.placeholder,
+    help: node.help ?? null,
     chips: node.chips ?? [],
     closeChip: node.closeChip ?? null,
     exactChip: node.chips?.includes('No known allergies') === true ? 'No known allergies' : null,
@@ -463,7 +463,6 @@ function exampleParentBrief(id: ExampleId): ParentBrief {
     name: example.name,
     ageYears: example.ageYears,
     summary: example.summary,
-    photos: example.photos,
     cards: example.cards.map((card) => ({ ...card, updated: false })),
   };
 }

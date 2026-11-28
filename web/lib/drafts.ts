@@ -146,7 +146,7 @@ function readUpdate(value: unknown): SundayUpdate | null {
 function readAcknowledgement(
   value: unknown,
 ): { relevant: boolean; line: string; clarifyingPrompt: string } | null {
-  if (!isRecord(value) || typeof value.relevant !== 'boolean' || !isBounded(value.line, 1, 160)) return null;
+  if (!isRecord(value) || typeof value.relevant !== 'boolean' || !isBounded(value.line, 1, 200)) return null;
   if (typeof value.clarifyingPrompt !== 'string' || value.clarifyingPrompt.length > 400) return null;
   return { relevant: value.relevant, line: value.line, clarifyingPrompt: value.clarifyingPrompt };
 }

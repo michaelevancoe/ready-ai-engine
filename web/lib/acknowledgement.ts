@@ -1,4 +1,4 @@
-export const ACK_FALLBACK = "That's really helpful.";
+export const ACK_FALLBACK = 'Thank you. That detail can help the volunteers prepare the room for Sunday.';
 
 export type AckResult =
   | {

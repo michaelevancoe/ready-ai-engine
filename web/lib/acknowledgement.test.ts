@@ -10,11 +10,17 @@ const irrelevant = {
 };
 
 test('a timeout, an error, or a blank line uses the fallback', () => {
-  assert.equal(acknowledgementLine({ kind: 'timeout' }), "That's really helpful.");
-  assert.equal(acknowledgementLine({ kind: 'error' }), "That's really helpful.");
+  assert.equal(
+    acknowledgementLine({ kind: 'timeout' }),
+    'Thank you. That detail can help the volunteers prepare the room for Sunday.',
+  );
+  assert.equal(
+    acknowledgementLine({ kind: 'error' }),
+    'Thank you. That detail can help the volunteers prepare the room for Sunday.',
+  );
   assert.equal(
     acknowledgementLine({ kind: 'line', relevant: true, line: '   ', clarifyingPrompt: '' }),
-    "That's really helpful.",
+    'Thank you. That detail can help the volunteers prepare the room for Sunday.',
   );
   assert.equal(
     acknowledgementLine({
@@ -33,11 +39,11 @@ test('the first irrelevant answer is asked again and the next one is kept', () =
   assert.deepEqual(decideAck(2, irrelevant), { action: 'accept', line: 'Thanks. That helps.' });
   assert.deepEqual(decideAck(0, { kind: 'timeout' }), {
     action: 'accept',
-    line: "That's really helpful.",
+    line: 'Thank you. That detail can help the volunteers prepare the room for Sunday.',
   });
   assert.deepEqual(decideAck(0, { kind: 'error' }), {
     action: 'accept',
-    line: "That's really helpful.",
+    line: 'Thank you. That detail can help the volunteers prepare the room for Sunday.',
   });
   assert.deepEqual(
     decideAck(0, { kind: 'line', relevant: true, line: 'Thanks. That helps.', clarifyingPrompt: 'Again?' }),
