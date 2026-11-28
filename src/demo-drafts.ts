@@ -116,10 +116,12 @@ const SOCIAL_STORY_RULES = [
 const SUNDAY_RULES = [
   'The data is fictional. Do not invent medical facts.',
   "Write a short warm note from the children's ministry leader to the parent, in your own words, summarizing how Sunday went.",
+  'Open with "Hi," as a greeting to the parent.',
+  'Use short sentences. Keep each sentence under 25 words.',
   'Mention wins and what helped.',
   'Invent nothing beyond the notes and the names.',
   'Do not copy the notes.',
-  'Do not add a sign-off. Ready adds the leader and the church.',
+  'Do not add a sign-off. The note is signed by the leader. Ready adds the leader and the church.',
   'Do not open with the leader at the church, such as "Jordan at Harbor Church:".',
   "Do not write a bracketed placeholder such as [Name] or [Volunteer's Name].",
 ].join(' ');
@@ -1029,7 +1031,35 @@ export function parseSundayUpdate(
   );
   const prose = stripSundaySignOff(stripped, signature.leader, signature.church).trim();
   if (!updateBodyAccepted(prose, notes, childName)) throw new SchemaRejected();
+  if (!sundayNoteOpensWell(prose)) throw new SchemaRejected('line_rejected_shape');
   return { body: finishSundayNote(stripped, signature.leader, signature.church) };
+}
+
+const NOTE_SENTENCE_MAX = 25;
+
+function sundayNoteOpensWell(prose: string): boolean {
+  const text = prose.trim();
+  if (!/^hi\b/iu.test(text)) return false;
+  const sentences = sentencesIn(text);
+  if (sentences.length === 0) return false;
+  return sentences.every((sentence) => sentence.trim().split(/\s+/u).length <= NOTE_SENTENCE_MAX);
+}
+
+export function templateSundayNote(request: SundayUpdateRequest): string {
+  const noted = firstNoteWords(request.notes);
+  const visit = `${request.childName} had a Sunday with the team.`;
+  const prose = noted.length === 0 ? `Hi,\n\n${visit}` : `Hi,\n\n${visit} ${noted}`;
+  return finishSundayNote(prose, request.leader, request.church);
+}
+
+function firstNoteWords(notes: string): string {
+  const words = notes
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => word.length > 0)
+    .slice(0, 18);
+  if (words.length === 0) return '';
+  return `${words.join(' ').replace(/[.!?]+$/u, '')}.`;
 }
 
 export function finishSundayNote(body: string, leader: string, church: string): string {

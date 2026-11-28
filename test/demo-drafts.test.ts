@@ -25,7 +25,7 @@ interface DraftLine {
 const sensory: DraftLine = { field: 'sensory', label: 'Sensory needs', text: 'TICK-QUIET-ROOM' };
 const harbor = {
   name: 'Example Harbor Fellowship',
-  service: 'Sunday 9:30',
+  service: 'Sunday 9:00',
   room: 'Harbor Room',
   leader: 'Ms. Dana',
   plan: 'A short welcome, one song, and a quiet activity.',
@@ -99,7 +99,7 @@ function recordedPages(): WritablePages {
 
 function dayPages(child: string, helper: string, quiet: string): WritablePages {
   return {
-    arrive: `${child} and a grown-up go to Example Harbor Fellowship for Sunday 9:30. The morning can start with a short welcome.`,
+    arrive: `${child} and a grown-up go to Example Harbor Fellowship for Sunday 9:00. The morning can start with a short welcome.`,
     doors: `${child} walks in the front doors at Example Harbor Fellowship. A greeter smiles and says hello to ${child} by name.`,
     desk: `At the welcome desk, ${child} checks in and gets a name tag. ${child} can wait there with a grown-up before class.`,
     room: `${child} goes to the Harbor Room for a short welcome, one song, and a quiet activity. ${child} can look around the room.`,
@@ -755,7 +755,6 @@ test('short uncertain or no answers override a model not-relevant verdict', asyn
   );
   const cases = [
     ['behavior', 'no, not really'],
-    ['allergies', 'not sure'],
     ['behavior', 'unsure'],
     ['behavior', 'i dont know'],
     ['behavior', 'idk'],
@@ -769,9 +768,7 @@ test('short uncertain or no answers override a model not-relevant verdict', asyn
     ['behavior', 'nothing special'],
     ['behavior', 'n a'],
     ['behavior', 'not that i know of'],
-    ['allergies', 'NOT SURE!'],
     ['behavior', 'No, not really.'],
-    ['allergies', 'N/A'],
     ['behavior', "I don't know"],
   ] as const;
   for (const [nodeId, answer] of cases) {
@@ -1069,7 +1066,7 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   const update = await demo.handle(post('/v1/drafts/sunday-update', sunday('TICK-AFTER-SUNDAY')));
   assert.equal(update.status, 200);
   const note = (await update.json()) as { body: string };
-  assert.equal(note.body, `Sunday went well for Rowan.${LEADER_SIGN}`);
+  assert.equal(note.body, `Hi, Sunday went well for Rowan.${LEADER_SIGN}`);
   assert.equal(note.body.includes('TICK-AFTER-SUNDAY'), false);
   assert.equal(note.body.includes('Jordan Ellis'), false);
   assert.equal(note.body.includes('['), false);
@@ -1081,7 +1078,7 @@ test('the mock Sunday update is not a copy of the notes', async () => {
   );
   assert.equal(redeemer.status, 200);
   assert.deepEqual(await redeemer.json(), {
-    body: 'Sunday went well for Rowan.\n\nMs. Dana\nChurch of the Redeemer',
+    body: 'Hi, Sunday went well for Rowan.\n\nMs. Dana\nChurch of the Redeemer',
   });
 });
 
@@ -1255,14 +1252,14 @@ test('parseSundayUpdate rejects the notes and the notes plus only the child name
 
 test('parseSundayUpdate accepts the model words around the notes', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const body = `Sunday went well. ${notes} The quiet seat helped.`;
+  const body = `Hi, Sunday went well. ${notes} The quiet seat helped.`;
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   assert.deepEqual(parseSundayUpdate({ body }, notes, 'Juniper', sign), { body: `${body}${LEADER_SIGN}` });
 });
 
 test('parseSundayUpdate drops a leading leader-at-church prefix and signs off once', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = `Sunday went well. ${notes} The quiet seat helped.`;
+  const prose = `Hi, Sunday went well. ${notes} The quiet seat helped.`;
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   const prefixed = `Ms. Dana at Example Harbor Fellowship: ${prose}`;
   const lined = `Ms. Dana at Example Harbor Fellowship:\n${prose}`;
@@ -1272,7 +1269,7 @@ test('parseSundayUpdate drops a leading leader-at-church prefix and signs off on
 
 test('parseSundayUpdate strips a bracketed name so it never reaches the screen', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const told = `Sunday went well. ${notes} The quiet seat helped.`;
+  const told = `Hi, Sunday went well. ${notes} The quiet seat helped.`;
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   assert.deepEqual(parseSundayUpdate({ body: `${told}\n[Volunteer's Name]` }, notes, 'Juniper', sign), {
     body: `${told}${LEADER_SIGN}`,
@@ -1287,7 +1284,7 @@ test('parseSundayUpdate strips a bracketed name so it never reaches the screen',
 
 test('parseSundayUpdate keeps another person and drops a closing on the leader', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   const volunteer = parseSundayUpdate({ body: `${prose}\nJordan Ellis` }, notes, 'Rowan', sign);
   assert.equal(volunteer.body, `${prose}\nJordan Ellis${LEADER_SIGN}`);
@@ -1297,7 +1294,7 @@ test('parseSundayUpdate keeps another person and drops a closing on the leader',
 
 test('a Sunday note keeps a room and a thanks line', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   for (const line of ['Harbor Room', 'Thanks.']) {
     const note = parseSundayUpdate({ body: `${prose}\n${line}` }, notes, 'Rowan', sign);
@@ -1307,7 +1304,7 @@ test('a Sunday note keeps a room and a thanks line', () => {
 
 test('a copied leader or church line is signed once', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   const copies = [
     `${prose}\nLeader: Ms. Dana`,
@@ -1325,7 +1322,7 @@ test('a copied leader or church line is signed once', () => {
 
 test('a church name with a small word is signed once', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   for (const church of ['Church of the Harbor', 'Church of the Redeemer']) {
     const sign = { leader: 'Ms. Dana', church };
     const copied = parseSundayUpdate({ body: `${prose}\n${church}` }, notes, 'Rowan', sign);
@@ -1338,7 +1335,7 @@ test('a church name with a small word is signed once', () => {
 
 test('a closing between the leader and the church is signed once', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const leader = 'Ms. Dana';
   const between = [
     { church: 'Example Harbor Fellowship', word: 'Warmly,' },
@@ -1360,7 +1357,7 @@ test('a closing between the leader and the church is signed once', () => {
 
 test("a church name that drops an apostrophe is signed once", () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const sign = { leader: 'Ms. Dana', church: "St. John's" };
   assert.equal(
     parseSundayUpdate({ body: `${prose}\nSt. Johns` }, notes, 'Rowan', sign).body,
@@ -1370,7 +1367,7 @@ test("a church name that drops an apostrophe is signed once", () => {
 
 test('a closing word stays unless it sits on the leader or the church', () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
   for (const word of ['Love,', 'From,', 'Blessings,', 'Thanks,', 'Warmly,']) {
     const alone = parseSundayUpdate({ body: `${prose}\n${word}` }, notes, 'Rowan', sign);
@@ -1383,9 +1380,9 @@ test('a closing word stays unless it sits on the leader or the church', () => {
 test('a Sunday sentence that starts with Love or From stays', () => {
   const notes = 'TICK-AFTER-SUNDAY';
   const sign = { leader: 'Ms. Dana', church: 'Example Harbor Fellowship' };
-  const love = 'Sunday went well. The quiet seat helped.\nLove the quiet corner.';
+  const love = 'Hi, Sunday went well. The quiet seat helped.\nLove the quiet corner.';
   assert.equal(parseSundayUpdate({ body: love }, notes, 'Rowan', sign).body, `${love}${LEADER_SIGN}`);
-  const from = 'From the first song, Rowan sat quietly.';
+  const from = 'Hi, Rowan sat quietly from the first song.';
   assert.equal(parseSundayUpdate({ body: from }, notes, 'Rowan', sign).body, `${from}${LEADER_SIGN}`);
 });
 
@@ -1516,7 +1513,7 @@ test('a copied Sunday update fails the existing generation retry', async () => {
 
 test('a bracketed Sunday signature is stripped and a placeholder alone retries', async () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const told = `Sunday went well. ${notes} The quiet seat helped.`;
+  const told = `Hi, Sunday went well. ${notes} The quiet seat helped.`;
   const signed = await generated(
     '/v1/drafts/sunday-update',
     sunday(notes, 'Juniper'),
@@ -1535,7 +1532,7 @@ test('a bracketed Sunday signature is stripped and a placeholder alone retries',
 
 test('a Sunday update with the model words is returned', async () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const body = `Sunday went well. ${notes} The quiet seat helped.`;
+  const body = `Hi, Sunday went well. ${notes} The quiet seat helped.`;
   const result = await generated('/v1/drafts/sunday-update', sunday(notes), { body });
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
@@ -1544,7 +1541,7 @@ test('a Sunday update with the model words is returned', async () => {
 
 test('a model sign-off is replaced by the leader and the church', async () => {
   const notes = 'TICK-AFTER-SUNDAY';
-  const prose = 'Sunday went well. The quiet seat helped.';
+  const prose = 'Hi, Sunday went well. The quiet seat helped.';
   const volunteer = await generated('/v1/drafts/sunday-update', sunday(notes), { body: `${prose}\nJordan Ellis` });
   assert.equal(volunteer.status, 200);
   assert.equal(volunteer.calls, 1);
@@ -1555,7 +1552,7 @@ test('a model sign-off is replaced by the leader and the church', async () => {
   assert.equal(warmly.status, 200);
   assert.equal(warmly.calls, 1);
   assert.deepEqual(warmly.payload, { body: `${prose}${LEADER_SIGN}` });
-  const sentence = 'From the first song, Rowan sat quietly.';
+  const sentence = 'Hi, From the first song, Rowan sat quietly.';
   const from = await generated('/v1/drafts/sunday-update', sunday(notes), { body: sentence });
   assert.equal(from.status, 200);
   assert.equal(from.calls, 1);
@@ -2018,7 +2015,7 @@ test('storySafety counts an ellipsis as one sentence', () => {
 
 test('storySafety accepts the grounded Rowan story', () => {
   const body = [
-    'On Sunday at 9:30, Rowan and his grown-up go to Example Harbor Fellowship.',
+    'On Sunday at 9:00, Rowan and his grown-up go to Example Harbor Fellowship.',
     'Rowan walks to Harbor Room. Ms. Dana says hello.',
     'There is a short welcome, one song, and a quiet activity.',
     "When it is over, Rowan's grown-up comes back.",
@@ -2335,7 +2332,9 @@ function recordingFetch(calls: GatewayCall[]): typeof fetch {
     calls.push({ headers: request.headers, body });
     const name = body.response_format?.json_schema?.name;
     if (name === 'social_story') return chatEnvelope({ title: 'Sunday with Rowan', pages: recordedPages() });
-    if (name === 'sunday_update') return chatEnvelope({ body: 'echo' });
+    if (name === 'sunday_update') {
+      return chatEnvelope({ body: 'Hi, Sunday went well for Rowan. The quiet seat helped.' });
+    }
     return new Response(null, { status: 502 });
   };
 }

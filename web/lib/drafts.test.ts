@@ -5,7 +5,7 @@ import { postSocialStory } from './drafts.ts';
 
 const harbor = {
   name: 'Example Harbor Fellowship',
-  service: 'Sunday 9:30',
+  service: 'Sunday 9:00',
   room: 'Harbor Room',
   leader: 'Ms. Dana',
   plan: 'A short welcome, one song, and a quiet activity.',

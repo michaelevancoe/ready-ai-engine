@@ -42,7 +42,7 @@ test('an older plan that still carries a lesson saves the church and skips the l
     organizationId: scope.organizationId,
     church: {
       name: 'Fictional Harbor',
-      service: 'Sunday 9:30',
+      service: 'Sunday 9:00',
       room: 'Harbor Room',
       leader: 'Ms. Dana',
       ages: 'Ages 5-12',

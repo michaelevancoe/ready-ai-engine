@@ -82,7 +82,7 @@ test('account boot chooses the one church and restores the leader row', async ()
       return Response.json([
         {
           name: 'Harbor',
-          service: 'Sunday 9:30',
+          service: 'Sunday 9:00',
           room: 'Harbor Room',
           leader_label: 'Ms. Dana',
           ages: 'Ages 5-12',
@@ -128,7 +128,7 @@ test('an older approved lesson row does not block boot and is not copied onto th
       return Response.json([
         {
           name: 'Harbor',
-          service: 'Sunday 9:30',
+          service: 'Sunday 9:00',
           room: 'Harbor Room',
           leader_label: 'Ms. Dana',
           ages: 'Ages 5-12',
