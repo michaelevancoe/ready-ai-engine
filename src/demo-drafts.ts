@@ -784,10 +784,15 @@ export function parseSocialStory(
   if (value.title.length < 1 || value.title.length > 120) throw new SchemaRejected('schema');
   const templates = templateStoryPages(input.church);
   const pages = {} as { [beat in StoryBeat]: string };
+  let modelPages = 0;
   for (const beat of STORY_BEATS) {
     const raw = value.pages[beat];
-    pages[beat] = typeof raw === 'string' ? keptPage(raw, templates[beat]) : templates[beat];
+    if (typeof raw !== 'string') throw new SchemaRejected('truncated');
+    const kept = keptPage(raw, templates[beat]);
+    pages[beat] = kept.text;
+    if (kept.fromModel) modelPages += 1;
   }
+  if (modelPages < 5) throw new SchemaRejected('schema');
   const body = STORY_BEATS.map((beat) => pages[beat]).join('\n');
   if (!storyBodyAccepted(body)) throw new SchemaRejected('schema');
   if (!storySafety({ title: value.title, body }, input)) throw new SchemaRejected('safety');
@@ -797,12 +802,24 @@ export function parseSocialStory(
   return { title: value.title, pages };
 }
 
-function keptPage(raw: string, template: string): string {
-  if (raw.length > SUNDAY_STORY_PAGE_MAX) return template;
+function keptPage(raw: string, template: string): { readonly text: string; readonly fromModel: boolean } {
+  if (unfinishedProse(raw)) throw new SchemaRejected('truncated');
+  if (raw.length > SUNDAY_STORY_PAGE_MAX) return { text: template, fromModel: false };
   const sentences = sentencesIn(raw);
   const candidate =
     sentences.length > 2 ? sentences.slice(0, 2).map((sentence) => sentence.trim()).join(' ') : raw.trim();
-  return beatKept(candidate) ? candidate : template;
+  if (!beatKept(candidate)) return { text: template, fromModel: false };
+  if (!pageEnds(candidate)) throw new SchemaRejected('truncated');
+  return { text: candidate, fromModel: true };
+}
+
+function unfinishedProse(text: string): boolean {
+  const trimmed = text.trim();
+  return hasLetterOrNumber(trimmed) && !pageEnds(trimmed) && storyBodyAccepted(trimmed);
+}
+
+function pageEnds(text: string): boolean {
+  return /[.!?]["'”’]*$/u.test(text.trim());
 }
 
 export function fallbackSocialStory(request: SocialStoryRequest): {

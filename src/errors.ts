@@ -14,6 +14,7 @@ export class ConfigError extends Error {
 
 export const FALLBACK_REASONS = [
   'invalid_json',
+  'truncated',
   'schema',
   'too_short',
   'child_detail_min',

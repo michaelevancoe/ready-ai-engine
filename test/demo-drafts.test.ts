@@ -2253,6 +2253,11 @@ test('an extra closing field is ignored and a third sentence stays off the page'
     rowanInput,
   );
   assert.equal(trimmed.pages.doors, 'Rowan can hold a Disney story. Rowan smiles at the doorway.');
+  const quoted = { ...pages, pickup: 'You are welcome here, Rowan."' };
+  assert.equal(
+    parseSocialStory({ title: 'Sunday with Rowan', pages: quoted }, rowanInput).pages.pickup,
+    quoted.pickup,
+  );
 });
 
 test('a short name and a hedged seat survive, and safety reasons stay distinct', () => {
