@@ -93,6 +93,7 @@ async function handleIntake(request: Request, deps: AppDeps): Promise<Response> 
     env: deps.env,
     fetch: deps.fetch,
     log: deps.log,
+    maxTokens: 256,
   });
   const saved = await store.insertDraft({
     organizationId: intake.organizationId,

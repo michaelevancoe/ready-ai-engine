@@ -12,9 +12,19 @@ export interface SafeLog {
   model: string;
   outcome: LogOutcome;
   statusClass?: StatusClass;
+  fallbackReason?: string;
 }
 
-const SAFE_KEYS = ['endpoint', 'attempt', 'phase', 'provider', 'model', 'outcome', 'statusClass'] as const;
+const SAFE_KEYS = [
+  'endpoint',
+  'attempt',
+  'phase',
+  'provider',
+  'model',
+  'outcome',
+  'statusClass',
+  'fallbackReason',
+] as const;
 
 export function emitSafe(event: SafeLog): void {
   const payload: Record<string, string | number> = {};

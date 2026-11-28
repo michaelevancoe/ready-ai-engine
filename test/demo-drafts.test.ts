@@ -287,8 +287,7 @@ test('a long answer is acknowledged from its first 1500 characters', async () =>
   assert.equal(calls, replies.length);
   const first = sent[0] ?? '';
   const told = first.slice('Answer: '.length, first.indexOf('\nSection: '));
-  assert.equal(told, juniperAnswers.loves.slice(0, 1500));
-  assert.equal(told.length, 1500);
+  assert.equal(told, juniperAnswers.loves);
   assert.equal(juniperAnswers.loves.length > 1500 && juniperAnswers.loves.length <= 2000, true);
   assert.equal(sent[4]?.includes(replies[1]), true);
   assert.equal(sent[4]?.includes(replies[2]), true);
@@ -319,7 +318,12 @@ test('an acknowledgement longer than twenty words falls back without a second ca
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('the client sends the last three acknowledgement lines', async () => {
@@ -415,14 +419,24 @@ test('a cut-off acknowledgement falls back', async () => {
   const result = await acknowledgementFrom('Thank you for telling me tha');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('an acknowledgement with a non-Latin character falls back', async () => {
   const result = await acknowledgementFrom('Thank you, that helps噪.');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'safety',
+  });
 });
 
 test('an acknowledgement that names a diagnosis falls back', async () => {
@@ -430,7 +444,11 @@ test('an acknowledgement that names a diagnosis falls back', async () => {
     const result = await acknowledgementFrom(`Thank you for the note on ${word}.`);
     assert.equal(result.status, 200, word);
     assert.equal(result.calls, 1, word);
-    assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' }, word);
+    assert.deepEqual(
+      result.body,
+      { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '', fallbackReason: 'safety' },
+      word,
+    );
   }
 });
 
@@ -440,14 +458,24 @@ test('an acknowledgement longer than 120 characters falls back', async () => {
   const result = await acknowledgementFrom(line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('an acknowledgement with a question mark falls back', async () => {
   const result = await acknowledgementFrom('Really? That helps.');
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('an acknowledgement that uses a child pronoun falls back', async () => {
@@ -455,7 +483,11 @@ test('an acknowledgement that uses a child pronoun falls back', async () => {
     const result = await acknowledgementFrom(line);
     assert.equal(result.status, 200, line);
     assert.equal(result.calls, 1, line);
-    assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' }, line);
+    assert.deepEqual(
+      result.body,
+      { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '', fallbackReason: 'safety' },
+      line,
+    );
   }
 });
 
@@ -464,7 +496,12 @@ test('an acknowledgement that repeats the answer falls back', async () => {
   const result = await acknowledgementFrom(line, line);
   assert.equal(result.status, 200);
   assert.equal(result.calls, 1);
-  assert.deepEqual(result.body, { relevant: true, line: PARENT_FALLBACK, clarifyingPrompt: '' });
+  assert.deepEqual(result.body, {
+    relevant: true,
+    line: PARENT_FALLBACK,
+    clarifyingPrompt: '',
+    fallbackReason: 'line_rejected',
+  });
 });
 
 test('a live off-topic answer keeps the model not-relevant verdict', async () => {
@@ -712,6 +749,7 @@ test('a thrown acknowledgement fetch records the schema and the intake endpoint'
       relevant: true,
       line: 'Thanks for sharing that.',
       clarifyingPrompt: '',
+      fallbackReason: 'upstream_error',
     });
     assert.ok(calls.length >= 1);
     const user = calls[0]?.body.messages?.find((message) => message.role === 'user')?.content ?? '';
@@ -900,7 +938,7 @@ test('parseSocialStory rejects a care-plan title', () => {
   );
 });
 
-test('parseSocialStory fills an empty page or a page with three sentences from the template', () => {
+test('parseSocialStory fills an empty page from the template and keeps the first two sentences', () => {
   const template = templateStoryPages(harbor);
   const pages = personalPages();
   const parsed = parseSocialStory(
@@ -914,7 +952,7 @@ test('parseSocialStory fills an empty page or a page with three sentences from t
     },
     rowanInput,
   );
-  assert.equal(parsed.pages.doors, template.doors);
+  assert.equal(parsed.pages.doors, 'Rowan waves. Rowan smiles.');
   assert.equal(parsed.pages.pickup, template.pickup);
   assert.equal(parsed.pages.helper, pages.helper);
 });
@@ -1155,7 +1193,11 @@ test('a story that is not seven pages retries once and then uses the template', 
   );
   assert.equal(dict.status, 200);
   assert.equal(dict.calls, 2);
-  assert.deepEqual(dict.payload, fallback);
+  assert.deepEqual(dict.payload, {
+    ...fallback,
+    fallbackReason: 'schema',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
   const missingName = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Al', church: harbor },
@@ -1163,7 +1205,11 @@ test('a story that is not seven pages retries once and then uses the template', 
   );
   assert.equal(missingName.status, 200);
   assert.equal(missingName.calls, 2);
-  assert.deepEqual(missingName.payload, fallbackSocialStory({ childName: 'Al', church: harbor, lines: [] }));
+  assert.deepEqual(missingName.payload, {
+    ...fallbackSocialStory({ childName: 'Al', church: harbor, lines: [] }),
+    fallbackReason: 'safety',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
   const pages = templateStoryPages(harbor);
   const clean = await generated(
     '/v1/drafts/social-story',
@@ -1172,7 +1218,12 @@ test('a story that is not seven pages retries once and then uses the template', 
   );
   assert.equal(clean.status, 200);
   assert.equal(clean.calls, 1);
-  assert.deepEqual(clean.payload, { title: 'Sunday with Rowan', pages, source: 'model' });
+  assert.deepEqual(clean.payload, {
+    title: 'Sunday with Rowan',
+    pages,
+    source: 'model',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
 });
 
 test('a banned story page is replaced and a care-plan title still falls back', async () => {
@@ -1184,7 +1235,12 @@ test('a banned story page is replaced and a care-plan title still falls back', a
   );
   assert.equal(repaired.status, 200);
   assert.equal(repaired.calls, 1);
-  assert.deepEqual(repaired.payload, { title: 'Sunday with Rowan', pages: template, source: 'model' });
+  assert.deepEqual(repaired.payload, {
+    title: 'Sunday with Rowan',
+    pages: template,
+    source: 'model',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
   const planned = await generated(
     '/v1/drafts/social-story',
     { lines: [sensory], childName: 'Rowan', church: harbor },
@@ -1192,7 +1248,11 @@ test('a banned story page is replaced and a care-plan title still falls back', a
   );
   assert.equal(planned.status, 200);
   assert.equal(planned.calls, 2);
-  assert.deepEqual(planned.payload, fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }));
+  assert.deepEqual(planned.payload, {
+    ...fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }),
+    fallbackReason: 'safety',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
 });
 
 test('a copied Sunday update fails the existing generation retry', async () => {
@@ -1606,7 +1666,7 @@ test('socialStoryMessages asks for a short story read aloud to the child', () =>
     'The title is a varied story title for this child and this morning, never a Plan or Supporting title.',
     'Use ordinary spoken English, and put the before a room name.',
     'Describe only what the church plan says will happen. Do not add a seat, a kind of seat, a sound level, a song, or an activity the plan does not name. Do not promise that anything will be ready.',
-    'End with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything.',
+    'The pickup page ends with one warm, calm, reassuring line for the child. It welcomes them and does not promise anything. Do not add a line or a field after the JSON.',
     'Do not use the words support, accommodation, ensure, engage, or upset.',
   ];
   for (const phrase of phrases) {
@@ -1789,7 +1849,11 @@ test('a social story gateway failure returns the Sunday fallback', async () => {
   assert.equal(calls, 2);
   const text = await response.text();
   assert.equal(text.includes('GATEWAY-BODY-SHOULD-NOT-LEAK'), false);
-  assert.deepEqual(JSON.parse(text), fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }));
+  assert.deepEqual(JSON.parse(text), {
+    ...fallbackSocialStory({ childName: 'Rowan', church: harbor, lines: [] }),
+    fallbackReason: 'upstream_error',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  });
 });
 
 test('the Sunday fallback is the seven template pages', () => {
@@ -2150,7 +2214,7 @@ test('a short name and a hedged seat survive, and safety reasons stay distinct',
   const pages = {
     ...templateStoryPages(harbor),
     helper: 'Juniper can hold Pip the fox.',
-    quiet: 'A pad rests on Juniper lap.',
+    quiet: 'Juniper can use a lap pad.',
   };
   const named = parseSocialStory(
     { title: 'Sunday with Juniper', pages },

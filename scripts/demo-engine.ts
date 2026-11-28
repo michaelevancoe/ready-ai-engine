@@ -18,7 +18,7 @@ import {
   sundayUpdateSchemaName,
   type StoryChurch,
 } from '../src/demo-drafts.ts';
-import { ConfigError, GenerateError, SchemaRejected } from '../src/errors.ts';
+import { ConfigError, GenerateError, SchemaRejected, type FallbackReason } from '../src/errors.ts';
 import { generate } from '../src/generate.ts';
 import { json } from '../src/http.ts';
 import { parseIntake, type IntakeAnswers } from '../src/intake.ts';
@@ -55,6 +55,8 @@ const ANSWER_KEYS = [
 ] as const;
 
 const ACK_GATEWAY_GUARD = 19;
+
+const STORY_MAX_TOKENS = 2048;
 
 export class DemoContext {
   private readonly store: MemoryStore;
@@ -179,15 +181,27 @@ export class DemoContext {
     try {
       return json(await this.writeSocialStory(parsed), 200);
     } catch (error) {
-      if (error instanceof GenerateError) return json(fallbackSocialStory(parsed), 200);
+      if (error instanceof GenerateError) {
+        return json(
+          {
+            ...fallbackSocialStory(parsed),
+            fallbackReason: error.fallbackReason,
+            model: this.deps.env.INTAKE_PROFILE_MODEL,
+          },
+          200,
+        );
+      }
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
   }
 
-  private writeSocialStory(
-    parsed: SocialStoryRequest,
-  ): Promise<{ title: string; pages: StoryPages; source: 'model' }> {
+  private writeSocialStory(parsed: SocialStoryRequest): Promise<{
+    title: string;
+    pages: StoryPages;
+    source: 'model';
+    model: string;
+  }> {
     return generate({
       endpoint: 'intake.profile',
       messages: socialStoryMessages(parsed),
@@ -197,16 +211,22 @@ export class DemoContext {
       env: this.deps.env,
       fetch: this.deps.fetch,
       log: this.deps.log,
+      maxTokens: STORY_MAX_TOKENS,
       attempts: 'once',
-    }).then((draft) => ({ ...draft, source: 'model' as const }));
+    }).then((draft) => ({ ...draft, source: 'model' as const, model: this.deps.env.INTAKE_PROFILE_MODEL }));
   }
 
   private async handleAcknowledgement(request: Request): Promise<Response> {
     const parsed = await parsedBody(request, parseAcknowledgementRequest);
     if (parsed instanceof Response) return parsed;
     if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
-    if (this.gatewayBusy()) return json(fallbackAck(parsed), 200);
-    const write = (): Promise<{ relevant: boolean; line: string; clarifyingPrompt: string }> => {
+    if (this.gatewayBusy()) return json(fallbackAck(parsed, 'upstream_error'), 200);
+    const write = (): Promise<{
+      relevant: boolean;
+      line: string;
+      clarifyingPrompt: string;
+      fallbackReason?: FallbackReason;
+    }> => {
       let repeated = false;
       return generate({
         endpoint: 'intake.profile',
@@ -227,7 +247,10 @@ export class DemoContext {
         maxTokens: 80,
         attempts: 'once',
       }).then(
-        (value) => value,
+        (value) => {
+          if (value.fallbackReason !== undefined) this.logFallback(value.fallbackReason);
+          return value;
+        },
         (error: unknown) => {
           if (repeated) throw new RecentRepeat();
           throw error;
@@ -241,12 +264,13 @@ export class DemoContext {
         try {
           return json(await write(), 200);
         } catch (again) {
-          if (again instanceof GenerateError || again instanceof RecentRepeat) return json(fallbackAck(parsed), 200);
+          if (again instanceof GenerateError) return json(fallbackAck(parsed, again.fallbackReason), 200);
+          if (again instanceof RecentRepeat) return json(fallbackAck(parsed, 'line_rejected'), 200);
           if (again instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
           throw again;
         }
       }
-      if (error instanceof GenerateError) return json(fallbackAck(parsed), 200);
+      if (error instanceof GenerateError) return json(fallbackAck(parsed, error.fallbackReason), 200);
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
@@ -292,6 +316,18 @@ export class DemoContext {
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
+  }
+
+  private logFallback(fallbackReason: FallbackReason): void {
+    this.deps.log?.({
+      endpoint: 'intake.profile',
+      attempt: 1,
+      phase: 'primary',
+      provider: this.deps.env.INTAKE_PROFILE_PROVIDER,
+      model: this.deps.env.INTAKE_PROFILE_MODEL,
+      outcome: 'schema_rejected',
+      fallbackReason,
+    });
   }
 
   private async callEngine(url: URL, body: string): Promise<Response> {
@@ -840,7 +876,7 @@ function acknowledgementMessages(request: AckRequest): { role: 'system' | 'user'
     { role: 'system', content: ACKNOWLEDGEMENT_PROMPT },
     {
       role: 'user',
-      content: `Answer: ${request.answer.slice(0, 1500)}\nSection: ${request.sectionId}\nQuestion: ${request.question}${recent}`,
+      content: `Answer: ${request.answer}\nSection: ${request.sectionId}\nQuestion: ${request.question}${recent}`,
     },
   ];
 }
@@ -864,30 +900,35 @@ function readAcknowledgementContent(content: string): { answer: string; sectionI
 function parseAcknowledgement(
   value: unknown,
   request: AckRequest,
-): { relevant: boolean; line: string; clarifyingPrompt: string } {
+): { relevant: boolean; line: string; clarifyingPrompt: string; fallbackReason?: FallbackReason } {
   if (
     !isRecord(value) ||
     typeof value.line !== 'string' ||
     typeof value.relevant !== 'boolean' ||
     typeof value.clarifyingPrompt !== 'string'
   ) {
-    throw new SchemaRejected();
+    throw new SchemaRejected('schema');
   }
   const line = oneLine(value.line);
-  if (line.length < 1) throw new SchemaRejected();
+  if (line.length < 1) throw new SchemaRejected('schema');
   const relevant = value.relevant || careSignal(request.answer) || uncertainOrNo(request.answer);
   const prompt = oneLine(value.clarifyingPrompt);
   const accepted = lineAccepted(line, request.answer);
   if (accepted && repeatsRecent(line, request.recent)) throw new RecentRepeat();
+  const fallbackReason = accepted ? undefined : lineFallbackReason(line);
   return {
     relevant,
     line: accepted ? line : fallbackLine(request.recent),
     clarifyingPrompt: relevant ? '' : promptAccepted(prompt, request.answer) ? prompt : cannedPrompt(request.sectionId),
+    ...(fallbackReason === undefined ? {} : { fallbackReason }),
   };
 }
 
-function fallbackAck(request: AckRequest): { relevant: true; line: string; clarifyingPrompt: '' } {
-  return { relevant: true, line: fallbackLine(request.recent), clarifyingPrompt: '' };
+function fallbackAck(
+  request: AckRequest,
+  fallbackReason: FallbackReason,
+): { relevant: true; line: string; clarifyingPrompt: ''; fallbackReason: FallbackReason } {
+  return { relevant: true, line: fallbackLine(request.recent), clarifyingPrompt: '', fallbackReason };
 }
 
 function fallbackLine(recent: readonly string[]): string {
@@ -940,8 +981,18 @@ function restatesAnswer(line: string, answer: string): boolean {
   const answerText = plain(answer);
   if (lineText.length === 0 || answerText.length === 0) return false;
   if (lineText === answerText) return true;
-  if (answerText.length >= 12 && lineText.includes(answerText)) return true;
-  return lineText.length >= 12 && answerText.includes(lineText);
+  return answerText.length >= 12 && lineText.includes(answerText);
+}
+
+function lineFallbackReason(line: string): FallbackReason {
+  return unsafeSurface(line) ? 'safety' : 'line_rejected';
+}
+
+function unsafeSurface(text: string): boolean {
+  if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text)) return true;
+  const lower = text.toLowerCase();
+  if (ACK_BLOCKED.some((word) => lower.includes(word))) return true;
+  return CHILD_PRONOUN.test(text);
 }
 
 function plain(value: string): string {
