@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { onboardingStorageState } from './e2e/onboarding-done.ts';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +18,7 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   use: {
     baseURL: 'http://127.0.0.1:4173',
+    storageState: onboardingStorageState('http://127.0.0.1:4173'),
   },
   webServer: {
     command: 'node --experimental-strip-types ../test/serve-built-demo.ts',

@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { onboardingStorageState } from './e2e/onboarding-done.ts';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(webRoot, '..');
@@ -22,6 +23,7 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   use: {
     baseURL: 'http://127.0.0.1:3000',
+    storageState: onboardingStorageState('http://127.0.0.1:3000'),
   },
   webServer: [
     {
