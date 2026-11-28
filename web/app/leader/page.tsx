@@ -9,10 +9,11 @@ import { behaviorAsked } from '../../lib/intake-tree';
 import { volunteerCheckInPrivacy } from '../../lib/privacy-note';
 import { checkInBrief, childAgeYears, childPreferredName, initialVisit, type ChurchSetup, type Visit } from '../../lib/visit';
 import { visitWhatHelps } from '../../lib/what-helps';
-import { PrivacyNote } from '../privacy-note';
-import { useChurchPhotos, useReadyStore, useScrollWhen } from '../visit-shell';
 import { DraftStatus } from '../draft-status';
+import { PrivacyNote } from '../privacy-note';
+import { useChurchPhotos, useScrollWhen } from '../visit-shell';
 import { WhatHelpsCard } from '../what-helps';
+import { LeaderExplore, useLeaderStore, useLeaderTour } from './sample-tour';
 import { readChurchPhoto } from './read-church-photo';
 import { ResumeCard, SettingsCard, SetupScreens, setupReplacesHome } from './setup';
 import { useOnboarding } from './use-onboarding';
@@ -38,7 +39,16 @@ const PHOTO_SLOTS = [
 type Screen = 'home' | 'after' | 'brief' | 'settings';
 
 export default function LeaderPage() {
-  const store = useReadyStore();
+  return (
+    <LeaderExplore>
+      <LeaderScreen />
+    </LeaderExplore>
+  );
+}
+
+function LeaderScreen() {
+  const store = useLeaderStore();
+  const tour = useLeaderTour();
   const records = useSyncExternalStore(store.subscribe, store.listVisits, store.listVisits);
   const selectedVisit = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const selected = records.find((record) => record.visit === selectedVisit) ?? records[0];
@@ -48,13 +58,46 @@ export default function LeaderPage() {
   const liveVisit = live?.visit;
   const [screen, setScreen] = useState<Screen>('home');
   const [saved, setSaved] = useState(false);
-  const [browsing, setBrowsing] = useState(false);
+  const [seenStep, setSeenStep] = useState(tour.step);
   const onboarding = useOnboarding();
+  const closedSeen = useRef(0);
   const [church, setChurch] = useState<ChurchSetup>(liveVisit?.church ?? initialVisit().church);
-  const setup = !browsing && setupReplacesHome(onboarding.state);
+  if (tour.step !== seenStep) {
+    setSeenStep(tour.step);
+    if (tour.step === 1) setScreen('home');
+    else if (tour.step === 2 || tour.step === 3) setScreen('after');
+  }
+  const setup = !tour.exploring && setupReplacesHome(onboarding.state);
   useLayoutEffect(() => {
     if (setup) setScreen('home');
   }, [setup]);
+  useLayoutEffect(() => {
+    switch (tour.step) {
+      case 1: {
+        const liveRecord = store.listVisits().find((record) => !record.sample);
+        if (liveRecord !== undefined) store.select(liveRecord.id);
+        return;
+      }
+      case 2:
+        store.select('ezra');
+        return;
+      case 3:
+        store.select('hazel');
+        return;
+      case null:
+        return;
+      default: {
+        const leftover: never = tour.step;
+        return leftover;
+      }
+    }
+  }, [store, tour.step]);
+  useLayoutEffect(() => {
+    if (tour.closed === closedSeen.current) return;
+    closedSeen.current = tour.closed;
+    setScreen('home');
+    onboarding.dispatch({ type: 'skip' });
+  }, [onboarding.dispatch, tour.closed]);
   useScrollWhen(visit?.update.phase === 'writing', 'update-status');
   useScrollWhen(visit?.update.phase === 'ready', 'update-draft');
   if (selected === undefined || live === undefined || visit === undefined || liveVisit === undefined) return null;
@@ -104,12 +147,10 @@ export default function LeaderPage() {
   }
 
   function explore(): void {
-    setBrowsing(true);
-    setScreen('home');
+    tour.start();
   }
 
   function replayWelcome(): void {
-    setBrowsing(false);
     onboarding.dispatch({ type: 'replay' });
   }
 
@@ -490,7 +531,7 @@ function SettingsScreen({
 }
 
 function ChurchPhotos() {
-  const store = useReadyStore();
+  const store = useLeaderStore();
   const photos = useChurchPhotos();
   return (
     <div className="photo-settings">
