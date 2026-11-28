@@ -101,7 +101,7 @@ test('the sample church and a closed brief are the initial visit', () => {
   assert.equal(checkInBrief(visit).status, 'withheld');
   assert.deepEqual(visit.church, {
     name: 'Example Harbor Fellowship',
-    service: 'Sunday 9:30',
+    service: 'Sunday 9:00',
     room: 'Harbor Room',
     leader: 'Ms. Dana',
     ages: 'Ages 5\u201312',

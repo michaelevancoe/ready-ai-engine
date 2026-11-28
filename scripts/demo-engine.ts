@@ -16,6 +16,7 @@ import {
   sundayUpdateMessages,
   sundayUpdateSchema,
   sundayUpdateSchemaName,
+  templateSundayNote,
   type StoryChurch,
 } from '../src/demo-drafts.ts';
 import { ConfigError, GenerateError, SchemaRejected, type FallbackReason } from '../src/errors.ts';
@@ -222,6 +223,7 @@ export class DemoContext {
   private async handleAcknowledgement(request: Request): Promise<Response> {
     const parsed = await parsedBody(request, parseAcknowledgementRequest);
     if (parsed instanceof Response) return parsed;
+    if (parsed.sectionId === 'allergies') return json(allergyAcknowledgement(), 200);
     if (this.mock) return json(mockAcknowledgement(parsed.answer, parsed.sectionId), 200);
     if (this.gatewayBusy()) return json(fallbackAck(parsed, 'upstream_error'), 200);
     const write = (
@@ -312,6 +314,8 @@ export class DemoContext {
           leader: parsed.leader,
           church: parsed.church,
         }),
+      undefined,
+      (error) => (error.fallbackReason === 'line_rejected_shape' ? { body: templateSundayNote(parsed) } : null),
     );
   }
 
@@ -321,6 +325,7 @@ export class DemoContext {
     schema: JsonSchema,
     parse: (value: unknown) => T,
     maxTokens?: number,
+    recover?: (error: GenerateError) => T | null,
   ): Promise<Response> {
     try {
       const value = await generate({
@@ -336,7 +341,11 @@ export class DemoContext {
       });
       return json(value, 200);
     } catch (error) {
-      if (error instanceof GenerateError) return json({ error: 'generation_failed' }, 502);
+      if (error instanceof GenerateError) {
+        const recovered = recover?.(error) ?? null;
+        if (recovered !== null) return json(recovered, 200);
+        return json({ error: 'generation_failed' }, 502);
+      }
       if (error instanceof ConfigError) return json({ error: 'misconfigured' }, 500);
       throw error;
     }
@@ -869,6 +878,26 @@ function judgeRelevance(answer: string): boolean {
   return nonsense < 2;
 }
 
+function keyboardMash(token: string): boolean {
+  if (token.length < 4) return false;
+  return ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].some((row) => row.includes(token));
+}
+
+function repeatedLetters(token: string): boolean {
+  return token.length >= 3 && /^(.)\1+$/u.test(token);
+}
+
+function obviousJunk(answer: string): boolean {
+  if (uncertainOrNo(answer)) return false;
+  const tokens = answer.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
+  if (tokens.some((token) => token === 'tick' || token.startsWith('tick'))) return false;
+  const content = tokens.filter((token) => !STOPWORDS.has(token) && !/^\d+$/u.test(token));
+  if (content.length === 0 || content.some((token) => CARE.has(token))) return false;
+  return content.every(
+    (token) => keyboardMash(token) || repeatedLetters(token) || (token.length >= 4 && !/[aeiou]/u.test(token)),
+  );
+}
+
 function careSignal(answer: string): boolean {
   const tokens = answer.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   if (tokens.some((token) => token === 'tick' || token.startsWith('tick'))) return true;
@@ -942,7 +971,9 @@ function parseAcknowledgement(
   }
   const line = oneLine(value.line);
   if (line.length < 1) throw new SchemaRejected('schema');
-  const relevant = value.relevant || careSignal(request.answer) || uncertainOrNo(request.answer);
+  const relevant =
+    !obviousJunk(request.answer) &&
+    (value.relevant || careSignal(request.answer) || uncertainOrNo(request.answer));
   const prompt = oneLine(value.clarifyingPrompt);
   const chosen = chooseLine(line, request.answer);
   if (chosen === null) throw new SchemaRejected(lineFallbackReason(line, request.answer));
@@ -985,11 +1016,23 @@ function namesDetail(line: string, answer: string): boolean {
   return false;
 }
 
+function allergyAcknowledgement(): { relevant: true; line: string; clarifyingPrompt: '' } {
+  return {
+    relevant: true,
+    line: 'Thank you. The team will see this in your own words before Sunday.',
+    clarifyingPrompt: '',
+  };
+}
+
 function fallbackAck(
   request: AckRequest,
   fallbackReason: FallbackReason,
-): { relevant: true; line: string; clarifyingPrompt: ''; fallbackReason: FallbackReason } {
-  return { relevant: true, line: fallbackLine(request.recent), clarifyingPrompt: '', fallbackReason };
+): { relevant: boolean; line: string; clarifyingPrompt: string; fallbackReason: FallbackReason } {
+  const line = fallbackLine(request.recent);
+  if (obviousJunk(request.answer)) {
+    return { relevant: false, line, clarifyingPrompt: cannedPrompt(request.sectionId), fallbackReason };
+  }
+  return { relevant: true, line, clarifyingPrompt: '', fallbackReason };
 }
 
 function fallbackLine(recent: readonly string[]): string {
@@ -1188,7 +1231,7 @@ function personalWords(lines: readonly { readonly text: string }[], childName: s
 }
 
 function mockSundayUpdate(childName: string, leader: string, church: string): { body: string } {
-  return { body: finishSundayNote(`Sunday went well for ${childName}.`, leader, church) };
+  return { body: finishSundayNote(`Hi, Sunday went well for ${childName}.`, leader, church) };
 }
 
 function answersFromGateway(payload: unknown): IntakeAnswers | null {

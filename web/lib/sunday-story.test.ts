@@ -31,7 +31,7 @@ test('a Sunday story is a cover plus seven steps in order', () => {
       {
         step: 1,
         slot: 'outside',
-        text: 'On Sunday at 9:30, you and your grown-up go to Example Harbor Fellowship.',
+        text: 'On Sunday at 9:00, you and your grown-up go to Example Harbor Fellowship.',
       },
       {
         step: 2,

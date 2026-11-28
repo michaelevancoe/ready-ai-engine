@@ -142,7 +142,7 @@ export function initialVisit(): Visit {
     update: { phase: 'idle' },
     church: {
       name: 'Example Harbor Fellowship',
-      service: 'Sunday 9:30',
+      service: 'Sunday 9:00',
       room: 'Harbor Room',
       leader: 'Ms. Dana',
       ages: 'Ages 5\u201312',

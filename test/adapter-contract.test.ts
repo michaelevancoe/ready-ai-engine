@@ -434,13 +434,13 @@ function seedDatabase(dbUrl: string, ids: Actors): void {
     insert into public.rooms (id, organization_id, name) values
       (${quote(ids.room)}, ${quote(ids.org)}, 'Harbor Room');
     insert into public.sundays (id, organization_id, label) values
-      (${quote(ids.sunday)}, ${quote(ids.org)}, 'Sunday 9:30');
+      (${quote(ids.sunday)}, ${quote(ids.org)}, 'Sunday 9:00');
     insert into public.volunteer_assignments (organization_id, user_id, room_id, sunday_id) values
       (${quote(ids.org)}, ${quote(ids.volunteer)}, ${quote(ids.room)}, ${quote(ids.sunday)});
     insert into public.shared_briefs (id, organization_id, child_id, room_id, sunday_id, shared, lines) values
       (${quote(ids.brief)}, ${quote(ids.org)}, ${quote(ids.child)}, ${quote(ids.room)}, ${quote(ids.sunday)}, true, '${lines}'::jsonb);
     insert into public.church_setup (organization_id, name, service, room, leader_label, ages, plan) values
-      (${quote(ids.org)}, '${CHURCH_NAME}', 'Sunday 9:30', 'Harbor Room', 'Ms. Dana', 'Ages 5-12', 'A short welcome.');
+      (${quote(ids.org)}, '${CHURCH_NAME}', 'Sunday 9:00', 'Harbor Room', 'Ms. Dana', 'Ages 5-12', 'A short welcome.');
     insert into public.lessons (id, organization_id, title) values
       (${quote(ids.lesson)}, ${quote(ids.org)}, '${LESSON_TITLE}');
     insert into public.medical_notes (child_id, organization_id, note) values
