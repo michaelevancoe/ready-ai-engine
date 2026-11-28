@@ -912,15 +912,30 @@ test('parseSocialStory replaces a bad page and rejects a payload that is not pag
         ...pages,
         helper: "{ 'loves': 'Soft music' }",
         desk: labelStory,
-        arrive: 'The room has "sensory": quiet corners.',
       },
     },
     rowanInput,
   );
   assert.equal(parsed.pages.helper, template.helper);
   assert.equal(parsed.pages.desk, template.desk);
-  assert.equal(parsed.pages.arrive, template.arrive);
+  assert.equal(parsed.pages.arrive, pages.arrive);
   assert.equal(parsed.pages.quiet, pages.quiet);
+  assert.throws(
+    () =>
+      parseSocialStory(
+        {
+          title: 'Sunday with Rowan',
+          pages: {
+            ...pages,
+            helper: "{ 'loves': 'Soft music' }",
+            desk: labelStory,
+            arrive: 'The room has "sensory": quiet corners.',
+          },
+        },
+        rowanInput,
+      ),
+    (error: unknown) => rejectedReason(error) === 'schema',
+  );
 });
 
 test('parseSocialStory accepts a personal seven-page story', () => {
@@ -2182,13 +2197,47 @@ test('fenced, trailed, and truncated story JSON still becomes the personal story
   const trailed = await storyFromModel(`${raw}\nYou are welcome here, Rowan.`);
   assert.equal(trailed.body.source, 'model');
   assert.deepEqual(trailed.body.pages, pages);
-  const pickupAt = raw.lastIndexOf(pages.pickup.slice(0, 12));
-  const cut = raw.slice(0, pickupAt + 8);
+  const pickupValue = JSON.stringify(pages.pickup);
+  const pickupAt = raw.lastIndexOf(pickupValue);
+  assert.equal(pickupAt > 0, true);
+  const cut = raw.slice(0, pickupAt + pickupValue.length);
   const truncated = await storyFromModel(cut);
   assert.equal(truncated.body.source, 'model');
   const kept = truncated.body.pages as StoryPages;
   assert.equal(kept.helper, pages.helper);
   assert.equal(kept.quiet, pages.quiet);
+  assert.equal(kept.pickup, pages.pickup);
+  assert.equal(/[.!?]["'”’]*$/u.test(kept.pickup.trim()), true);
+});
+
+test('a story cut off before all seven pages falls back', async () => {
+  const pages = personalPages();
+  const raw = JSON.stringify({ title: 'Sunday with Rowan', pages });
+  const template = templateStoryPages(harbor);
+  const cuts = [
+    raw.slice(0, raw.indexOf('"desk":')),
+    raw.slice(0, raw.indexOf('"quiet":')),
+    raw.slice(0, raw.indexOf('"pickup":')),
+  ];
+  for (const cut of cuts) {
+    assert.equal(cut.length > 0 && cut.length < raw.length, true);
+    const result = await storyFromModel(cut);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.source, 'fallback');
+    assert.equal(result.body.fallbackReason, 'truncated');
+    assert.deepEqual(result.body.pages, template);
+    assert.equal(result.logs.some((line) => line.includes('"fallbackReason":"truncated"')), true);
+    assert.equal(result.logs.some((line) => line.includes(pages.helper)), false);
+  }
+  for (const beat of STORY_BEATS) {
+    const key = `"${beat}":"`;
+    const at = raw.indexOf(key);
+    const mid = raw.slice(0, at + key.length + 8);
+    const result = await storyFromModel(mid);
+    assert.equal(result.body.source, 'fallback', beat);
+    assert.equal(result.body.fallbackReason, 'truncated', beat);
+    assert.deepEqual(result.body.pages, template, beat);
+  }
 });
 
 test('an extra closing field is ignored and a third sentence stays off the page', () => {
