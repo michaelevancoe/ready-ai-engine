@@ -13,6 +13,7 @@ export default defineConfig({
     'print-book.spec.ts',
     'lesson-removed.spec.ts',
     'seeded-visits.spec.ts',
+    'leader-onboarding.spec.ts',
   ],
   timeout: 60_000,
   expect: { timeout: 30_000 },
